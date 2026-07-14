@@ -90,7 +90,6 @@ export default function LoginPage() {
           </button>
 
           <p className="text-center text-xs text-gray-400 pt-2">
-            Demo accounts — admin / admin123 · cashier / cashier123
           </p>
         </form>
       </div>
