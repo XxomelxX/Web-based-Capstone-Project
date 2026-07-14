@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireRole } from '@/lib/require-role';
-import bcrypt from 'bcryptjs';
+import { hash } from 'bcryptjs';
 
 export async function GET() {
   const guard = await requireRole(['admin']);
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Username already taken' }, { status: 409 });
   }
 
-  const passwordHash = await bcrypt.hash(password, 10);
+  const passwordHash = await hash(password, 10);
   const user = await prisma.user.create({
     data: { fullName, username, email, passwordHash, role, status: 'active' },
     select: { id: true, fullName: true, username: true, email: true, role: true, status: true },

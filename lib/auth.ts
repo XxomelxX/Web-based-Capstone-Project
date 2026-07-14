@@ -1,9 +1,10 @@
 import { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
-import bcrypt from 'bcryptjs';
+import { compare } from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
 
 export const authOptions: NextAuthOptions = {
+  secret: process.env.NEXTAUTH_SECRET,
   session: { strategy: 'jwt' },
   pages: { signIn: '/login' },
   providers: [
@@ -14,23 +15,28 @@ export const authOptions: NextAuthOptions = {
         password: { label: 'Password', type: 'password' },
       },
       async authorize(credentials) {
-        if (!credentials?.username || !credentials?.password) return null;
+        try {
+          if (!credentials?.username || !credentials?.password) return null;
 
-        const user = await prisma.user.findUnique({
-          where: { username: credentials.username },
-        });
+          const user = await prisma.user.findUnique({
+            where: { username: credentials.username },
+          });
 
-        if (!user || user.status !== 'active') return null;
+          if (!user || user.status !== 'active') return null;
 
-        const isValid = await bcrypt.compare(credentials.password, user.passwordHash);
-        if (!isValid) return null;
+          const isValid = await compare(credentials.password, user.passwordHash);
+          if (!isValid) return null;
 
-        return {
-          id: String(user.id),
-          name: user.fullName,
-          email: user.email,
-          role: user.role,
-        } as { id: string; name: string; email: string; role: string };
+          return {
+            id: String(user.id),
+            name: user.fullName,
+            email: user.email,
+            role: user.role,
+          } as { id: string; name: string; email: string; role: string };
+        } catch (error) {
+          console.error('[AUTH] authorize error:', error);
+          return null;
+        }
       },
     }),
   ],

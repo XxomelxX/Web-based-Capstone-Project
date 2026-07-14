@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import bcrypt from 'bcryptjs';
+import { hash } from 'bcryptjs';
 
 // POST /api/seed
 // ONLY for initial setup - seed the database with demo data
@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     // Admin account
     const existingAdmin = await prisma.user.findUnique({ where: { username: 'admin' } });
     if (!existingAdmin) {
-      const passwordHash = await bcrypt.hash('admin123', 10);
+      const passwordHash = await hash('admin123', 10);
       await prisma.user.create({
         data: {
           fullName: 'Samuel Bioco',
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
     // Cashier account
     const existingCashier = await prisma.user.findUnique({ where: { username: 'cashier' } });
     if (!existingCashier) {
-      const passwordHash = await bcrypt.hash('cashier123', 10);
+      const passwordHash = await hash('cashier123', 10);
       await prisma.user.create({
         data: {
           fullName: 'Judy Ann Bioco',
