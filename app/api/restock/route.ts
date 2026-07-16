@@ -6,8 +6,9 @@ import { authOptions } from '@/lib/auth';
 import { broadcastRealtime } from '@/lib/realtime';
 
 // POST /api/restock  body: { productId, quantity, supplier?, costPerUnit? }
+// Both admin and cashier may restock products. Cashiers may only add stock; they cannot deduct stock here.
 export async function POST(request: Request) {
-  const guard = await requireRole(['admin']);
+  const guard = await requireRole(['admin', 'cashier']);
   if (guard) return guard;
 
   const session = await getServerSession(authOptions);

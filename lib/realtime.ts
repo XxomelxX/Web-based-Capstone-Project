@@ -54,7 +54,7 @@ export function broadcastRealtime<T = unknown>(channel: RealtimeChannel, payload
   for (const [id, controller] of Array.from(clients.entries())) {
     try {
       controller.enqueue(encoded);
-    } catch (error) {
+    } catch {
       clients.delete(id);
     }
   }

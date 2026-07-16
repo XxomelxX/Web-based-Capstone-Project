@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "powershell -NoProfile -Command \"$ErrorActionPreference = 'SilentlyContinue'; $pids = @(); if (Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue) { $pids = Get-NetTCPConnection -LocalPort 3000 -State Listen | Select-Object -ExpandProperty OwningProcess -Unique } else { $pids = netstat -ano | Select-String ':3000\\s' | ForEach-Object { ($_ -split '\\s+')[-1] } | Select-Object -Unique }; if ($pids) { $pids | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue } }; npm exec -- next dev\"",
     "postinstall": "node scripts/prisma-generate.js",
     "build": "next build",
     "start": "next start",

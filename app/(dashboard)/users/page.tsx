@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { getUsers, addUser, deleteUser, deactivateUser } from '@/lib/api/inventory';
+import { getUsers, addUser, updateUser, deleteUser, deactivateUser } from '@/lib/api/inventory';
 import { useRealtime } from '@/lib/use-realtime';
 
 interface User { id: number; fullName: string; username: string; email: string; role: string; status: string; createdAt: string }
@@ -17,6 +17,9 @@ export default function UsersPage() {
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
   const [deleteError, setDeleteError] = useState('');
   const [canDeactivate, setCanDeactivate] = useState(false);
+  const [editTarget, setEditTarget] = useState<User | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editError, setEditError] = useState('');
 
   function refresh() {
     getUsers<User>().then(setUsers);
@@ -39,6 +42,27 @@ export default function UsersPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add user');
     }
+  }
+
+  async function handleEdit() {
+    if (!editTarget) return;
+    setEditError('');
+    try {
+      await updateUser(editTarget.id, { fullName: editName });
+      setEditTarget(null);
+      refresh();
+      if (editTarget.id === Number(session?.user?.id)) {
+        window.location.reload();
+      }
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : 'Failed to update name');
+    }
+  }
+
+  function openEdit(u: User) {
+    setEditTarget(u);
+    setEditName(u.fullName);
+    setEditError('');
   }
 
   async function handleDelete() {
@@ -81,8 +105,8 @@ export default function UsersPage() {
         <button onClick={() => setShowModal(true)} className="bg-green-700 text-white rounded-md px-4 py-2 text-sm">+ Add User</button>
       </div>
 
-      <div className="bg-white rounded-xl shadow overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="bg-white rounded-xl shadow overflow-hidden overflow-x-auto">
+        <table className="min-w-full text-sm">
           <thead className="bg-gray-50 text-left text-gray-500">
             <tr>
               <th className="p-3">User</th><th className="p-3">Email</th><th className="p-3">Role</th><th className="p-3">Status</th><th className="p-3">Joined</th>
@@ -105,18 +129,27 @@ export default function UsersPage() {
                 <td className="p-3">{new Date(u.createdAt).toLocaleDateString()}</td>
                 {isAdmin && (
                   <td className="p-3">
-                    {/* Don't allow deleting yourself */}
-                    {u.id !== Number(session?.user?.id) && (
+                    <div className="flex items-center gap-2">
                       <button
-                        onClick={() => { setDeleteTarget(u); setDeleteError(''); setCanDeactivate(false); }}
-                        className="text-gray-500 hover:text-red-600 transition"
-                        title="Delete user"
+                        onClick={() => openEdit(u)}
+                        className="text-gray-500 hover:text-blue-600 transition"
+                        title="Edit user name"
                       >
+                        ✎
+                      </button>
+                      {/* Don't allow deleting yourself */}
+                      {u.id !== Number(session?.user?.id) && (
+                        <button
+                          onClick={() => { setDeleteTarget(u); setDeleteError(''); setCanDeactivate(false); }}
+                          className="text-gray-500 hover:text-red-600 transition"
+                          title="Delete user"
+                        >
                         <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
                       </button>
                     )}
+                  </div>
                   </td>
                 )}
               </tr>
@@ -135,7 +168,7 @@ export default function UsersPage() {
               <label className="text-sm font-medium">Full Name</label>
               <input required value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} className="w-full border rounded-md px-3 py-2 mt-1" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-sm font-medium">Username</label>
                 <input required value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} className="w-full border rounded-md px-3 py-2 mt-1" />
@@ -165,6 +198,31 @@ export default function UsersPage() {
       )}
 
       {/* Delete / Deactivate Confirmation Modal */}
+      {editTarget && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="font-bold text-lg">Edit User Name</h3>
+              <button type="button" onClick={() => setEditTarget(null)}>×</button>
+            </div>
+            <p className="text-sm text-gray-600">Update the name shown for this user.</p>
+            <div>
+              <label className="text-sm font-medium">Full Name</label>
+              <input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="w-full border rounded-md px-3 py-2 mt-1"
+              />
+            </div>
+            {editError && <p className="text-sm text-red-600">{editError}</p>}
+            <div className="flex gap-2 justify-end pt-2">
+              <button onClick={() => setEditTarget(null)} className="border rounded-md px-4 py-2 text-sm">Cancel</button>
+              <button onClick={handleEdit} className="bg-blue-700 text-white rounded-md px-4 py-2 text-sm">Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {deleteTarget && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-4">

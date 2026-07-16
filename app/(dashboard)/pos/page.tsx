@@ -137,7 +137,7 @@ export default function POSPage() {
         </div>
 
         {cart.length === 0 ? (
-          <p className="text-sm text-gray-400 text-center py-8">Cart is empty. Scan a barcode to start.</p>
+          <p className="text-sm text-gray-400 text-center py-8">Cart is empty. Input a product to start.</p>
         ) : (
           <div className="space-y-2 max-h-64 overflow-y-auto">
             {cart.map((l) => (

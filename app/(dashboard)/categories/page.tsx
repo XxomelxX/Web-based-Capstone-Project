@@ -93,8 +93,8 @@ export default function CategoriesPage() {
 
       {error && <p className="text-sm text-red-600 bg-red-50 rounded-md px-3 py-2">{error}</p>}
 
-      <div className="bg-white rounded-xl shadow overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="bg-white rounded-xl shadow overflow-hidden overflow-x-auto">
+        <table className="min-w-full text-sm">
           <thead className="bg-gray-50 text-left text-gray-500">
             <tr>
               <th className="p-3">Category</th>
@@ -157,11 +157,11 @@ export default function CategoriesPage() {
 
       {/* Archived categories section */}
       {archivedCategories.length > 0 && (
-        <div className="bg-white rounded-xl shadow overflow-hidden">
+        <div className="bg-white rounded-xl shadow overflow-hidden overflow-x-auto">
           <div className="bg-orange-50 px-4 py-2 border-b">
             <h2 className="text-sm font-semibold text-orange-700">Archived Categories ({archivedCategories.length})</h2>
           </div>
-          <table className="w-full text-sm">
+          <table className="min-w-full text-sm">
             <tbody>
               {archivedCategories.map((c) => (
                 <tr key={c.id} className="border-t">

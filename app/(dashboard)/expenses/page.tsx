@@ -85,7 +85,7 @@ export default function ExpensesPage() {
         <button onClick={() => setShowModal(true)} className="bg-green-700 text-white rounded-md px-4 py-2 text-sm">+ Add Expense</button>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
         <StatCard label="This Month" value={`₱${totalThisMonth.toFixed(2)}`} />
         <StatCard label="This Year" value={`₱${totalThisYear.toFixed(2)}`} />
         <StatCard label="Showing" value={`₱${totalFiltered.toFixed(2)}`} accent={dateFilter !== 'all' ? 'text-blue-600' : undefined} />
@@ -104,8 +104,8 @@ export default function ExpensesPage() {
         ))}
       </div>
 
-      <div className="bg-white rounded-xl shadow overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="bg-white rounded-xl shadow overflow-hidden overflow-x-auto">
+        <table className="min-w-full text-sm">
           <thead className="bg-gray-50 text-left text-gray-500">
             <tr><th className="p-3">Type</th><th className="p-3">Amount</th><th className="p-3">Period</th><th className="p-3">Notes</th><th className="p-3">Date Added</th></tr>
           </thead>

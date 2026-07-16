@@ -57,14 +57,14 @@ export default function OrdersPage() {
         <p className="text-sm text-gray-500">All sales transactions</p>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
         <StatCard label="Total Orders" value={completeOrders.length} />
         <StatCard label="Items Sold" value={totalItems} />
         <StatCard label="Revenue" value={`₱${totalRevenue.toFixed(2)}`} />
       </div>
 
-      <div className="bg-white rounded-xl shadow overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="bg-white rounded-xl shadow overflow-hidden overflow-x-auto">
+        <table className="min-w-full text-sm">
           <thead className="bg-gray-50 text-left text-gray-500">
             <tr>
               <th className="p-3">No.</th>

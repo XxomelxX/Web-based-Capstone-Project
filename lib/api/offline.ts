@@ -70,7 +70,10 @@ export async function getProductsOffline<T = Record<string, unknown>>(): Promise
 
 export async function getArchivedProductsOffline<T = Record<string, unknown>>(): Promise<T[]> {
   return cachedGet<T[]>(
-    async () => (await getCachedProducts<T>()).filter((p) => (p as any).archived === true),
+    async () =>
+      (await getCachedProducts<T>()).filter(
+        (p) => (p as { archived?: boolean }).archived === true
+      ),
     async () => {
       const res = await fetch('/api/products?archived=true');
       if (!res.ok) throw new Error('Failed to load archived products');

@@ -101,6 +101,11 @@ export async function addUser(data: {
   return result.data!;
 }
 
+export async function updateUser(id: number, data: { fullName?: string; role?: 'admin' | 'cashier'; status?: string; }): Promise<InventoryUser> {
+  const result = await queueOrFetch<InventoryUser>(`/api/users/${id}`, 'PATCH', data, 'update-user');
+  return result.data!;
+}
+
 export async function deleteUser(id: number): Promise<void> {
   await queueOrFetch<{ id: number; deleted: boolean }>(`/api/users/${id}`, 'DELETE', null, 'delete-user');
 }

@@ -40,7 +40,11 @@ export default function ReportsPage() {
   });
 
   useEffect(() => {
-    void loadReports(range);
+    async function fetchReports() {
+      await loadReports(range);
+    }
+
+    void fetchReports();
   }, [range]);
 
   return (
@@ -72,14 +76,14 @@ export default function ReportsPage() {
         </div>
       ) : data ? (
         <>
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
             <StatCard label="Total Revenue" value={`₱${data.totalRevenue.toFixed(2)}`} />
             <StatCard label="Transactions" value={data.totalTransactions} />
             <StatCard label="Items Sold" value={data.totalItemsSold} />
             <StatCard label="Est. Profit" value={`₱${data.estimatedProfit.toFixed(2)}`} accent="text-green-700" />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-white rounded-xl shadow p-5">
               <h2 className="font-semibold mb-3">Top Selling Products</h2>
               {data.topSelling.length === 0 ? <p className="text-sm text-gray-400">No sales yet.</p> : (

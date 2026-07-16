@@ -106,7 +106,7 @@ export default function UtangPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
         <StatCard label="Total outstanding utang" value={`₱${totalOutstanding.toFixed(2)}`} accent="text-red-600" />
         <StatCard label="Customers with utang" value={customersWithUtang} />
         <StatCard label="Total entries" value={entries.length} />
@@ -114,12 +114,12 @@ export default function UtangPage() {
 
       <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search customer name..." className="w-full border rounded-md px-4 py-2 bg-white" />
 
-      <div className="bg-white rounded-xl shadow p-4">
+      <div className="bg-white rounded-xl shadow p-4 overflow-x-auto">
         <h2 className="font-semibold mb-2">Customer balances</h2>
         {customers.length === 0 ? (
           <p className="text-sm text-gray-400 text-center py-6">No customers yet.</p>
         ) : (
-          <table className="w-full text-sm">
+          <table className="min-w-full text-sm">
             <thead className="text-left text-gray-500"><tr><th className="py-2">Customer</th><th>Balance</th><th>Status</th></tr></thead>
             <tbody>
               {customers.map(([name, c]) => (
@@ -134,12 +134,12 @@ export default function UtangPage() {
         )}
       </div>
 
-      <div className="bg-white rounded-xl shadow p-4">
+      <div className="bg-white rounded-xl shadow p-4 overflow-x-auto">
         <h2 className="font-semibold mb-2">Recent activity</h2>
         {entries.length === 0 ? (
           <p className="text-sm text-gray-400 text-center py-6">No entries.</p>
         ) : (
-          <table className="w-full text-sm">
+          <table className="min-w-full text-sm">
             <thead className="text-left text-gray-500"><tr><th className="py-2">Date</th><th>Customer</th><th>Items</th><th>Note</th><th>Amount</th></tr></thead>
             <tbody>
               {entries.map((e) => (

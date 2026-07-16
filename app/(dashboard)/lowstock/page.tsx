@@ -62,7 +62,7 @@ export default function LowStockPage() {
         <p className="text-sm text-gray-500">Products below {threshold} units that need restocking</p>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
         <StatCard label={`Critical (<10)`} value={critical} accent="text-red-600" />
         <StatCard label="Warning (10-19)" value={warning} />
         <StatCard label="Total Restock Needed" value={products.length} />
@@ -75,8 +75,8 @@ export default function LowStockPage() {
         className="w-full border rounded-md px-4 py-2 bg-white"
       />
 
-      <div className="bg-white rounded-xl shadow overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="bg-white rounded-xl shadow overflow-hidden overflow-x-auto">
+        <table className="min-w-full text-sm">
           <thead className="bg-gray-50 text-left text-gray-500">
             <tr>
               <th className="p-3">Product</th>
