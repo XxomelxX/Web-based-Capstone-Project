@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 const ADMIN_NAV = [
   { href: '/dashboard', label: 'Dashboard' },
@@ -34,19 +34,35 @@ export function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
   const [confirmLogout, setConfirmLogout] = useState(false);
+  const [online, setOnline] = useState(
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  );
 
   const role = session?.user?.role ?? 'cashier';
   const nav = role === 'admin' ? ADMIN_NAV : CASHIER_NAV;
 
+  useEffect(() => {
+    const handleOnline = () => setOnline(true);
+    const handleOffline = () => setOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   return (
-    <aside className="w-64 bg-[#faf6ef] border-r flex flex-col h-screen sticky top-0">
-      <div className="p-4 flex items-center gap-2 border-b">
-        <div className="w-9 h-9 bg-green-600 rounded-lg flex items-center justify-center text-white">
+    <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col h-screen sticky top-0">
+      <div className="p-4 flex items-center gap-2 border-b border-slate-800">
+        <div className="w-9 h-9 bg-cyan-500 rounded-lg flex items-center justify-center text-slate-950">
           🏪
         </div>
         <div>
-          <div className="font-bold text-sm leading-tight">Sari-Sari POS</div>
-          <div className="text-xs text-gray-500">Inventory &amp; Sales</div>
+          <div className="font-bold text-sm leading-tight text-slate-100">Sari-Sari POS</div>
+          <div className="text-xs text-slate-400">Inventory &amp; Sales</div>
         </div>
       </div>
 
@@ -58,7 +74,7 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               className={`block px-4 py-2 mx-2 rounded-md text-sm font-medium ${
-                active ? 'bg-green-700 text-white' : 'text-gray-700 hover:bg-gray-100'
+                active ? 'bg-cyan-500 text-slate-950' : 'text-slate-300 hover:bg-slate-800'
               }`}
             >
               {item.label}
@@ -67,28 +83,38 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="border-t p-4 space-y-2">
+      <div className="border-t border-slate-800 p-4 space-y-2">
         <div>
-          <div className="text-sm font-semibold">{session?.user?.name ?? '...'}</div>
-          <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800">
-            {role.toUpperCase()}
-          </span>
+          <div className="text-sm font-semibold text-slate-100">{session?.user?.name ?? '...'}</div>
+          <div className="flex flex-wrap gap-2 mt-1">
+            <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+              {role.toUpperCase()}
+            </span>
+            {role === 'admin' ? (
+              <span
+                className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full ${online ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}
+              >
+                <span className={`mr-2 h-2.5 w-2.5 rounded-full ${online ? 'bg-emerald-700' : 'bg-rose-700'}`} />
+                {online ? 'Online' : 'Offline'}
+              </span>
+            ) : null}
+          </div>
         </div>
 
         {!confirmLogout ? (
           <button
             onClick={() => setConfirmLogout(true)}
-            className="w-full border rounded-md py-2 text-sm text-red-600 hover:bg-red-50"
+            className="w-full border border-slate-700 rounded-md py-2 text-sm text-rose-300 hover:bg-slate-800"
           >
             Logout
           </button>
         ) : (
           <div className="space-y-2">
-            <p className="text-xs text-gray-600">Are you sure you want to logout?</p>
+            <p className="text-xs text-slate-400">Are you sure you want to logout?</p>
             <div className="flex gap-2">
               <button
                 onClick={() => setConfirmLogout(false)}
-                className="flex-1 border rounded-md py-1 text-xs"
+                className="flex-1 border border-slate-700 rounded-md py-1 text-xs text-slate-300 hover:bg-slate-800"
               >
                 Cancel
               </button>

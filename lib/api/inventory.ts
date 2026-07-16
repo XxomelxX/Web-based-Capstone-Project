@@ -1,8 +1,27 @@
+import { cachedGet, getLowStockOffline, getTransactionsOffline, getUtangEntriesOffline, getExpensesOffline, getItemLogOffline, getReportsOffline, getSettingsOffline, queueOrFetch, getCachedUsers, saveUsers } from '@/lib/api/offline';
+
+interface Expense {
+  id: number;
+  type: string;
+  amount: number;
+  period: string;
+  note?: string;
+  createdAt: string;
+}
+
+interface InventoryUser {
+  id: number;
+  fullName: string;
+  username: string;
+  email: string;
+  role: 'admin' | 'cashier';
+  status?: string;
+  deleted?: boolean;
+}
+
 // Low Stock
 export async function getLowStock() {
-  const res = await fetch('/api/lowstock');
-  if (!res.ok) throw new Error('Failed to load low stock');
-  return res.json() as Promise<{ threshold: number; products: Array<Record<string, unknown>> }>;
+  return getLowStockOffline();
 }
 
 export async function restockProduct(data: {
@@ -11,37 +30,26 @@ export async function restockProduct(data: {
   supplier?: string;
   costPerUnit?: number;
 }) {
-  const res = await fetch('/api/restock', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) throw new Error((await res.json()).error ?? 'Restock failed');
-  return res.json();
+  const result = await queueOrFetch('/api/restock', 'POST', data, 'restock-product');
+  return result.data;
 }
 
 // Orders / Transactions
-export async function getTransactions() {
-  const res = await fetch('/api/transactions');
-  if (!res.ok) throw new Error('Failed to load transactions');
-  return res.json();
+export async function getTransactions<T = Record<string, unknown>>(): Promise<T[]> {
+  return getTransactionsOffline<T>();
 }
 
 export async function voidTransaction(id: number, reason: string) {
-  const res = await fetch(`/api/transactions/${id}/void`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ reason }),
-  });
-  if (!res.ok) throw new Error((await res.json()).error ?? 'Void failed');
-  return res.json();
+  const result = await queueOrFetch(`/api/transactions/${id}/void`, 'POST', { reason }, 'void-transaction');
+  if (result.offlineQueued) {
+    return result.data;
+  }
+  return result.data;
 }
 
 // Utang / Credit
-export async function getUtangEntries() {
-  const res = await fetch('/api/utang');
-  if (!res.ok) throw new Error('Failed to load utang entries');
-  return res.json();
+export async function getUtangEntries<T = Record<string, unknown>>(): Promise<T[]> {
+  return getUtangEntriesOffline<T>();
 }
 
 export async function addUtang(data: {
@@ -49,30 +57,34 @@ export async function addUtang(data: {
   items: Array<{ productId: number; quantity: number; unitPrice: number }>;
   note?: string;
 }) {
-  const res = await fetch('/api/utang', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to add utang');
-  return res.json();
+  const result = await queueOrFetch('/api/utang', 'POST', data, 'add-utang');
+  if (result.offlineQueued) {
+    return result.data;
+  }
+  return result.data;
 }
 
 export async function recordUtangPayment(data: { customerName: string; amount: number; note?: string }) {
-  const res = await fetch('/api/utang/payment', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) throw new Error((await res.json()).error ?? 'Payment failed');
-  return res.json();
+  const result = await queueOrFetch('/api/utang/payment', 'POST', data, 'utang-payment');
+  if (result.offlineQueued) {
+    return result.data;
+  }
+  return result.data;
 }
 
 // Users (Admin only)
-export async function getUsers() {
-  const res = await fetch('/api/users');
-  if (!res.ok) throw new Error('Failed to load users');
-  return res.json();
+export async function getUsers<T = InventoryUser>(): Promise<T[]> {
+  return cachedGet<T[]>(
+    () => getCachedUsers<T>(),
+    async () => {
+      const res = await fetch('/api/users');
+      if (!res.ok) throw new Error('Failed to load users');
+      const data = (await res.json()) as T[];
+      await saveUsers(data as Record<string, unknown>[]);
+      return data;
+    },
+    saveUsers as (value: T[]) => Promise<void>
+  );
 }
 
 export async function addUser(data: {
@@ -81,60 +93,48 @@ export async function addUser(data: {
   email: string;
   password: string;
   role: 'admin' | 'cashier';
-}) {
-  const res = await fetch('/api/users', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to add user');
-  return res.json();
+}): Promise<InventoryUser> {
+  const result = await queueOrFetch<InventoryUser>('/api/users', 'POST', data, 'add-user');
+  if (result.offlineQueued) {
+    return { id: Date.now(), ...data, status: 'pending' };
+  }
+  return result.data!;
+}
+
+export async function deleteUser(id: number): Promise<void> {
+  await queueOrFetch<{ id: number; deleted: boolean }>(`/api/users/${id}`, 'DELETE', null, 'delete-user');
+}
+
+export async function deactivateUser(id: number): Promise<void> {
+  await queueOrFetch<{ id: number; status: 'inactive' }>(`/api/users/${id}`, 'PATCH', { status: 'inactive' }, 'deactivate-user');
 }
 
 // Settings
-export async function getSettings() {
-  const res = await fetch('/api/settings');
-  if (!res.ok) throw new Error('Failed to load settings');
-  return res.json();
+export async function getSettings<T = Record<string, unknown>>(): Promise<T> {
+  return getSettingsOffline<T>();
 }
 
 export async function updateSettings(data: object) {
-  const res = await fetch('/api/settings', {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to update settings');
-  return res.json();
+  const result = await queueOrFetch('/api/settings', 'PATCH', data, 'update-settings');
+  return result.data;
 }
 
 // Expenses
-export async function getExpenses() {
-  const res = await fetch('/api/expenses');
-  if (!res.ok) throw new Error('Failed to load expenses');
-  return res.json();
+export async function getExpenses(): Promise<Expense[]> {
+  return getExpensesOffline<Expense>();
 }
 
 export async function addExpense(data: { type: string; amount: number; period: string; note?: string }) {
-  const res = await fetch('/api/expenses', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to add expense');
-  return res.json();
+  const result = await queueOrFetch('/api/expenses', 'POST', data, 'add-expense');
+  return result.data;
 }
 
 // Item Log
-export async function getItemLog() {
-  const res = await fetch('/api/itemlog');
-  if (!res.ok) throw new Error('Failed to load item log');
-  return res.json();
+export async function getItemLog<T = Record<string, unknown>>(): Promise<T[]> {
+  return getItemLogOffline<T>();
 }
 
 // Reports
-export async function getReports(range: 'week' | 'month' | 'all' = 'all') {
-  const res = await fetch(`/api/reports?range=${range}`);
-  if (!res.ok) throw new Error('Failed to load reports');
-  return res.json();
+export async function getReports<T = Record<string, unknown>>(range: 'week' | 'month' | 'all' = 'all'): Promise<T> {
+  return getReportsOffline<T>(range);
 }

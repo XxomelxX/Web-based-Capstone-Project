@@ -2,19 +2,52 @@
 
 import { useEffect, useState } from 'react';
 import { getExpenses, addExpense } from '@/lib/api/inventory';
+import { useRealtime } from '@/lib/use-realtime';
 
 interface Expense { id: number; type: string; amount: number; period: string; note?: string; createdAt: string }
+
+type DateFilter = 'all' | 'week' | 'month' | 'year';
+
+function getFilterStart(filter: DateFilter): Date | null {
+  const now = new Date();
+  if (filter === 'week') {
+    const d = new Date(now);
+    d.setDate(d.getDate() - d.getDay());
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+  if (filter === 'month') {
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  }
+  if (filter === 'year') {
+    return new Date(now.getFullYear(), 0, 1);
+  }
+  return null;
+}
 
 export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState({ type: '', amount: '', period: '', note: '' });
   const [error, setError] = useState('');
+  const [dateFilter, setDateFilter] = useState<DateFilter>('all');
 
   function refresh() {
     getExpenses().then(setExpenses);
   }
+
+  useRealtime({
+    expenses: refresh,
+  });
+
   useEffect(refresh, []);
+
+  const filterStart = getFilterStart(dateFilter);
+  const filtered = filterStart
+    ? expenses.filter((e) => new Date(e.createdAt) >= filterStart)
+    : expenses;
+
+  const totalFiltered = filtered.reduce((s, e) => s + e.amount, 0);
 
   const thisMonth = new Date().toISOString().slice(0, 7);
   const totalThisMonth = expenses.filter((e) => e.period.startsWith(thisMonth) || e.createdAt.startsWith(thisMonth))
@@ -35,6 +68,13 @@ export default function ExpensesPage() {
     }
   }
 
+  const FILTERS: { key: DateFilter; label: string }[] = [
+    { key: 'all', label: 'All' },
+    { key: 'week', label: 'This Week' },
+    { key: 'month', label: 'This Month' },
+    { key: 'year', label: 'This Year' },
+  ];
+
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
@@ -48,7 +88,20 @@ export default function ExpensesPage() {
       <div className="grid grid-cols-3 gap-4">
         <StatCard label="This Month" value={`₱${totalThisMonth.toFixed(2)}`} />
         <StatCard label="This Year" value={`₱${totalThisYear.toFixed(2)}`} />
-        <StatCard label="Total Entries" value={expenses.length} />
+        <StatCard label="Showing" value={`₱${totalFiltered.toFixed(2)}`} accent={dateFilter !== 'all' ? 'text-blue-600' : undefined} />
+      </div>
+
+      {/* Date filter toggles */}
+      <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit">
+        {FILTERS.map((f) => (
+          <button
+            key={f.key}
+            onClick={() => setDateFilter(f.key)}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition ${dateFilter === f.key ? 'bg-white shadow text-green-700' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            {f.label}
+          </button>
+        ))}
       </div>
 
       <div className="bg-white rounded-xl shadow overflow-hidden">
@@ -57,15 +110,19 @@ export default function ExpensesPage() {
             <tr><th className="p-3">Type</th><th className="p-3">Amount</th><th className="p-3">Period</th><th className="p-3">Notes</th><th className="p-3">Date Added</th></tr>
           </thead>
           <tbody>
-            {expenses.map((e) => (
-              <tr key={e.id} className="border-t">
-                <td className="p-3">{e.type}</td>
-                <td className="p-3">₱{e.amount.toFixed(2)}</td>
-                <td className="p-3">{e.period}</td>
-                <td className="p-3 text-gray-500">{e.note}</td>
-                <td className="p-3">{new Date(e.createdAt).toLocaleDateString()}</td>
-              </tr>
-            ))}
+            {filtered.length === 0 ? (
+              <tr><td colSpan={5} className="p-6 text-center text-gray-400">No expenses for this period.</td></tr>
+            ) : (
+              filtered.map((e) => (
+                <tr key={e.id} className="border-t">
+                  <td className="p-3">{e.type}</td>
+                  <td className="p-3">₱{e.amount.toFixed(2)}</td>
+                  <td className="p-3">{e.period}</td>
+                  <td className="p-3 text-gray-500">{e.note}</td>
+                  <td className="p-3">{new Date(e.createdAt).toLocaleDateString()}</td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
@@ -102,6 +159,6 @@ export default function ExpensesPage() {
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string | number }) {
-  return <div className="bg-white rounded-xl shadow p-4"><p className="text-xs text-gray-500">{label}</p><p className="text-xl font-bold">{value}</p></div>;
+function StatCard({ label, value, accent }: { label: string; value: string | number; accent?: string }) {
+  return <div className="bg-white rounded-xl shadow p-4"><p className="text-xs text-gray-500">{label}</p><p className={`text-xl font-bold ${accent ?? ''}`}>{value}</p></div>;
 }

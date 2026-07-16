@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { getLowStock, restockProduct } from '@/lib/api/inventory';
+import { useRealtime } from '@/lib/use-realtime';
 
 interface LowStockProduct {
   id: number;
@@ -26,6 +27,12 @@ export default function LowStockPage() {
       setThreshold(res.threshold);
     });
   }
+
+  useRealtime({
+    restock: refresh,
+    products: refresh,
+  });
+
   useEffect(refresh, []);
 
   const filtered = products.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()));

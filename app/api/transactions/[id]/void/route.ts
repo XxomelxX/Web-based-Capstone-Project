@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { broadcastRealtime } from '@/lib/realtime';
 
 // POST /api/transactions/:id/void   body: { reason: string }
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -57,6 +58,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
       return updated;
     });
+
+    broadcastRealtime('transactions', { action: 'voided', transaction: result });
+    broadcastRealtime('products', { action: 'stock-updated' });
+    broadcastRealtime('itemlog', { action: 'created' });
 
     return NextResponse.json(result);
   } catch (err) {

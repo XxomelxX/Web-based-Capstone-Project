@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireRole } from '@/lib/require-role';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { broadcastRealtime } from '@/lib/realtime';
 
 // POST /api/restock  body: { productId, quantity, supplier?, costPerUnit? }
 export async function POST(request: Request) {
@@ -44,5 +45,7 @@ export async function POST(request: Request) {
     return { batch, product };
   });
 
+  broadcastRealtime('restock', { action: 'created', result });
+  broadcastRealtime('products', { action: 'updated', product: result.product });
   return NextResponse.json(result, { status: 201 });
 }

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { broadcastRealtime } from '@/lib/realtime';
 
 interface CartItem {
   productId: number;
@@ -26,8 +27,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Cart is empty' }, { status: 400 });
   }
 
-  const settings = await prisma.settings.findFirst();
-  const taxRate = settings?.taxRate ?? 12;
+  if (Number.isNaN(tendered) || tendered < 0) {
+    return NextResponse.json({ error: 'Invalid tendered amount' }, { status: 400 });
+  }
 
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -42,8 +44,13 @@ export async function POST(request: Request) {
       }
 
       const subtotal = items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
-      const vat = Number((subtotal * (taxRate / 100)).toFixed(2));
-      const total = Number((subtotal + vat).toFixed(2));
+      const vat = 0;
+      const total = Number(subtotal.toFixed(2));
+
+      if (tendered < total) {
+        throw new Error('Tendered amount must be at least the total');
+      }
+
       const change = Number((tendered - total).toFixed(2));
 
       const transaction = await tx.transaction.create({
@@ -87,6 +94,10 @@ export async function POST(request: Request) {
 
       return transaction;
     });
+
+    broadcastRealtime('transactions', { action: 'created', transaction: result });
+    broadcastRealtime('products', { action: 'stock-updated' });
+    broadcastRealtime('itemlog', { action: 'created' });
 
     return NextResponse.json(result, { status: 201 });
   } catch (err) {

@@ -1,6 +1,7 @@
 // This script runs prisma generate with a fallback DATABASE_URL
 // prisma generate only creates TypeScript types — it does NOT connect to the database
 // A valid-format URL is needed just to pass Prisma's schema validation
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const { execSync } = require('child_process');
 
 if (!process.env.DATABASE_URL) {

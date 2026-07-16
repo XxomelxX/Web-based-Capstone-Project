@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireRole } from '@/lib/require-role';
+import { broadcastRealtime } from '@/lib/realtime';
 
 export async function GET() {
   let settings = await prisma.settings.findFirst();
@@ -21,5 +22,6 @@ export async function PATCH(request: Request) {
     ? await prisma.settings.update({ where: { id: existing.id }, data })
     : await prisma.settings.create({ data });
 
+  broadcastRealtime('settings', { action: 'updated', settings });
   return NextResponse.json(settings);
 }

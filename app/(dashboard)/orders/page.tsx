@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { getTransactions, voidTransaction } from '@/lib/api/inventory';
+import { useRealtime } from '@/lib/use-realtime';
 
 interface OrderItem { productId: number; quantity: number; unitPrice: number; lineTotal: number; product: { name: string } }
 interface Order {
@@ -17,11 +18,21 @@ export default function OrdersPage() {
   const [error, setError] = useState('');
 
   function refresh() {
-    getTransactions().then(setOrders);
+    getTransactions<Order>().then(setOrders);
   }
+
+  useRealtime({
+    transactions: refresh,
+  });
+
   useEffect(refresh, []);
 
-  const completeOrders = orders.filter((o) => o.status === 'complete');
+  const sortedOrders = [...orders].sort((a, b) => {
+    if (a.status === 'voided' && b.status !== 'voided') return 1;
+    if (a.status !== 'voided' && b.status === 'voided') return -1;
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
+  const completeOrders = sortedOrders.filter((o) => o.status === 'complete');
   const totalRevenue = completeOrders.reduce((s, o) => s + o.total, 0);
   const totalItems = completeOrders.reduce((s, o) => s + o.items.reduce((si, i) => si + i.quantity, 0), 0);
 
@@ -56,18 +67,25 @@ export default function OrdersPage() {
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-left text-gray-500">
             <tr>
-              <th className="p-3">Order#</th><th className="p-3">Date</th><th className="p-3">Cashier</th>
-              <th className="p-3">Items</th><th className="p-3">Total</th><th className="p-3">Status</th><th className="p-3">Actions</th>
+              <th className="p-3">No.</th>
+              <th className="p-3">Order#</th>
+              <th className="p-3">Date</th>
+              <th className="p-3">Cashier</th>
+              <th className="p-3 text-right">Items</th>
+              <th className="p-3 text-right">Total</th>
+              <th className="p-3">Status</th>
+              <th className="p-3">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {orders.map((o) => (
+            {sortedOrders.map((o, index) => (
               <tr key={o.id} className="border-t">
+                <td className="p-3 font-medium">{index + 1}</td>
                 <td className="p-3">#{o.id}</td>
                 <td className="p-3">{new Date(o.createdAt).toLocaleString()}</td>
                 <td className="p-3">{o.cashier?.fullName}</td>
-                <td className="p-3">{o.items.reduce((s, i) => s + i.quantity, 0)} items</td>
-                <td className="p-3">₱{o.total.toFixed(2)}</td>
+                <td className="p-3 text-right">{o.items.reduce((s, i) => s + i.quantity, 0)}</td>
+                <td className="p-3 text-right">₱{o.total.toFixed(2)}</td>
                 <td className="p-3">
                   <span className={`text-xs px-2 py-1 rounded-full ${o.status === 'voided' ? 'bg-gray-200 text-gray-600' : 'bg-green-100 text-green-700'}`}>
                     {o.status}

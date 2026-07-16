@@ -1,0 +1,5 @@
+$kind: http-request
+name: New Request
+url: http://localhost:3000/api/expenses
+method: POST
+order: 3186090403189285

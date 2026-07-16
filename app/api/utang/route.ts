@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { broadcastRealtime } from '@/lib/realtime';
 
 export async function GET() {
   const entries = await prisma.utangEntry.findMany({
@@ -32,10 +33,12 @@ export async function POST(request: Request) {
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      // find or create customer
-      let customer = await tx.customer.findFirst({ where: { name: customerName } });
+      // find or create customer (normalized lookup)
+      let customer = await tx.customer.findFirst({
+        where: { name: { equals: customerName.trim(), mode: 'insensitive' } },
+      });
       if (!customer) {
-        customer = await tx.customer.create({ data: { name: customerName } });
+        customer = await tx.customer.create({ data: { name: customerName.trim() } });
       }
 
       // validate stock
@@ -88,6 +91,10 @@ export async function POST(request: Request) {
 
       return utangEntry;
     });
+
+    broadcastRealtime('utang', { action: 'created', entry: result });
+    broadcastRealtime('products', { action: 'stock-updated' });
+    broadcastRealtime('itemlog', { action: 'created' });
 
     return NextResponse.json(result, { status: 201 });
   } catch (err) {

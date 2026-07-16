@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireRole } from '@/lib/require-role';
+import { broadcastRealtime } from '@/lib/realtime';
 
 export async function GET() {
   const expenses = await prisma.expense.findMany({ orderBy: { createdAt: 'desc' } });
@@ -19,5 +20,7 @@ export async function POST(request: Request) {
   const expense = await prisma.expense.create({
     data: { type, amount: Number(amount), period, note: note ?? null },
   });
+
+  broadcastRealtime('expenses', { action: 'created', expense });
   return NextResponse.json(expense, { status: 201 });
 }

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireRole } from '@/lib/require-role';
 import { hash } from 'bcryptjs';
+import { broadcastRealtime } from '@/lib/realtime';
 
 export async function GET() {
   const guard = await requireRole(['admin']);
@@ -36,5 +37,6 @@ export async function POST(request: Request) {
     select: { id: true, fullName: true, username: true, email: true, role: true, status: true },
   });
 
+  broadcastRealtime('users', { action: 'created', user });
   return NextResponse.json(user, { status: 201 });
 }

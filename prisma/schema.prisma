@@ -25,6 +25,7 @@ model Category {
   id          Int       @id @default(autoincrement())
   name        String
   description String?
+  archived    Boolean   @default(false)
   products    Product[]
 }
 
@@ -40,6 +41,7 @@ model Product {
   unit       String?
   barcode    String?
   archived   Boolean  @default(false)
+  goodsType  String   @default("non-perishable") // "perishable" | "non-perishable" | "durable"
 
   transactionItems TransactionItem[]
   stockBatches     StockBatch[]

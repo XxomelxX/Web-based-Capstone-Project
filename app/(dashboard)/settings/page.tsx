@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { getSettings, updateSettings } from '@/lib/api/inventory';
+import { useRealtime } from '@/lib/use-realtime';
 
 interface Settings { id: number; storeName: string; currency: string; address?: string; taxRate: number; lowStockThreshold: number }
 
@@ -12,8 +13,16 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false);
   const isAdmin = session?.user?.role === 'admin';
 
+  function refresh() {
+    getSettings<Settings>().then(setSettings);
+  }
+
+  useRealtime({
+    settings: refresh,
+  });
+
   useEffect(() => {
-    getSettings().then(setSettings);
+    refresh();
   }, []);
 
   async function handleSave() {
@@ -51,15 +60,9 @@ export default function SettingsPage() {
           <input disabled={!isAdmin} value={settings.address ?? ''} onChange={(e) => setSettings({ ...settings, address: e.target.value })} className="w-full border rounded-md px-3 py-2 mt-1 disabled:bg-gray-50" />
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="text-sm font-medium">Tax rate (%)</label>
-            <input disabled={!isAdmin} type="number" value={settings.taxRate} onChange={(e) => setSettings({ ...settings, taxRate: Number(e.target.value) })} className="w-full border rounded-md px-3 py-2 mt-1 disabled:bg-gray-50" />
-          </div>
-          <div>
-            <label className="text-sm font-medium">Low-stock threshold</label>
-            <input disabled={!isAdmin} type="number" value={settings.lowStockThreshold} onChange={(e) => setSettings({ ...settings, lowStockThreshold: Number(e.target.value) })} className="w-full border rounded-md px-3 py-2 mt-1 disabled:bg-gray-50" />
-          </div>
+        <div>
+          <label className="text-sm font-medium">Low-stock threshold</label>
+          <input disabled={!isAdmin} type="number" value={settings.lowStockThreshold} onChange={(e) => setSettings({ ...settings, lowStockThreshold: Number(e.target.value) })} className="w-full border rounded-md px-3 py-2 mt-1 disabled:bg-gray-50" />
         </div>
 
         <div className="bg-green-50 rounded-lg p-4">

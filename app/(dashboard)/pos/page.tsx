@@ -4,10 +4,17 @@ import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { getProducts, Product } from '@/lib/api/products';
 import { checkout, CheckoutResult } from '@/lib/api/pos';
+import { getSettings } from '@/lib/api/inventory';
+import { useRealtime } from '@/lib/use-realtime';
 
 interface CartLine {
   product: Product;
   quantity: number;
+}
+
+interface StoreSettings {
+  storeName: string;
+  address?: string;
 }
 
 export default function POSPage() {
@@ -20,10 +27,19 @@ export default function POSPage() {
   const [receipt, setReceipt] = useState<CheckoutResult | null>(null);
   const [error, setError] = useState('');
   const [processing, setProcessing] = useState(false);
+  const [settings, setSettings] = useState<StoreSettings>({ storeName: 'Store' });
 
-  useEffect(() => {
+  function refresh() {
     getProducts().then(setProducts);
-  }, []);
+    getSettings<StoreSettings>().then(setSettings);
+  }
+
+  useRealtime({
+    products: refresh,
+    settings: refresh,
+  });
+
+  useEffect(refresh, []);
 
   const filtered = products.filter((p) =>
     p.name.toLowerCase().includes(search.toLowerCase()) || p.barcode === search
@@ -41,9 +57,20 @@ export default function POSPage() {
     });
   }
 
-  const subtotal = cart.reduce((s, l) => s + l.quantity * l.product.price, 0);
-  const vat = subtotal * 0.12;
-  const total = subtotal + vat;
+  function changeCartQuantity(productId: number, delta: number) {
+    setCart((prev) =>
+      prev
+        .map((l) =>
+          l.product.id === productId
+            ? { ...l, quantity: Math.max(0, l.quantity + delta) }
+            : l
+        )
+        .filter((l) => l.quantity > 0)
+    );
+  }
+
+  const totalItems = cart.reduce((s, l) => s + l.quantity, 0);
+  const total = cart.reduce((s, l) => s + l.quantity * l.product.price, 0);
   const change = tendered - total;
 
   async function handleCompleteSale() {
@@ -106,7 +133,7 @@ export default function POSPage() {
       <div className="bg-white rounded-xl shadow p-5 space-y-4 h-fit sticky top-4">
         <div className="flex justify-between items-center">
           <h2 className="font-bold">Cart</h2>
-          <span className="text-xs bg-gray-100 rounded-full px-2 py-0.5">{cart.length} items</span>
+          <span className="text-xs bg-gray-100 rounded-full px-2 py-0.5">{totalItems} items</span>
         </div>
 
         {cart.length === 0 ? (
@@ -114,17 +141,34 @@ export default function POSPage() {
         ) : (
           <div className="space-y-2 max-h-64 overflow-y-auto">
             {cart.map((l) => (
-              <div key={l.product.id} className="flex justify-between text-sm">
-                <span>{l.product.name} x{l.quantity}</span>
-                <span>₱{(l.quantity * l.product.price).toFixed(2)}</span>
+              <div key={l.product.id} className="flex justify-between items-center text-sm">
+                <div>
+                  <div>{l.product.name}</div>
+                  <div className="text-xs text-gray-500">Qty: {l.quantity}</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => changeCartQuantity(l.product.id, -1)}
+                    className="w-7 h-7 rounded-md border text-sm"
+                  >
+                    -
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => changeCartQuantity(l.product.id, 1)}
+                    className="w-7 h-7 rounded-md border text-sm"
+                  >
+                    +
+                  </button>
+                  <span className="min-w-[70px] text-right">₱{(l.quantity * l.product.price).toFixed(2)}</span>
+                </div>
               </div>
             ))}
           </div>
         )}
 
         <div className="border-t pt-3 space-y-1 text-sm">
-          <div className="flex justify-between"><span>Subtotal</span><span>₱{subtotal.toFixed(2)}</span></div>
-          <div className="flex justify-between"><span>VAT (12%)</span><span>₱{vat.toFixed(2)}</span></div>
           <div className="flex justify-between font-bold text-lg text-orange-700"><span>Total</span><span>₱{total.toFixed(2)}</span></div>
         </div>
 
@@ -176,7 +220,13 @@ export default function POSPage() {
       </div>
 
       {receipt && (
-        <ReceiptModal receipt={receipt} cashierName={session?.user?.name ?? ''} onClose={() => setReceipt(null)} />
+        <ReceiptModal
+          receipt={receipt}
+          cashierName={session?.user?.name ?? ''}
+          storeName={settings.storeName}
+          storeAddress={settings.address ?? ''}
+          onClose={() => setReceipt(null)}
+        />
       )}
     </div>
   );
@@ -185,10 +235,14 @@ export default function POSPage() {
 function ReceiptModal({
   receipt,
   cashierName,
+  storeName,
+  storeAddress,
   onClose,
 }: {
   receipt: CheckoutResult;
   cashierName: string;
+  storeName: string;
+  storeAddress: string;
   onClose: () => void;
 }) {
   return (
@@ -196,8 +250,8 @@ function ReceiptModal({
       <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 font-mono text-sm">
         <div className="flex justify-between items-start">
           <div className="w-full text-center">
-            <h3 className="font-bold text-base">Sari-Sari Mart</h3>
-            <p className="text-xs">123 Rizal St., Manila, Philippines</p>
+            <h3 className="font-bold text-base">{storeName}</h3>
+            {storeAddress && <p className="text-xs">{storeAddress}</p>}
           </div>
           <button onClick={onClose} className="text-gray-400">×</button>
         </div>
@@ -206,8 +260,6 @@ function ReceiptModal({
         <div className="flex justify-between"><span>Date</span><span>{new Date(receipt.createdAt).toLocaleString()}</span></div>
         <div className="flex justify-between"><span>Cashier</span><span>{cashierName}</span></div>
         <hr className="border-dashed my-2" />
-        <div className="flex justify-between"><span>Subtotal</span><span>₱{receipt.subtotal.toFixed(2)}</span></div>
-        <div className="flex justify-between"><span>VAT (12%)</span><span>₱{receipt.vat.toFixed(2)}</span></div>
         <div className="flex justify-between font-bold"><span>TOTAL</span><span>₱{receipt.total.toFixed(2)}</span></div>
         <hr className="border-dashed my-2" />
         <div className="flex justify-between"><span>Payment</span><span>{receipt.paymentMethod}</span></div>

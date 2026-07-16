@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { getReports } from '@/lib/api/inventory';
+import { useRealtime } from '@/lib/use-realtime';
 
 interface ReportData {
   totalRevenue: number; totalTransactions: number; totalItemsSold: number;
@@ -13,9 +14,33 @@ interface ReportData {
 export default function ReportsPage() {
   const [range, setRange] = useState<'week' | 'month' | 'all'>('all');
   const [data, setData] = useState<ReportData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  async function loadReports(selectedRange: 'week' | 'month' | 'all') {
+    setLoading(true);
+    setError('');
+    try {
+      setData(await getReports<ReportData>(selectedRange));
+    } catch (err) {
+      console.error('Failed to fetch reports:', err);
+      setError(err instanceof Error ? err.message : 'Unable to load reports');
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useRealtime({
+    transactions: () => void loadReports(range),
+    expenses: () => void loadReports(range),
+    restock: () => void loadReports(range),
+    products: () => void loadReports(range),
+    utang: () => void loadReports(range),
+  });
 
   useEffect(() => {
-    getReports(range).then(setData);
+    void loadReports(range);
   }, [range]);
 
   return (
@@ -32,7 +57,20 @@ export default function ReportsPage() {
         </select>
       </div>
 
-      {data && (
+      {loading ? (
+        <p className="text-gray-500">Loading...</p>
+      ) : error ? (
+        <div className="space-y-3">
+          <p className="text-sm text-red-600">{error}</p>
+          <button
+            type="button"
+            onClick={() => loadReports(range)}
+            className="inline-flex items-center rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800"
+          >
+            Retry
+          </button>
+        </div>
+      ) : data ? (
         <>
           <div className="grid grid-cols-4 gap-4">
             <StatCard label="Total Revenue" value={`₱${data.totalRevenue.toFixed(2)}`} />
@@ -69,7 +107,7 @@ export default function ReportsPage() {
             </div>
           </div>
         </>
-      )}
+      ) : null}
     </div>
   );
 }

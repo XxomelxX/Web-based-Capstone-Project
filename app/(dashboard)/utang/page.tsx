@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { getUtangEntries, addUtang, recordUtangPayment } from '@/lib/api/inventory';
 import { getProducts, Product } from '@/lib/api/products';
+import { useRealtime } from '@/lib/use-realtime';
 
 interface UtangItemLine { productId: number; quantity: number; unitPrice: number }
 interface UtangEntry {
@@ -28,9 +29,15 @@ export default function UtangPage() {
   const [payNote, setPayNote] = useState('');
 
   function refresh() {
-    getUtangEntries().then(setEntries);
+    getUtangEntries<UtangEntry>().then(setEntries);
     getProducts().then(setProducts);
   }
+
+  useRealtime({
+    utang: refresh,
+    products: refresh,
+  });
+
   useEffect(refresh, []);
 
   // aggregate per customer
@@ -205,7 +212,14 @@ export default function UtangPage() {
             {error && <p className="text-sm text-red-600">{error}</p>}
             <div>
               <label className="text-sm font-medium">Customer name</label>
-              <input required value={payCustomer} onChange={(e) => setPayCustomer(e.target.value)} placeholder="e.g. Aling Nena" className="w-full border rounded-md px-3 py-2 mt-1 focus:ring-2 focus:ring-green-500" />
+              <select required value={payCustomer} onChange={(e) => setPayCustomer(e.target.value)} className="w-full border rounded-md px-3 py-2 mt-1 focus:ring-2 focus:ring-green-500">
+                <option value="">Select customer</option>
+                {Array.from(customerMap.entries())
+                  .filter(([, c]) => c.balance > 0)
+                  .map(([name, c]) => (
+                    <option key={name} value={name}>{name} — ₱{c.balance.toFixed(2)} outstanding</option>
+                  ))}
+              </select>
             </div>
             <div>
               <label className="text-sm font-medium">Amount (₱)</label>
