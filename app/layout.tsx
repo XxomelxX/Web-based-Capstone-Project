@@ -3,7 +3,7 @@ import "./globals.css";
 import { Providers } from "@/components/providers";
 
 export const metadata: Metadata = {
-  title: "Sari-Sari POS",
+  title: "J & J Merchandise Store",
   description: "Inventory & Sales management system",
 };
 

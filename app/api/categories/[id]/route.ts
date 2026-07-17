@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { requireRole } from '@/lib/require-role';
 import { broadcastRealtime } from '@/lib/realtime';
@@ -41,7 +42,22 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     );
   }
 
-  await prisma.category.delete({ where: { id } });
-  broadcastRealtime('categories', { action: 'deleted', id });
-  return NextResponse.json({ success: true });
+  try {
+    await prisma.category.delete({ where: { id } });
+    broadcastRealtime('categories', { action: 'deleted', id });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === 'P2025') {
+        return NextResponse.json({ error: 'Category not found.' }, { status: 404 });
+      }
+      if (error.code === 'P2003') {
+        return NextResponse.json(
+          { error: "Can't delete — reassign or remove its products first." },
+          { status: 409 }
+        );
+      }
+    }
+    return NextResponse.json({ error: 'Unable to delete category.' }, { status: 500 });
+  }
 }

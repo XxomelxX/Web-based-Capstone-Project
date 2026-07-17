@@ -51,6 +51,7 @@ export const isOnline = () => (canUseWindow() ? navigator.onLine : true);
 
 export async function registerServiceWorker() {
   if (!canUseWindow() || !('serviceWorker' in navigator)) return;
+  if (process.env.NODE_ENV !== 'production') return;
   if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
     return;
   }
@@ -216,9 +217,22 @@ export async function queueOrFetch<T>(
 
     if (!res.ok) {
       const errorBody = await res.text();
-      throw new Error(
-        `Request failed with status ${res.status}: ${errorBody || res.statusText}`
-      );
+      let parsed: Record<string, unknown> | null = null;
+      try {
+        parsed = errorBody ? JSON.parse(errorBody) : null;
+      } catch {
+        parsed = null;
+      }
+      const message = parsed?.error
+        ? String(parsed.error)
+        : errorBody || res.statusText;
+      const error = new Error(
+        `Request failed with status ${res.status}: ${message}`
+      ) as Error & Record<string, unknown>;
+      if (parsed) {
+        Object.assign(error, parsed);
+      }
+      throw error;
     }
 
     const text = await res.text();

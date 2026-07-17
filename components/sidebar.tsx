@@ -33,17 +33,27 @@ export function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
   const [confirmLogout, setConfirmLogout] = useState(false);
-  const [online, setOnline] = useState(
-    typeof navigator !== 'undefined' ? navigator.onLine : true
-  );
+  const [online, setOnline] = useState(true);
+  const [hydrated, setHydrated] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const role = session?.user?.role ?? 'cashier';
   const nav = role === 'admin' ? ADMIN_NAV : CASHIER_NAV;
 
   useEffect(() => {
-    const handleOnline = () => setOnline(true);
-    const handleOffline = () => setOnline(false);
+    const handleOnline = () => {
+      setOnline(true);
+      setHydrated(true);
+    };
+    const handleOffline = () => {
+      setOnline(false);
+      setHydrated(true);
+    };
+
+    if (typeof navigator !== 'undefined') {
+      setOnline(navigator.onLine);
+      setHydrated(true);
+    }
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
@@ -110,7 +120,7 @@ export function Sidebar() {
               <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
                 {role.toUpperCase()}
               </span>
-              {role === 'admin' ? (
+              {hydrated ? (
                 <span
                   className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full ${online ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}
                 >
