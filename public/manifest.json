@@ -1,0 +1,16 @@
+{
+  "name": "Sari-Sari POS System",
+  "short_name": "SariSariPOS",
+  "description": "Web-based POS System with Full Offline Support & Auto-Sync",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "icons": [
+    {
+      "src": "/1130f5ee-b20d-41b4-89c5-23c877b4d396.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg"
+    }
+  ]
+}

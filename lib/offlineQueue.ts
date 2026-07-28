@@ -27,6 +27,7 @@ class OfflineQueueDB extends Dexie {
 }
 
 export const offlineQueueDb = new OfflineQueueDB();
+export const offlineDb = offlineQueueDb;
 
 export async function queueSale(sale: Omit<QueuedSale, 'id' | 'synced' | 'syncFailed'>) {
   return offlineQueueDb.queuedSales.add({ ...sale, synced: false, syncFailed: false });

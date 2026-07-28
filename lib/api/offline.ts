@@ -252,7 +252,8 @@ export async function checkoutOffline(
     });
 
     if (!response.ok) {
-      throw new Error(`Checkout failed with status ${response.status}`);
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error || `Checkout failed with status ${response.status}`);
     }
 
     const data = (await response.json()) as CheckoutResult;

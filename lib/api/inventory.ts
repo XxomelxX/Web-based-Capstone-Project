@@ -68,8 +68,8 @@ export async function updateCustomer(id: number, data: {
   return result.data;
 }
 
-export async function voidTransaction(id: number, reason: string) {
-  const result = await queueOrFetch(`/api/transactions/${id}/void`, 'POST', { reason }, 'void-transaction');
+export async function voidTransaction(id: number, reason: string, adminUsername?: string, adminPassword?: string) {
+  const result = await queueOrFetch(`/api/transactions/${id}/void`, 'POST', { reason, adminUsername, adminPassword }, 'void-transaction');
   if (result.offlineQueued) {
     return result.data;
   }

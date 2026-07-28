@@ -22,14 +22,14 @@ export async function POST(request: Request) {
   const items: CartItem[] = body.items;
   const customerId: number | null = body.customerId ?? null;
   const paymentMethod: string = body.paymentMethod;
-  const tendered: number = Number(body.tendered ?? 0);
+  let tendered: number = Number(body.tendered ?? 0);
 
   if (!items || items.length === 0) {
     return NextResponse.json({ error: 'Cart is empty' }, { status: 400 });
   }
 
   if (Number.isNaN(tendered) || tendered < 0) {
-    return NextResponse.json({ error: 'Invalid tendered amount' }, { status: 400 });
+    tendered = 0;
   }
 
   try {
@@ -38,9 +38,9 @@ export async function POST(request: Request) {
       // so two simultaneous sales can't both succeed on insufficient stock.
       for (const item of items) {
         const product = await tx.product.findUnique({ where: { id: item.productId } });
-        if (!product) throw new Error(`Product ${item.productId} not found`);
+        if (!product) throw new Error(`Product #${item.productId} not found`);
         if (product.stock < item.quantity) {
-          throw new Error(`Insufficient stock for ${product.name} (have ${product.stock}, need ${item.quantity})`);
+          throw new Error(`Insufficient stock for ${product.name} (available: ${product.stock}, required: ${item.quantity})`);
         }
       }
 
@@ -48,8 +48,13 @@ export async function POST(request: Request) {
       const vat = 0;
       const total = Number(subtotal.toFixed(2));
 
+      // For GCash payments, default tendered to exact total if not specified
+      if (paymentMethod === 'gcash' && (tendered < total || tendered === 0)) {
+        tendered = total;
+      }
+
       if (tendered < total) {
-        throw new Error('Tendered amount must be at least the total');
+        throw new Error(`Cash tendered (₱${tendered.toFixed(2)}) is less than total amount (₱${total.toFixed(2)})`);
       }
 
       const change = Number((tendered - total).toFixed(2));
@@ -98,6 +103,9 @@ export async function POST(request: Request) {
       }
 
       return transaction;
+    }, {
+      maxWait: 15000,
+      timeout: 25000,
     });
 
     broadcastRealtime('transactions', { action: 'created', transaction: result });

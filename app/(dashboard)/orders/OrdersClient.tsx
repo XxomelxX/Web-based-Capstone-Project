@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useSession } from 'next-auth/react';
 import { getTransactions, voidTransaction } from '@/lib/api/inventory';
 import { useRealtime } from '@/lib/use-realtime';
 
@@ -11,10 +12,13 @@ interface Order {
 }
 
 export default function OrdersClient() {
+  const { data: session } = useSession();
   const [orders, setOrders] = useState<Order[]>([]);
   const [viewing, setViewing] = useState<Order | null>(null);
   const [voiding, setVoiding] = useState<Order | null>(null);
   const [reason, setReason] = useState('');
+  const [adminUsername, setAdminUsername] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
   const [error, setError] = useState('');
 
   function refresh() {
@@ -41,9 +45,11 @@ export default function OrdersClient() {
     if (!voiding) return;
     setError('');
     try {
-      await voidTransaction(voiding.id, reason);
+      await voidTransaction(voiding.id, reason, adminUsername, adminPassword);
       setVoiding(null);
       setReason('');
+      setAdminUsername('');
+      setAdminPassword('');
       refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Void failed');
@@ -125,15 +131,47 @@ export default function OrdersClient() {
       )}
 
       {voiding && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <form onSubmit={handleVoid} className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
             <div className="flex justify-between"><h3 className="font-bold">Void Order #{voiding.id}</h3><button type="button" onClick={() => setVoiding(null)}>×</button></div>
             <p className="text-xs text-gray-500">Total: ₱{voiding.total.toFixed(2)} · This will restore stock for all items.</p>
             {error && <p className="text-sm text-red-600">{error}</p>}
+
             <div>
               <label className="text-sm font-medium">Reason for Void</label>
               <input required value={reason} onChange={(e) => setReason(e.target.value)} className="w-full border rounded-md px-3 py-2 mt-1" placeholder="e.g. Wrong item scanned" />
             </div>
+
+            {session?.user?.role === 'cashier' && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
+                <div className="text-xs font-semibold text-amber-800 flex items-center gap-1">
+                  <span>🔒</span> Supervisor Credentials Required
+                </div>
+                <div>
+                  <label className="text-xs text-slate-600 block">Admin Username</label>
+                  <input
+                    required
+                    type="text"
+                    value={adminUsername}
+                    onChange={(e) => setAdminUsername(e.target.value)}
+                    className="w-full border rounded px-2.5 py-1.5 text-sm bg-white"
+                    placeholder="admin"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-600 block">Admin Password</label>
+                  <input
+                    required
+                    type="password"
+                    value={adminPassword}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                    className="w-full border rounded px-2.5 py-1.5 text-sm bg-white"
+                    placeholder="••••••••"
+                  />
+                </div>
+              </div>
+            )}
+
             <div className="flex gap-2 justify-end pt-2">
               <button type="button" onClick={() => setVoiding(null)} className="border rounded-md px-4 py-2 text-sm">Cancel</button>
               <button type="submit" className="bg-red-600 text-white rounded-md px-4 py-2 text-sm">Void Order</button>

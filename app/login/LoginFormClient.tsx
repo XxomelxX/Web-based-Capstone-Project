@@ -38,15 +38,15 @@ export default function LoginFormClient() {
   }
 
   return (
-    <div className="w-full max-w-sm rounded-[2rem] border border-slate-700/70 bg-slate-950/95 p-8 shadow-2xl shadow-black/40 backdrop-blur-xl">
+    <div className="w-full max-w-sm rounded-[2rem] border border-white/10 bg-slate-950/60 p-8 shadow-2xl shadow-black/40 backdrop-blur-xl">
       <div className="mb-8 text-center">
-        <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-cyan-500/10">
+        <div className="mx-auto mb-6 flex h-44 w-72 items-center justify-center overflow-hidden rounded-2xl">
           <Image
             src="/1130f5ee-b20d-41b4-89c5-23c877b4d396.jpg"
             alt="Sari-Sari POS"
-            width={48}
-            height={48}
-            className="rounded-full object-cover"
+            width={288}
+            height={176}
+            className="object-contain"
           />
         </div>
         <h2 className="text-3xl font-bold text-slate-100">Welcome Back</h2>

@@ -90,51 +90,68 @@ textarea {
 }
 
 .bg-white {
-  background-color: var(--panel) !important;
+  background-color: rgba(15, 23, 42, 0.5) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
 }
 
 .bg-gray-50 {
-  background-color: #0f172a !important;
+  background-color: rgba(15, 23, 42, 0.3) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
 }
 
 .bg-gray-100 {
-  background-color: #1e293b !important;
+  background-color: rgba(30, 41, 59, 0.3) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
 }
 
 .bg-green-50 {
-  background-color: #092f1c !important;
+  background-color: rgba(9, 47, 28, 0.4) !important;
+  backdrop-filter: blur(6px) !important;
 }
 
 .bg-red-50 {
-  background-color: #33131b !important;
+  background-color: rgba(51, 19, 27, 0.4) !important;
+  backdrop-filter: blur(6px) !important;
 }
 
 .bg-red-100 {
-  background-color: #4b1d2a !important;
+  background-color: rgba(75, 29, 42, 0.4) !important;
+  backdrop-filter: blur(6px) !important;
 }
 
 .bg-green-100 {
-  background-color: #113220 !important;
+  background-color: rgba(17, 50, 32, 0.4) !important;
+  backdrop-filter: blur(6px) !important;
 }
 
 .bg-blue-100 {
-  background-color: #0f172a !important;
+  background-color: rgba(15, 23, 42, 0.3) !important;
+  backdrop-filter: blur(6px) !important;
 }
 
 .bg-yellow-100 {
-  background-color: #3b351f !important;
+  background-color: rgba(59, 53, 31, 0.4) !important;
+  backdrop-filter: blur(6px) !important;
 }
 
 .bg-orange-100 {
-  background-color: #4b2d15 !important;
+  background-color: rgba(75, 45, 21, 0.4) !important;
+  backdrop-filter: blur(6px) !important;
 }
 
 .bg-orange-50 {
-  background-color: #3d1f0f !important;
+  background-color: rgba(61, 31, 15, 0.4) !important;
+  backdrop-filter: blur(6px) !important;
 }
 
 .bg-black\/50 {
-  background-color: rgba(15, 23, 42, 0.65) !important;
+  background-color: rgba(15, 23, 42, 0.55) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
 }
 
 ::selection {

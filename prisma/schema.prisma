@@ -19,6 +19,7 @@ model User {
 
   transactions Transaction[]
   itemLogs     ItemLog[]
+  shifts       Shift[]
 }
 
 model Category {
@@ -174,4 +175,24 @@ model Settings {
   address           String?
   taxRate           Float  @default(12)
   lowStockThreshold Int    @default(20)
+}
+
+model Shift {
+  id              Int       @id @default(autoincrement())
+  cashierId       Int
+  cashier         User      @relation(fields: [cashierId], references: [id])
+  openingFloat    Float
+  closingCash     Float?
+  expectedCash    Float?
+  cashSales       Float?
+  gcashSales      Float?
+  overageShortage Float?
+  status          String    @default("open") // "open" | "closed"
+  notes           String?
+  openedAt        DateTime  @default(now())
+  closedAt        DateTime?
+  verifiedBy      Int?
+  verifiedAt      DateTime?
+  verificationNotes String?
+  verificationStatus String   @default("pending") // "pending" | "verified" | "flagged"
 }

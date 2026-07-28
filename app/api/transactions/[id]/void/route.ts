@@ -4,7 +4,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { broadcastRealtime } from '@/lib/realtime';
 
-// POST /api/transactions/:id/void   body: { reason: string }
+// POST /api/transactions/:id/void   body: { reason: string, adminUsername?: string, adminPassword?: string }
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions);
   if (!session?.user) {
@@ -13,10 +13,35 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const { id: idParam } = await params;
   const transactionId = Number(idParam);
-  const { reason } = await request.json();
+  const { reason, adminUsername, adminPassword } = await request.json();
 
   if (!reason) {
     return NextResponse.json({ error: 'Void reason is required' }, { status: 400 });
+  }
+
+  let voidedByUserId = Number(session.user.id);
+
+  // If cashier is executing, require supervisor credentials
+  if (session.user.role === 'cashier') {
+    if (!adminUsername || !adminPassword) {
+      return NextResponse.json({ error: 'Supervisor authorization required to void transactions.' }, { status: 403 });
+    }
+
+    const adminUser = await prisma.user.findUnique({
+      where: { username: adminUsername },
+    });
+
+    if (!adminUser || adminUser.status !== 'active' || adminUser.role !== 'admin') {
+      return NextResponse.json({ error: 'Invalid supervisor credentials.' }, { status: 403 });
+    }
+
+    const compare = (await import('bcryptjs')).compare;
+    const isValid = await compare(adminPassword, adminUser.passwordHash);
+    if (!isValid) {
+      return NextResponse.json({ error: 'Invalid supervisor password.' }, { status: 403 });
+    }
+
+    voidedByUserId = adminUser.id; // Override auditor to the admin who authorized it!
   }
 
   try {
@@ -41,7 +66,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
             productId: item.productId,
             action: 'voided',
             quantity: item.quantity,
-            performedBy: Number(session.user.id),
+            performedBy: voidedByUserId,
           },
         });
       }
@@ -51,12 +76,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         data: {
           status: 'voided',
           voidReason: reason,
-          voidedBy: Number(session.user.id),
+          voidedBy: voidedByUserId,
           voidedAt: new Date(),
         },
       });
 
       return updated;
+    }, {
+      maxWait: 15000,
+      timeout: 25000,
     });
 
     broadcastRealtime('transactions', { action: 'voided', transaction: result });
