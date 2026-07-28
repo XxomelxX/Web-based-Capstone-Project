@@ -1,6 +1,7 @@
-'use client';
+"use client";
 
 import { useState } from 'react';
+import Image from 'next/image';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 
@@ -20,24 +21,33 @@ export default function LoginFormClient() {
       username,
       password,
       redirect: false,
+      callbackUrl: '/dashboard',
     });
 
     setLoading(false);
 
-    if (result?.error) {
-      setError('Invalid username or password.');
+    if (!result || !result.ok) {
+      setError(
+        `Invalid username or password. ${result?.error ? `(${result.error})` : ''}`
+      );
       return;
     }
 
-    router.push('/dashboard');
-    router.refresh();
+    const destination = result.url ?? '/dashboard';
+    router.push(destination);
   }
 
   return (
     <div className="w-full max-w-sm rounded-[2rem] border border-slate-700/70 bg-slate-950/95 p-8 shadow-2xl shadow-black/40 backdrop-blur-xl">
       <div className="mb-8 text-center">
-        <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-cyan-500/10 text-3xl text-cyan-300">
-          🏪
+        <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-cyan-500/10">
+          <Image
+            src="/1130f5ee-b20d-41b4-89c5-23c877b4d396.jpg"
+            alt="Sari-Sari POS"
+            width={48}
+            height={48}
+            className="rounded-full object-cover"
+          />
         </div>
         <h2 className="text-3xl font-bold text-slate-100">Welcome Back</h2>
         <p className="mt-2 text-sm text-slate-400">Sign in to your store dashboard.</p>

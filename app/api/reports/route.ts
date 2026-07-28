@@ -19,57 +19,63 @@ export async function GET(request: Request) {
     ...(since ? { createdAt: { gte: since } } : {}),
   };
 
-  const transactions = await prisma.transaction.findMany({
-    where: whereClause,
-    include: { items: { include: { product: true } } },
-  });
+  try {
+    const transactions = await prisma.transaction.findMany({
+      where: whereClause,
+      include: { items: { include: { product: true } } },
+    });
 
-  const totalRevenue = transactions.reduce((sum, t) => sum + t.total, 0);
-  const totalTransactions = transactions.length;
-  const totalItemsSold = transactions.reduce(
-    (sum, t) => sum + t.items.reduce((s, i) => s + i.quantity, 0),
-    0
-  );
+    const totalRevenue = transactions.reduce((sum, t) => sum + t.total, 0);
+    const totalTransactions = transactions.length;
+    const totalItemsSold = transactions.reduce(
+      (sum, t) => sum + t.items.reduce((s, i) => s + i.quantity, 0),
+      0
+    );
 
-  // Top selling products
-  const productSales: Record<number, { name: string; unitsSold: number; revenue: number }> = {};
-  for (const t of transactions) {
-    for (const item of t.items) {
-      if (!productSales[item.productId]) {
-        productSales[item.productId] = { name: item.product.name, unitsSold: 0, revenue: 0 };
+    // Top selling products
+    const productSales: Record<number, { name: string; unitsSold: number; revenue: number }> = {};
+    for (const t of transactions) {
+      for (const item of t.items) {
+        if (!productSales[item.productId]) {
+          productSales[item.productId] = { name: item.product.name, unitsSold: 0, revenue: 0 };
+        }
+        productSales[item.productId].unitsSold += item.quantity;
+        productSales[item.productId].revenue += item.lineTotal;
       }
-      productSales[item.productId].unitsSold += item.quantity;
-      productSales[item.productId].revenue += item.lineTotal;
     }
+    const topSelling = Object.values(productSales)
+      .sort((a, b) => b.unitsSold - a.unitsSold)
+      .slice(0, 5);
+
+    // Expenses in range
+    const expenses = await prisma.expense.findMany({
+      where: since ? { createdAt: { gte: since } } : {},
+    });
+    const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
+
+    const products = await prisma.product.findMany({ where: { archived: false } });
+    const settings = await prisma.settings.findFirst();
+    const threshold = settings?.lowStockThreshold ?? 20;
+
+    const stockLevels = products.map((p) => ({
+      name: p.name,
+      stock: p.stock,
+      status: p.stock < threshold ? 'Critical' : 'OK',
+    }));
+
+    return NextResponse.json({
+      range,
+      totalRevenue,
+      totalTransactions,
+      totalItemsSold,
+      totalExpenses,
+      estimatedProfit: totalRevenue - totalExpenses,
+      topSelling,
+      stockLevels,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to load reports.';
+    console.error('[REPORTS] GET error:', error);
+    return NextResponse.json({ error: message }, { status: 503 });
   }
-  const topSelling = Object.values(productSales)
-    .sort((a, b) => b.unitsSold - a.unitsSold)
-    .slice(0, 5);
-
-  // Expenses in range
-  const expenses = await prisma.expense.findMany({
-    where: since ? { createdAt: { gte: since } } : {},
-  });
-  const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
-
-  const products = await prisma.product.findMany({ where: { archived: false } });
-  const settings = await prisma.settings.findFirst();
-  const threshold = settings?.lowStockThreshold ?? 20;
-
-  const stockLevels = products.map((p) => ({
-    name: p.name,
-    stock: p.stock,
-    status: p.stock < threshold ? 'Critical' : 'OK',
-  }));
-
-  return NextResponse.json({
-    range,
-    totalRevenue,
-    totalTransactions,
-    totalItemsSold,
-    totalExpenses,
-    estimatedProfit: totalRevenue - totalExpenses,
-    topSelling,
-    stockLevels,
-  });
 }

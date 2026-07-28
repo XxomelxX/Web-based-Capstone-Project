@@ -96,10 +96,11 @@ export default function POSClient() {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div className="lg:col-span-2 space-y-4">
+        <h1 className="text-2xl font-bold">Point Of Sale</h1>
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Scan barcode or type and press enter..."
+          placeholder="Input a Product or Click a Product and press enter..."
           className="w-full border rounded-md px-4 py-3 bg-white"
         />
 
@@ -252,6 +253,7 @@ function ReceiptModal({
         <div className="flex justify-between"><span>Receipt #</span><span>{receipt.id}</span></div>
         <div className="flex justify-between"><span>Date</span><span>{new Date(receipt.createdAt).toLocaleString()}</span></div>
         <div className="flex justify-between"><span>Cashier</span><span>{cashierName}</span></div>
+        <div className="flex justify-between"><span>Customer</span><span>{receipt.customer?.name ?? 'Walk-in'}</span></div>
         <div className="flex justify-between"><span>Payment</span><span className="capitalize">{receipt.paymentMethod}</span></div>
         <div className="flex justify-between"><span>Subtotal</span><span>₱{receipt.subtotal.toFixed(2)}</span></div>
         <div className="flex justify-between"><span>VAT</span><span>₱{receipt.vat.toFixed(2)}</span></div>

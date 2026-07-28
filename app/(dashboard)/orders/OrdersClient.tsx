@@ -7,7 +7,7 @@ import { useRealtime } from '@/lib/use-realtime';
 interface OrderItem { productId: number; quantity: number; unitPrice: number; lineTotal: number; product: { name: string } }
 interface Order {
   id: number; createdAt: string; total: number; status: string; paymentMethod: string;
-  voidReason?: string; cashier: { fullName: string }; items: OrderItem[];
+  voidReason?: string; cashier: { fullName: string }; customer?: { name: string } | null; items: OrderItem[];
 }
 
 export default function OrdersClient() {
@@ -71,6 +71,7 @@ export default function OrdersClient() {
               <th className="p-3">Order#</th>
               <th className="p-3">Date</th>
               <th className="p-3">Cashier</th>
+              <th className="p-3">Customer</th>
               <th className="p-3 text-right">Items</th>
               <th className="p-3 text-right">Total</th>
               <th className="p-3">Status</th>
@@ -84,6 +85,7 @@ export default function OrdersClient() {
                 <td className="p-3">#{o.id}</td>
                 <td className="p-3">{new Date(o.createdAt).toLocaleString()}</td>
                 <td className="p-3">{o.cashier?.fullName}</td>
+                <td className="p-3">{o.customer?.name ?? 'Walk-in'}</td>
                 <td className="p-3 text-right">{o.items.reduce((s, i) => s + i.quantity, 0)}</td>
                 <td className="p-3 text-right">₱{o.total.toFixed(2)}</td>
                 <td className="p-3">
@@ -107,7 +109,7 @@ export default function OrdersClient() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-2">
             <div className="flex justify-between"><h3 className="font-bold">Order #{viewing.id}</h3><button onClick={() => setViewing(null)}>�</button></div>
-            <p className="text-xs text-gray-500">{new Date(viewing.createdAt).toLocaleString()} � Cashier: {viewing.cashier?.fullName}</p>
+            <p className="text-xs text-gray-500">{new Date(viewing.createdAt).toLocaleString()} � Cashier: {viewing.cashier?.fullName} � Customer: {viewing.customer?.name ?? 'Walk-in'}</p>
             <div className="border-t pt-2 space-y-1 text-sm">
               {viewing.items.map((i) => (
                 <div key={i.productId} className="flex justify-between">

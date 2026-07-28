@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { signIn } from 'next-auth/react';
 
 export default function ForgotPasswordClient() {
   const [username, setUsername] = useState('');

@@ -39,6 +39,35 @@ export async function getTransactions<T = Record<string, unknown>>(): Promise<T[
   return getTransactionsOffline<T>();
 }
 
+export async function getCustomers<T = Record<string, unknown>>(): Promise<T[]> {
+  const res = await fetch('/api/customers');
+  if (!res.ok) throw new Error('Failed to load customers');
+  return res.json() as Promise<T[]>;
+}
+
+export async function addCustomer(data: {
+  name: string;
+  phone?: string;
+  email?: string;
+  notes?: string;
+}) {
+  const result = await queueOrFetch('/api/customers', 'POST', data, 'add-customer');
+  if (result.offlineQueued) {
+    return result.data;
+  }
+  return result.data;
+}
+
+export async function updateCustomer(id: number, data: {
+  name?: string;
+  phone?: string;
+  email?: string;
+  notes?: string;
+}) {
+  const result = await queueOrFetch(`/api/customers/${id}`, 'PATCH', data, 'update-customer');
+  return result.data;
+}
+
 export async function voidTransaction(id: number, reason: string) {
   const result = await queueOrFetch(`/api/transactions/${id}/void`, 'POST', { reason }, 'void-transaction');
   if (result.offlineQueued) {

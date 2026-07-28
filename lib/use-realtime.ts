@@ -33,6 +33,7 @@ export function useRealtime(handlers: RealtimeHandlers) {
       'utang',
       'expenses',
       'users',
+      'customers',
       'itemlog',
       'lowstock',
       'reports',

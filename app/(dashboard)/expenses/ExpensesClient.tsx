@@ -80,7 +80,7 @@ export default function ExpensesClient() {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold">Expenses</h1>
-          <p className="text-sm text-gray-500">Track your store's overhead and recurring costs</p>
+          <p className="text-sm text-gray-500">Track your store&apos;s overhead and recurring costs</p>
         </div>
         <button onClick={() => setShowModal(true)} className="bg-green-700 text-white rounded-md px-4 py-2 text-sm">+ Add Expense</button>
       </div>

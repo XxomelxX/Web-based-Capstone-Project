@@ -53,6 +53,8 @@ model Transaction {
   id            Int       @id @default(autoincrement())
   cashierId     Int
   cashier       User      @relation(fields: [cashierId], references: [id])
+  customerId    Int?
+  customer      Customer? @relation(fields: [customerId], references: [id])
   paymentMethod String    // "cash" | "gcash"
   subtotal      Float
   vat           Float
@@ -93,6 +95,10 @@ model StockBatch {
 model Customer {
   id           Int          @id @default(autoincrement())
   name         String
+  phone        String?
+  email        String?
+  notes        String?
+  transactions Transaction[]
   utangEntries UtangEntry[]
 }
 

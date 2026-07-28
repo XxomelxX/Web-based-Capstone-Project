@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
 import { useEffect, useState } from 'react';
+import { useOfflineSync } from '@/lib/useOfflineSync';
+import Image from 'next/image';
 
 const ADMIN_NAV = [
   { href: '/dashboard', label: 'Dashboard' },
@@ -33,43 +35,30 @@ export function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
   const [confirmLogout, setConfirmLogout] = useState(false);
-  const [online, setOnline] = useState(true);
-  const [hydrated, setHydrated] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const { online, queuedCount, failedCount, syncing } = useOfflineSync();
 
-  const role = session?.user?.role ?? 'cashier';
-  const nav = role === 'admin' ? ADMIN_NAV : CASHIER_NAV;
+  const role = mounted && session?.user?.role ? session.user.role : 'cashier';
+  const displayName = mounted ? session?.user?.name ?? '...' : '...';
+  const activeNav = role === 'admin' ? ADMIN_NAV : CASHIER_NAV;
 
+  const userDisplayName = displayName;
+
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    const handleOnline = () => {
-      setOnline(true);
-      setHydrated(true);
-    };
-    const handleOffline = () => {
-      setOnline(false);
-      setHydrated(true);
-    };
-
-    if (typeof navigator !== 'undefined') {
-      setOnline(navigator.onLine);
-      setHydrated(true);
-    }
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
+    setMounted(true);
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  const nav = mounted ? activeNav : CASHIER_NAV;
 
   return (
     <>
       <div className="lg:hidden bg-slate-900 border-b border-slate-800 p-4 flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
-          <div className="w-9 h-9 bg-cyan-500 rounded-lg flex items-center justify-center text-slate-950">
-            🏪
+          <div className="w-9 h-9 bg-cyan-500 rounded-lg flex items-center justify-center">
+            <Image src="/1130f5ee-b20d-41b4-89c5-23c877b4d396.jpg" alt="Sari-Sari POS" width={36} height={36} className="rounded-lg object-cover" />
           </div>
           <div className="min-w-0">
             <div className="font-bold text-sm leading-tight text-slate-100 truncate">Sari-Sari POS</div>
@@ -87,8 +76,8 @@ export function Sidebar() {
 
       <aside className="hidden lg:flex flex-col w-64 bg-slate-900 border-r border-slate-800 h-screen sticky top-0">
         <div className="p-4 flex items-center gap-2 border-b border-slate-800">
-          <div className="w-9 h-9 bg-cyan-500 rounded-lg flex items-center justify-center text-slate-950">
-            🏪
+          <div className="w-9 h-9 bg-cyan-500 rounded-lg flex items-center justify-center">
+            <Image src="/1130f5ee-b20d-41b4-89c5-23c877b4d396.jpg" alt="Sari-Sari POS" width={36} height={36} className="rounded-lg object-cover" />
           </div>
           <div>
             <div className="font-bold text-sm leading-tight text-slate-100">Sari-Sari POS</div>
@@ -115,19 +104,31 @@ export function Sidebar() {
 
         <div className="border-t border-slate-800 p-4 space-y-2">
           <div>
-            <div className="text-sm font-semibold text-slate-100">{session?.user?.name ?? '...'}</div>
+            <div className="text-sm font-semibold text-slate-100">{userDisplayName}</div>
             <div className="flex flex-wrap gap-2 mt-1">
               <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
                 {role.toUpperCase()}
               </span>
-              {hydrated ? (
-                <span
-                  className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full ${online ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}
-                >
-                  <span className={`mr-2 h-2.5 w-2.5 rounded-full ${online ? 'bg-emerald-700' : 'bg-rose-700'}`} />
-                  {online ? 'Online' : 'Offline'}
+              {mounted ? (
+                <>
+                  <span
+                    className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full ${syncing ? 'bg-sky-100 text-sky-800' : online ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}
+                  >
+                    <span className={`mr-2 h-2.5 w-2.5 rounded-full ${syncing ? 'bg-sky-700' : online ? 'bg-emerald-700' : 'bg-rose-700'}`} />
+                    {syncing ? 'Syncing...' : online ? `Online (${queuedCount} queued)` : `Offline (${queuedCount} queued)`}
+                  </span>
+                  {failedCount > 0 ? (
+                    <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800">
+                      {failedCount} failed
+                    </span>
+                  ) : null}
+                </>
+              ) : (
+                <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-500">
+                  <span className="mr-2 h-2.5 w-2.5 rounded-full bg-slate-500" />
+                  Loading
                 </span>
-              ) : null}
+              )}
             </div>
           </div>
 
@@ -165,8 +166,8 @@ export function Sidebar() {
           <div className="absolute left-0 top-0 h-full w-72 bg-slate-900 border-r border-slate-800 p-4 flex flex-col">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2 min-w-0">
-                <div className="w-9 h-9 bg-cyan-500 rounded-lg flex items-center justify-center text-slate-950">
-                  🏪
+                <div className="w-9 h-9 bg-cyan-500 rounded-lg flex items-center justify-center">
+                  <Image src="/1130f5ee-b20d-41b4-89c5-23c877b4d396.jpg" alt="Sari-Sari POS" width={36} height={36} className="rounded-lg object-cover" />
                 </div>
                 <div className="min-w-0">
                   <div className="font-bold text-sm leading-tight text-slate-100 truncate">Sari-Sari POS</div>
@@ -202,17 +203,17 @@ export function Sidebar() {
 
             <div className="border-t border-slate-800 p-4 space-y-2">
               <div>
-                <div className="text-sm font-semibold text-slate-100">{session?.user?.name ?? '...'}</div>
+                <div className="text-sm font-semibold text-slate-100">{userDisplayName}</div>
                 <div className="flex flex-wrap gap-2 mt-1">
                   <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
                     {role.toUpperCase()}
                   </span>
                   {role === 'admin' ? (
                     <span
-                      className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full ${online ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}
+                      className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full ${syncing ? 'bg-sky-100 text-sky-800' : online ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}
                     >
-                      <span className={`mr-2 h-2.5 w-2.5 rounded-full ${online ? 'bg-emerald-700' : 'bg-rose-700'}`} />
-                      {online ? 'Online' : 'Offline'}
+                      <span className={`mr-2 h-2.5 w-2.5 rounded-full ${syncing ? 'bg-sky-700' : online ? 'bg-emerald-700' : 'bg-rose-700'}`} />
+                      {syncing ? 'Syncing...' : online ? `Online (${queuedCount} queued)` : `Offline (${queuedCount} queued)`}
                     </span>
                   ) : null}
                 </div>

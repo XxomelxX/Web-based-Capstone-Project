@@ -49,16 +49,72 @@ export const db = new SariSariPOSOfflineDB();
 export const canUseWindow = () => typeof window !== 'undefined' && typeof navigator !== 'undefined';
 export const isOnline = () => (canUseWindow() ? navigator.onLine : true);
 
+export async function unregisterServiceWorker() {
+  if (!canUseWindow() || !('serviceWorker' in navigator)) return false;
+
+  try {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(registrations.map((registration) => registration.unregister()));
+    if (registrations.length > 0) {
+      console.log('Service Worker unregistered in development.');
+      return true;
+    }
+  } catch (error) {
+    console.warn('Service Worker unregister failed:', error);
+  }
+
+  return false;
+}
+
 export async function registerServiceWorker() {
   if (!canUseWindow() || !('serviceWorker' in navigator)) return;
-  if (process.env.NODE_ENV !== 'production') return;
-  if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+
+  if (process.env.NODE_ENV !== 'production') {
+    const unregistered = await unregisterServiceWorker();
+    console.log('Service Worker is disabled in development mode to avoid request interception issues.');
+    if (unregistered && navigator.serviceWorker.controller) {
+      window.location.reload();
+    }
+    return;
+  }
+
+  if (window.location.protocol !== 'https:') {
     return;
   }
 
   try {
-    await navigator.serviceWorker.register('/sw.js');
-    console.log('Service Worker registered');
+    const registration = await navigator.serviceWorker.register('/sw.js');
+    console.log('Service Worker registered:', registration.scope);
+
+    if (!navigator.serviceWorker.controller) {
+      let didReload = false;
+
+      const reloadIfNeeded = () => {
+        if (navigator.serviceWorker.controller || didReload) return;
+        didReload = true;
+        console.log('Service Worker took control, reloading page.');
+        window.location.reload();
+      };
+
+      navigator.serviceWorker.addEventListener('controllerchange', reloadIfNeeded);
+
+      if (registration.waiting) {
+        registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+      }
+
+      if (registration.installing) {
+        registration.installing.addEventListener('statechange', (event) => {
+          const target = event.target as ServiceWorker | null;
+          if (target?.state === 'activated') {
+            reloadIfNeeded();
+          }
+        });
+      }
+
+      if (registration.active) {
+        reloadIfNeeded();
+      }
+    }
   } catch (error) {
     console.warn('Service Worker register failed:', error);
   }

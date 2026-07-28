@@ -19,6 +19,7 @@ import {
   queueOrFetch,
   isOnline,
 } from '@/lib/offline';
+import { queueSale } from '@/lib/offlineQueue';
 
 export { getCachedUsers, saveUsers, queueOrFetch } from '@/lib/offline';
 
@@ -216,27 +217,65 @@ export async function getLowStockOffline() {
 export async function checkoutOffline(
   items: Array<{ productId: number; quantity: number; unitPrice: number }>,
   paymentMethod: 'cash' | 'gcash',
-  tendered: number
+  tendered: number,
+  customerId?: number | null
 ) {
-  const fallbackReceipt = {
+  const subtotal = items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+  const fallbackReceipt: CheckoutResult = {
     id: Date.now(),
-    subtotal: items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0),
+    subtotal,
     vat: 0,
-    total: items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0),
+    total: subtotal,
     tendered,
-    change: tendered - items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0),
+    change: tendered - subtotal,
     paymentMethod,
     createdAt: new Date().toISOString(),
   };
 
-  const result = await queueOrFetch<CheckoutResult>('/api/pos/checkout', 'POST', { items, paymentMethod, tendered }, 'checkout');
-
-  if (result.offlineQueued) {
+  if (!isOnline()) {
+    await queueSale({
+      items,
+      paymentMethod,
+      tendered,
+      customerId: customerId ?? null,
+      createdAt: new Date().toISOString(),
+    });
     await updateCachedProductStock(items);
-    return fallbackReceipt;
+    return { ...fallbackReceipt, offline: true };
   }
 
-  return result.data!;
+  try {
+    const response = await fetch('/api/pos/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items, customerId, paymentMethod, tendered }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Checkout failed with status ${response.status}`);
+    }
+
+    const data = (await response.json()) as CheckoutResult;
+    return { ...data, offline: false };
+  } catch (error) {
+    const isNetworkError =
+      error instanceof TypeError ||
+      (error instanceof Error && /failed to fetch|network|offline/i.test(error.message));
+
+    if (typeof window !== 'undefined' && isNetworkError) {
+      await queueSale({
+        items,
+        paymentMethod,
+        tendered,
+        customerId: customerId ?? null,
+        createdAt: new Date().toISOString(),
+      });
+      await updateCachedProductStock(items);
+      return { ...fallbackReceipt, offline: true };
+    }
+
+    throw error;
+  }
 }
 
 export async function queueProductMutation<T>(

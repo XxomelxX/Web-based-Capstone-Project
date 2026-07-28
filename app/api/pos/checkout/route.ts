@@ -11,7 +11,7 @@ interface CartItem {
 }
 
 // POST /api/pos/checkout
-// body: { items: CartItem[], paymentMethod: 'cash' | 'gcash', tendered: number }
+// body: { items: CartItem[], customerId?: number, paymentMethod: 'cash' | 'gcash', tendered: number }
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user) {
@@ -20,6 +20,7 @@ export async function POST(request: Request) {
 
   const body = await request.json();
   const items: CartItem[] = body.items;
+  const customerId: number | null = body.customerId ?? null;
   const paymentMethod: string = body.paymentMethod;
   const tendered: number = Number(body.tendered ?? 0);
 
@@ -56,6 +57,7 @@ export async function POST(request: Request) {
       const transaction = await tx.transaction.create({
         data: {
           cashierId: Number(session.user.id),
+          customerId,
           paymentMethod,
           subtotal,
           vat,
@@ -63,6 +65,9 @@ export async function POST(request: Request) {
           tendered,
           change,
           status: 'complete',
+        },
+        include: {
+          customer: true,
         },
       });
 

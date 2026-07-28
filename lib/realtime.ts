@@ -6,6 +6,7 @@ export type RealtimeChannel =
   | 'utang'
   | 'expenses'
   | 'users'
+  | 'customers'
   | 'itemlog'
   | 'lowstock'
   | 'reports'

@@ -13,6 +13,11 @@ export interface CheckoutResult {
   change: number;
   paymentMethod: string;
   createdAt: string;
+  customer?: {
+    id: number;
+    name: string;
+  } | null;
+  offline?: boolean;
 }
 
 import { checkoutOffline } from '@/lib/api/offline';
@@ -20,7 +25,8 @@ import { checkoutOffline } from '@/lib/api/offline';
 export async function checkout(
   items: CartItem[],
   paymentMethod: 'cash' | 'gcash',
-  tendered: number
+  tendered: number,
+  customerId?: number | null
 ): Promise<CheckoutResult> {
-  return checkoutOffline(items, paymentMethod, tendered);
+  return checkoutOffline(items, paymentMethod, tendered, customerId);
 }

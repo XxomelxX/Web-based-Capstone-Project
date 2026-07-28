@@ -18,14 +18,35 @@ export const authOptions: NextAuthOptions = {
         try {
           if (!credentials?.username || !credentials?.password) return null;
 
-          const user = await prisma.user.findUnique({
-            where: { username: credentials.username },
-          });
+if (process.env.NODE_ENV !== 'production') {
+        console.log('[AUTH] authorize credentials:', credentials);
+      }
 
-          if (!user || user.status !== 'active') return null;
+      const user = await prisma.user.findUnique({
+        where: { username: credentials.username },
+      });
 
-          const isValid = await compare(credentials.password, user.passwordHash);
-          if (!isValid) return null;
+      if (!user) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[AUTH] authorize failed: user not found', credentials.username);
+        }
+        return null;
+      }
+
+      if (user.status !== 'active') {
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[AUTH] authorize failed: user inactive', user.status);
+        }
+        return null;
+      }
+
+      const isValid = await compare(credentials.password, user.passwordHash);
+      if (!isValid) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[AUTH] authorize failed: invalid password for', credentials.username);
+        }
+        return null;
+      }
 
           return {
             id: String(user.id),
@@ -48,15 +69,6 @@ export const authOptions: NextAuthOptions = {
         token.id = u.id;
         token.name = u.name;
         token.email = u.email;
-      }
-
-      if (!user && token?.id) {
-        const dbUser = await prisma.user.findUnique({ where: { id: Number(token.id) } });
-        if (dbUser) {
-          token.role = dbUser.role;
-          token.name = dbUser.fullName;
-          token.email = dbUser.email;
-        }
       }
 
       return token;

@@ -12,8 +12,6 @@ export default function CategoriesClient() {
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [form, setForm] = useState({ name: '', description: '', archived: false });
   const [error, setError] = useState('');
-  const [deleteConfirm, setDeleteConfirm] = useState<Category | null>(null);
-  const [viewingCategory, setViewingCategory] = useState<Category | null>(null);
 
   function refresh() {
     getCategories().then(setCategories);
@@ -65,19 +63,14 @@ export default function CategoriesClient() {
     setError('');
     try {
       await deleteCategory(c.id);
-      setDeleteConfirm(null);
       refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Delete failed');
-      setDeleteConfirm(null);
     }
   }
 
   const activeCategories = categories.filter((c) => !c.archived);
   const archivedCategories = categories.filter((c) => c.archived);
-  const viewProducts = viewingCategory
-    ? allProducts.filter((p) => p.categoryId === viewingCategory.id)
-    : [];
 
   return (
     <div className="space-y-4">
@@ -113,13 +106,8 @@ export default function CategoriesClient() {
                   <tr key={c.id} className="border-t">
                     <td className="p-3 font-medium">{c.name}</td>
                     <td className="p-3 text-gray-500">{c.description}</td>
-                    <td className="p-3">
-                      <button
-                        onClick={() => setViewingCategory(c)}
-                        className="text-blue-600 hover:underline"
-                      >
-                        {count} product{count !== 1 ? 's' : ''}
-                      </button>
+                    <td className="p-3 text-gray-500">
+                      {count} product{count !== 1 ? 's' : ''}
                     </td>
                     <td className="p-3">
                       <div className="flex items-center gap-2">
@@ -132,8 +120,8 @@ export default function CategoriesClient() {
                             <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                           </svg>
                         </button>
-                        <button
-                          onClick={() => count === 0 && setDeleteConfirm(c)}
+                            <button
+                          onClick={() => count === 0 && handleDelete(c)}
                           disabled={count > 0}
                           className={`transition ${count > 0 ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:text-red-600'}`}
                           title={count > 0 ? "Can't delete — reassign or remove its products first." : 'Delete category'}
