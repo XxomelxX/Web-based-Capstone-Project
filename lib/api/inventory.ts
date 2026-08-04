@@ -130,7 +130,13 @@ export async function addUser(data: {
   return result.data!;
 }
 
-export async function updateUser(id: number, data: { fullName?: string; role?: 'admin' | 'cashier'; status?: string; }): Promise<InventoryUser> {
+export async function updateUser(id: number, data: {
+  fullName?: string;
+  email?: string;
+  role?: 'admin' | 'cashier';
+  status?: string;
+  newPassword?: string;
+}): Promise<InventoryUser> {
   const result = await queueOrFetch<InventoryUser>(`/api/users/${id}`, 'PATCH', data, 'update-user');
   return result.data!;
 }

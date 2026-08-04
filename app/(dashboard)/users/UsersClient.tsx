@@ -19,6 +19,7 @@ export default function UsersClient() {
   const [canDeactivate, setCanDeactivate] = useState(false);
   const [editTarget, setEditTarget] = useState<User | null>(null);
   const [editName, setEditName] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const [editError, setEditError] = useState('');
 
   function refresh() {
@@ -48,20 +49,22 @@ export default function UsersClient() {
     if (!editTarget) return;
     setEditError('');
     try {
-      await updateUser(editTarget.id, { fullName: editName });
+      await updateUser(editTarget.id, { fullName: editName, newPassword: newPassword || undefined });
       setEditTarget(null);
+      setNewPassword('');
       refresh();
       if (editTarget.id === Number(session?.user?.id)) {
         window.location.reload();
       }
     } catch (err) {
-      setEditError(err instanceof Error ? err.message : 'Failed to update name');
+      setEditError(err instanceof Error ? err.message : 'Failed to update user');
     }
   }
 
   function openEdit(u: User) {
     setEditTarget(u);
     setEditName(u.fullName);
+    setNewPassword('');
     setEditError('');
   }
 
@@ -193,15 +196,20 @@ export default function UsersClient() {
       {editTarget && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-4">
-            <div className="flex justify-between items-center"><h3 className="font-bold text-lg">Edit User Name</h3><button type="button" onClick={() => setEditTarget(null)}>×</button></div>
-            <p className="text-sm text-gray-600">Update the name shown for this user.</p>
+            <div className="flex justify-between items-center"><h3 className="font-bold text-lg">Edit User</h3><button type="button" onClick={() => { setEditTarget(null); setNewPassword(''); }}>×</button></div>
+            <p className="text-sm text-gray-600">Update the user details and optionally reset their password.</p>
             <div>
               <label className="text-sm font-medium">Full Name</label>
               <input value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full border rounded-md px-3 py-2 mt-1" />
             </div>
+            <div>
+              <label className="text-sm font-medium">Reset Password (optional)</label>
+              <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Leave blank to keep current password" className="w-full border rounded-md px-3 py-2 mt-1" />
+              <p className="text-xs text-gray-400 mt-1">Only fill this in if the cashier forgot their password.</p>
+            </div>
             {editError && <p className="text-sm text-red-600">{editError}</p>}
             <div className="flex gap-2 justify-end pt-2">
-              <button onClick={() => setEditTarget(null)} className="border rounded-md px-4 py-2 text-sm">Cancel</button>
+              <button onClick={() => { setEditTarget(null); setNewPassword(''); }} className="border rounded-md px-4 py-2 text-sm">Cancel</button>
               <button onClick={handleEdit} className="bg-blue-700 text-white rounded-md px-4 py-2 text-sm">Save</button>
             </div>
           </div>

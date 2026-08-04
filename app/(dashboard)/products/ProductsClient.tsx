@@ -8,7 +8,6 @@ import {
   updateProduct,
   archiveProduct,
   unarchiveProduct,
-  deleteProduct,
   Product,
 } from '@/lib/api/products';
 import { getCategories, Category } from '@/lib/api/categories';
@@ -34,7 +33,6 @@ export default function ProductsClient() {
     goodsType: 'non-perishable',
   });
   const [error, setError] = useState('');
-  const [deleteConfirm, setDeleteConfirm] = useState<Product | null>(null);
 
   function refresh() {
     if (tab === 'active') {
@@ -109,18 +107,6 @@ export default function ProductsClient() {
   async function handleUnarchive(id: number) {
     await unarchiveProduct(id);
     refresh();
-  }
-
-  async function handleDelete(p: Product) {
-    setError('');
-    try {
-      await deleteProduct(p.id);
-      setDeleteConfirm(null);
-      refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Delete failed');
-      setDeleteConfirm(null);
-    }
   }
 
   return (
@@ -205,16 +191,6 @@ export default function ProductsClient() {
                           >
                             <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={() => !p._hasHistory && setDeleteConfirm(p)}
-                            disabled={p._hasHistory}
-                            className={`transition ${p._hasHistory ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:text-red-600'}`}
-                            title={p._hasHistory ? "Can't delete — this product has sales history. Archive it instead." : 'Delete product'}
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                             </svg>
                           </button>
                         </>
@@ -314,18 +290,6 @@ export default function ProductsClient() {
         </div>
       )}
 
-      {deleteConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
-            <h3 className="font-bold text-lg">Confirm Delete</h3>
-            <p className="mt-3 text-sm text-gray-600">Delete {deleteConfirm.name}? This cannot be undone.</p>
-            <div className="mt-4 flex justify-end gap-2">
-              <button type="button" onClick={() => setDeleteConfirm(null)} className="border rounded-md px-4 py-2 text-sm">Cancel</button>
-              <button type="button" onClick={() => handleDelete(deleteConfirm)} className="bg-red-600 text-white rounded-md px-4 py-2 text-sm">Delete</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

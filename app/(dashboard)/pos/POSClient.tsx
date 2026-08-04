@@ -624,60 +624,59 @@ function ZReadModal({
   storeName: string;
   onClose: () => void;
 }) {
+  const discrepancy = summary.overageShortage;
+
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 font-mono text-xs text-slate-900 space-y-2">
-        <div className="text-center border-b pb-2">
-          <h3 className="font-bold text-base">{storeName}</h3>
-          <p className="font-bold text-xs uppercase text-slate-600">Z-READ SHIFT REPORT</p>
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-3 text-gray-900">
+        <div className="text-center border-b pb-3">
+          <h3 className="font-bold text-lg">{storeName}</h3>
+          <p className="text-xs font-semibold text-gray-500 tracking-wide uppercase">Z-READ SHIFT REPORT</p>
         </div>
 
-        <div className="flex justify-between"><span>Cashier</span><span className="font-bold">{cashierName}</span></div>
-        <div className="flex justify-between"><span>Shift Opened</span><span>{new Date(summary.openedAt).toLocaleString()}</span></div>
-        <div className="flex justify-between"><span>Shift Closed</span><span>{new Date(summary.closedAt).toLocaleString()}</span></div>
-        <div className="flex justify-between"><span>Transactions</span><span>{summary.transactionCount}</span></div>
+        <div className="text-sm space-y-1">
+          <Row label="Cashier" value={cashierName} bold />
+          <Row label="Shift Opened" value={new Date(summary.openedAt).toLocaleString()} />
+          <Row label="Shift Closed" value={new Date(summary.closedAt).toLocaleString()} />
+        </div>
 
-        <hr className="border-dashed my-2" />
+        <hr className="border-slate-200" />
 
-        <div className="flex justify-between"><span>Opening Float</span><span>₱{summary.openingFloat.toFixed(2)}</span></div>
-        <div className="flex justify-between"><span>Cash Sales</span><span>+₱{summary.cashSales.toFixed(2)}</span></div>
-        <div className="flex justify-between"><span>GCash Sales</span><span>₱{summary.gcashSales.toFixed(2)}</span></div>
-        <div className="flex justify-between font-bold"><span>Total Sales</span><span>₱{summary.totalSales.toFixed(2)}</span></div>
+        <div className="text-sm space-y-1">
+          <Row label="Opening Float" value={`₱${summary.openingFloat.toFixed(2)}`} />
+          <Row label="Cash Sales" value={`₱${summary.cashSales.toFixed(2)}`} />
+          <Row label="GCash Sales" value={`₱${summary.gcashSales.toFixed(2)}`} />
+          <Row label="Total Sales" value={`₱${summary.totalSales.toFixed(2)}`} bold />
+        </div>
 
-        <hr className="border-dashed my-2" />
+        <hr className="border-slate-200" />
 
-        <div className="flex justify-between font-bold text-sm"><span>Expected Cash</span><span>₱{summary.expectedCash.toFixed(2)}</span></div>
-        <div className="flex justify-between font-bold text-sm"><span>Counted Cash</span><span>₱{summary.closingCash.toFixed(2)}</span></div>
+        <div className="text-sm space-y-1">
+          <Row label="Expected Cash" value={`₱${summary.expectedCash.toFixed(2)}`} />
+          <Row label="Counted Cash" value={`₱${summary.closingCash.toFixed(2)}`} />
+        </div>
 
-        <div className={`p-2 rounded border font-bold text-center mt-2 ${
-          summary.overageShortage === 0
-            ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
-            : summary.overageShortage > 0
-            ? 'bg-sky-50 border-sky-300 text-sky-800'
-            : 'bg-rose-50 border-rose-300 text-rose-800'
+        <div className={`text-center rounded-md py-2 font-bold ${
+          discrepancy === 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
         }`}>
-          {summary.overageShortage === 0
-            ? 'BALANCED (₱0.00)'
-            : summary.overageShortage > 0
-            ? `OVERAGE: +₱${summary.overageShortage.toFixed(2)}`
-            : `SHORTAGE: -₱${Math.abs(summary.overageShortage).toFixed(2)}`}
+          {discrepancy === 0
+            ? `BALANCED (₱0.00)`
+            : `${discrepancy > 0 ? 'OVER' : 'SHORT'} (₱${Math.abs(discrepancy).toFixed(2)})`}
         </div>
 
-        <div className="pt-4 flex gap-2">
-          <button
-            onClick={() => window.print()}
-            className="flex-1 bg-slate-900 text-white rounded py-2 font-sans text-xs font-semibold"
-          >
-            🖨️ Print Z-Read
-          </button>
-          <button
-            onClick={onClose}
-            className="flex-1 border border-slate-300 rounded py-2 font-sans text-xs font-semibold"
-          >
-            Done
-          </button>
+        <div className="flex gap-2 pt-2">
+          <button className="flex-1 border rounded-md py-2 text-sm">🖨 Print Z-Read</button>
+          <button onClick={onClose} className="flex-1 bg-green-700 text-white rounded-md py-2 text-sm">Done</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function Row({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
+  return (
+    <div className={`flex justify-between ${bold ? 'font-bold' : 'text-gray-700'}`}>
+      <span>{label}</span><span>{value}</span>
     </div>
   );
 }
