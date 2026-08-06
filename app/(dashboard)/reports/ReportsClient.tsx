@@ -3,6 +3,11 @@
 import { useEffect, useState } from 'react';
 import { getReports } from '@/lib/api/inventory';
 import { useRealtime } from '@/lib/use-realtime';
+import { ShiftDetails } from '@/lib/api/shift';
+
+interface ShiftHistoryItem extends ShiftDetails {
+  verificationStatus?: 'verified' | 'flagged' | null;
+}
 
 interface ReportData {
   totalRevenue: number;
@@ -228,7 +233,7 @@ function ActiveSpotCheckSection() {
   }
 
   useEffect(() => {
-    loadSpotCheck();
+    void Promise.resolve().then(loadSpotCheck);
   }, []);
 
   if (loading) {
@@ -273,9 +278,9 @@ function ActiveSpotCheckSection() {
 }
 
 function ShiftHistoryTable() {
-  const [shifts, setShifts] = useState<any[]>([]);
+  const [shifts, setShifts] = useState<ShiftHistoryItem[]>([]);
   const [loadingShifts, setLoadingShifts] = useState(true);
-  const [verifyingShift, setVerifyingShift] = useState<any | null>(null);
+  const [verifyingShift, setVerifyingShift] = useState<ShiftHistoryItem | null>(null);
   const [verifyStatus, setVerifyStatus] = useState<'verified' | 'flagged'>('verified');
   const [auditNotes, setAuditNotes] = useState('');
   const [submittingAudit, setSubmittingAudit] = useState(false);
@@ -290,7 +295,7 @@ function ShiftHistoryTable() {
   }
 
   useEffect(() => {
-    loadHistory();
+    void loadHistory();
   }, []);
 
   async function handleVerifySubmit(e: React.FormEvent) {
@@ -349,7 +354,6 @@ function ShiftHistoryTable() {
           <tbody className="divide-y divide-slate-800/60">
             {shifts.map((s) => {
               const isOverage = (s.overageShortage ?? 0) > 0;
-              const isShortage = (s.overageShortage ?? 0) < 0;
               const isBalanced = (s.overageShortage ?? 0) === 0;
 
               return (
@@ -424,7 +428,7 @@ function ShiftHistoryTable() {
               <div><strong className="text-slate-400">Opening Float:</strong> ₱{verifyingShift.openingFloat?.toFixed(2)}</div>
               <div><strong className="text-slate-400">Expected Cash:</strong> ₱{verifyingShift.expectedCash?.toFixed(2)}</div>
               <div><strong className="text-slate-400">Counted Cash:</strong> ₱{verifyingShift.closingCash?.toFixed(2)}</div>
-              <div><strong className="text-slate-400">Variance:</strong> {verifyingShift.overageShortage >= 0 ? `+₱${verifyingShift.overageShortage?.toFixed(2)}` : `-₱${Math.abs(verifyingShift.overageShortage)?.toFixed(2)}`}</div>
+              <div><strong className="text-slate-400">Variance:</strong> {verifyingShift.overageShortage === null ? '—' : verifyingShift.overageShortage >= 0 ? `+₱${verifyingShift.overageShortage.toFixed(2)}` : `-₱${Math.abs(verifyingShift.overageShortage).toFixed(2)}`}</div>
             </div>
 
             <div>

@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
 import { useEffect, useState } from 'react';
 import { useOfflineSync } from '@/lib/useOfflineSync';
+import type { QueuedSale } from '@/lib/offlineQueue';
 import { ShiftDetails, fetchActiveShift } from '@/lib/api/shift';
 import Image from 'next/image';
 
@@ -40,7 +41,7 @@ export function Sidebar() {
   const [mounted, setMounted] = useState(false);
   const [activeShift, setActiveShift] = useState<ShiftDetails | null>(null);
   const [showSyncModal, setShowSyncModal] = useState(false);
-  const [queuedItems, setQueuedItems] = useState<any[]>([]);
+  const [queuedItems, setQueuedItems] = useState<QueuedSale[]>([]);
   const { online, queuedCount, failedCount, syncing } = useOfflineSync();
 
   const role = mounted && session?.user?.role ? session.user.role : 'cashier';

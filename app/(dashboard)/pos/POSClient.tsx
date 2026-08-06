@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { getProducts, Product } from '@/lib/api/products';
 import { checkout, CheckoutResult } from '@/lib/api/pos';
@@ -32,7 +32,6 @@ export default function POSClient() {
 
   // Shift & Cash Drawer State
   const [activeShift, setActiveShift] = useState<ShiftDetails | null>(null);
-  const [loadingShift, setLoadingShift] = useState(true);
   const [showOpenShiftModal, setShowOpenShiftModal] = useState(false);
   const [showEndShiftModal, setShowEndShiftModal] = useState(false);
   const [zReadReceipt, setZReadReceipt] = useState<ZReadSummary | null>(null);
@@ -43,28 +42,28 @@ export default function POSClient() {
   const [shiftError, setShiftError] = useState('');
 
   function loadShiftData() {
-    setLoadingShift(true);
     fetchActiveShift().then((shift) => {
       setActiveShift(shift);
-      setLoadingShift(false);
       if (!shift) {
         setShowOpenShiftModal(true);
       }
     });
   }
 
-  function refresh() {
+  const refresh = useCallback(() => {
     getProducts().then(setProducts);
     getSettings<StoreSettings>().then(setSettings);
     loadShiftData();
-  }
+  }, []);
 
   useRealtime({
     products: refresh,
     settings: refresh,
   });
 
-  useEffect(refresh, []);
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
 
   const filtered = products.filter((p) =>
     p.name.toLowerCase().includes(search.toLowerCase()) || p.barcode === search

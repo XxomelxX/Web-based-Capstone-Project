@@ -14,7 +14,6 @@ export function useOnlineStatus() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    setIsOnline(navigator.onLine);
 
     function handleOnline() {
       console.log('Browser reports: back online');
@@ -114,10 +113,10 @@ export function useOfflineSync() {
 
     const timer = setInterval(() => {
       checkStatus();
-      refreshCounts();
+      void refreshCounts();
     }, 1000);
 
-    refreshCounts();
+    void Promise.resolve().then(refreshCounts);
 
     return () => {
       window.removeEventListener('online', handleOnline);
