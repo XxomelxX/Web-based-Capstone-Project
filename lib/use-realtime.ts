@@ -13,7 +13,8 @@ export function useRealtime(handlers: RealtimeHandlers) {
   }, [handlers]);
 
   useEffect(() => {
-    // Allow disabling realtime via env var for environments that don't support long-lived SSE
+    // Allow disabling realtime via env var for environments that don't support long-lived SSE.
+    // Vercel edge functions do not support long-lived SSE connections reliably.
     if (typeof window === 'undefined') return;
     if (process.env.NEXT_PUBLIC_DISABLE_REALTIME === 'true') return;
     if (!('EventSource' in window)) return;

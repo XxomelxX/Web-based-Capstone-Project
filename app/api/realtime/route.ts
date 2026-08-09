@@ -3,7 +3,16 @@ import { addRealtimeClient, removeRealtimeClient } from '@/lib/realtime';
 
 export const runtime = 'edge';
 
+const realtimeDisabled =
+  process.env.NEXT_PUBLIC_DISABLE_REALTIME === 'true' ||
+  process.env.DISABLE_REALTIME === 'true' ||
+  process.env.VERCEL === '1';
+
 export async function GET() {
+  if (realtimeDisabled) {
+    return new NextResponse(null, { status: 204 });
+  }
+
   let interval: ReturnType<typeof setInterval>;
   let id: string;
 

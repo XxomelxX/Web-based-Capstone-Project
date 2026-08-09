@@ -84,3 +84,7 @@ older extracted copy — re-extract this zip fresh over your project folder.
 - Deploy on Vercel (https://vercel.com) — connects directly to your GitHub repo
 - Add the same `DATABASE_URL` / `NEXTAUTH_SECRET` / `NEXTAUTH_URL` (use your live
   Vercel URL) as Environment Variables in the Vercel project settings
+- Add `NEXT_PUBLIC_DISABLE_REALTIME=true` and `DISABLE_REALTIME=true`
+
+This app disables SSE-based realtime on Vercel because Vercel edge/serverless
+functions do not support long-lived `EventSource` connections reliably.
