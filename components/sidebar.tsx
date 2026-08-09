@@ -8,29 +8,44 @@ import { useOfflineSync } from '@/lib/useOfflineSync';
 import type { QueuedSale } from '@/lib/offlineQueue';
 import { ShiftDetails, fetchActiveShift } from '@/lib/api/shift';
 import Image from 'next/image';
+import {
+  LayoutDashboard,
+  ShoppingCart,
+  Package,
+  LayoutGrid,
+  AlertTriangle,
+  ClipboardList,
+  Wallet,
+  FileClock,
+  ListOrdered,
+  Receipt,
+  BarChart3,
+  Users,
+  Settings,
+} from 'lucide-react';
 
 const ADMIN_NAV = [
-  { href: '/dashboard', label: 'Dashboard' },
-  { href: '/pos', label: 'POS' },
-  { href: '/products', label: 'Products' },
-  { href: '/categories', label: 'Categories' },
-  { href: '/lowstock', label: 'Low Stock' },
-  { href: '/orders', label: 'Orders' },
-  { href: '/utang', label: 'Utang / Credit' },
-  { href: '/transaction-log', label: 'Transaction Log' },
-  { href: '/item-log', label: 'Item Log' },
-  { href: '/expenses', label: 'Expenses' },
-  { href: '/reports', label: 'Reports' },
-  { href: '/users', label: 'Users' },
-  { href: '/settings', label: 'Settings' },
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/pos', label: 'POS', icon: ShoppingCart },
+  { href: '/products', label: 'Products', icon: Package },
+  { href: '/categories', label: 'Categories', icon: LayoutGrid },
+  { href: '/lowstock', label: 'Low Stock', icon: AlertTriangle },
+  { href: '/orders', label: 'Orders', icon: ClipboardList },
+  { href: '/utang', label: 'Utang / Credit', icon: Wallet },
+  { href: '/transaction-log', label: 'Transaction Log', icon: FileClock },
+  { href: '/item-log', label: 'Item Log', icon: ListOrdered },
+  { href: '/expenses', label: 'Expenses', icon: Receipt },
+  { href: '/reports', label: 'Reports', icon: BarChart3 },
+  { href: '/users', label: 'Users', icon: Users },
+  { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
 const CASHIER_NAV = [
-  { href: '/dashboard', label: 'Dashboard' },
-  { href: '/pos', label: 'POS' },
-  { href: '/lowstock', label: 'Low Stock' },
-  { href: '/orders', label: 'Orders' },
-  { href: '/utang', label: 'Utang / Credit' },
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/pos', label: 'POS', icon: ShoppingCart },
+  { href: '/lowstock', label: 'Low Stock', icon: AlertTriangle },
+  { href: '/orders', label: 'Orders', icon: ClipboardList },
+  { href: '/utang', label: 'Utang / Credit', icon: Wallet },
 ];
 
 export function Sidebar() {
@@ -94,15 +109,17 @@ export function Sidebar() {
         <nav className="flex-1 overflow-y-auto py-2">
           {nav.map((item) => {
             const active = pathname === item.href;
+            const Icon = item.icon;
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`block px-4 py-2 mx-2 rounded-md text-sm font-medium ${
+                className={`flex items-center gap-3 px-4 py-2 mx-2 rounded-md text-sm font-medium ${
                   active ? 'bg-cyan-500 text-slate-950' : 'text-slate-300 hover:bg-slate-800'
                 }`}
               >
-                {item.label}
+                {Icon ? <Icon size={18} /> : null}
+                <span>{item.label}</span>
               </Link>
             );
           })}
@@ -208,16 +225,18 @@ export function Sidebar() {
             <nav className="flex-1 overflow-y-auto py-2">
               {nav.map((item) => {
                 const active = pathname === item.href;
+                const Icon = item.icon;
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
                     onClick={() => setMobileOpen(false)}
-                    className={`block px-4 py-2 rounded-md text-sm font-medium ${
+                    className={`flex items-center gap-3 px-4 py-2 rounded-md text-sm font-medium ${
                       active ? 'bg-cyan-500 text-slate-950' : 'text-slate-300 hover:bg-slate-800'
                     }`}
                   >
-                    {item.label}
+                    {Icon ? <Icon size={18} /> : null}
+                    <span>{item.label}</span>
                   </Link>
                 );
               })}
