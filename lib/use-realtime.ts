@@ -13,6 +13,11 @@ export function useRealtime(handlers: RealtimeHandlers) {
   }, [handlers]);
 
   useEffect(() => {
+    // Allow disabling realtime via env var for environments that don't support long-lived SSE
+    if (typeof window === 'undefined') return;
+    if (process.env.NEXT_PUBLIC_DISABLE_REALTIME === 'true') return;
+    if (!('EventSource' in window)) return;
+
     const source = new EventSource('/api/realtime');
 
     const handleEvent = (event: MessageEvent, channel: RealtimeChannel) => {
