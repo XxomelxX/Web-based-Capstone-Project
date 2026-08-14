@@ -5,8 +5,9 @@
   "scripts": {
     "dev": "next dev --hostname localhost",
     "postinstall": "node scripts/prisma-generate.js",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
+    "start:prod": "npm run build && npm run start",
     "lint": "eslint"
   },
   "dependencies": {

@@ -2,20 +2,15 @@
 
 import { SessionProvider } from 'next-auth/react';
 import { useEffect } from 'react';
-import { installOfflineSync, registerServiceWorker, unregisterServiceWorker } from '@/lib/offline';
-import { useOfflineSync } from '@/lib/useOfflineSync';
+import { installOfflineSync, unregisterServiceWorker } from '@/lib/offline';
 
 export function Providers({ children }: { children: React.ReactNode }) {
-  useOfflineSync();
-
   useEffect(() => {
-    const initServiceWorker = async () => {
-      await unregisterServiceWorker();
-      await registerServiceWorker();
-      installOfflineSync();
-    };
-
-    initServiceWorker();
+    if (process.env.NODE_ENV !== 'production') {
+      void unregisterServiceWorker();
+      return;
+    }
+    installOfflineSync();
   }, []);
 
   return <SessionProvider>{children}</SessionProvider>;

@@ -4,19 +4,20 @@ const withPWA = require('next-pwa')({
   dest: 'public',
   register: true,
   skipWaiting: true,
-  disable: false,
+  disable: process.env.NODE_ENV === 'development', // SW intentionally off in dev — test with npm run build && npm run start
+  fallbacks: {
+    document: '/offline',
+  },
   runtimeCaching: [
     {
-      urlPattern: /^https?:.*/,
+      urlPattern: /^\/api\/(products|categories|lowstock|reports)/,
       handler: 'NetworkFirst',
-      options: {
-        cacheName: 'sari-sari-pages',
-        networkTimeoutSeconds: 3,
-        expiration: {
-          maxEntries: 200,
-          maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
-        },
-      },
+      options: { cacheName: 'sari-sari-api-cache', networkTimeoutSeconds: 3, expiration: { maxEntries: 50, maxAgeSeconds: 86400 } },
+    },
+    {
+      urlPattern: /^\/(dashboard|pos|products|categories|lowstock|orders|utang|settings)/,
+      handler: 'NetworkFirst',
+      options: { cacheName: 'sari-sari-pages-cache', networkTimeoutSeconds: 3 },
     },
   ],
 });

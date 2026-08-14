@@ -6,7 +6,7 @@ import { getProducts, Product } from '@/lib/api/products';
 import { checkout, CheckoutResult } from '@/lib/api/pos';
 import { getSettings } from '@/lib/api/inventory';
 import { useRealtime } from '@/lib/use-realtime';
-import { ShiftDetails, ZReadSummary, fetchActiveShift, openShift, closeShift } from '@/lib/api/shift';
+import { ShiftDetails, ZReadSummary, applyOfflineSaleToShift, cacheActiveShift, fetchActiveShift, openShift, closeShift } from '@/lib/api/shift';
 
 interface CartLine {
   product: Product;
@@ -119,9 +119,19 @@ export default function POSClient() {
       setReceipt(result);
       setCart([]);
       setTendered(0);
-      getProducts().then(setProducts);
-      // Refresh shift live totals
-      fetchActiveShift().then(setActiveShift);
+      void getProducts().then(setProducts).catch(() => {
+        // Use cached products when offline
+      });
+
+      if (result.offline && activeShift) {
+        const updatedShift = applyOfflineSaleToShift(activeShift, result.total, paymentMethod);
+        cacheActiveShift(updatedShift);
+        setActiveShift(updatedShift);
+      } else {
+        void fetchActiveShift().then((shift) => {
+          if (shift) setActiveShift(shift);
+        });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Checkout failed');
     } finally {

@@ -1,129 +1,69 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import {
-  getPendingSalesCount,
-  getSyncFailedCount,
-  syncQueuedSales,
-} from '@/lib/offlineQueue';
+import { useCallback, useEffect, useState } from 'react';
+import { getFailedCount, getPendingCount, syncQueuedSales } from '@/lib/offlineQueue';
 
-export function useOnlineStatus() {
-  const [isOnline, setIsOnline] = useState<boolean>(
+export function useOfflineSync() {
+  const [isOnline, setIsOnline] = useState(
     typeof window !== 'undefined' ? navigator.onLine : true
   );
+  const [pendingCount, setPendingCount] = useState(0);
+  const [failedCount, setFailedCount] = useState(0);
+  const [syncing, setSyncing] = useState(false);
+
+  const refreshPendingCount = useCallback(async () => {
+    if (typeof window === 'undefined') return;
+    try {
+      const [pending, failed] = await Promise.all([getPendingCount(), getFailedCount()]);
+      setPendingCount(pending);
+      setFailedCount(failed);
+    } catch {
+      // IndexedDB unavailable — ignore
+    }
+  }, []);
+
+  const syncQueue = useCallback(async () => {
+    if (typeof window === 'undefined' || !navigator.onLine) return;
+    setSyncing(true);
+    try {
+      await syncQueuedSales();
+    } finally {
+      await refreshPendingCount();
+      setSyncing(false);
+    }
+  }, [refreshPendingCount]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
+    setIsOnline(navigator.onLine);
+    void refreshPendingCount();
+
     function handleOnline() {
-      console.log('Browser reports: back online');
       setIsOnline(true);
+      void syncQueue();
     }
 
     function handleOffline() {
-      console.log('Browser reports: went offline');
       setIsOnline(false);
     }
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    const timer = setInterval(() => {
-      const current = navigator.onLine;
-      setIsOnline((prev) => {
-        if (prev !== current) {
-          console.log(current ? 'Browser reports: back online' : 'Browser reports: went offline');
-          return current;
-        }
-        return prev;
-      });
-    }, 1000);
-
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
-      clearInterval(timer);
     };
-  }, []);
+  }, [refreshPendingCount, syncQueue]);
 
-  return isOnline;
-}
-
-export function useOfflineSync() {
-  const [online, setOnline] = useState<boolean>(
-    typeof window !== 'undefined' ? navigator.onLine : true
-  );
-  const [queuedCount, setQueuedCount] = useState(0);
-  const [failedCount, setFailedCount] = useState(0);
-  const [syncing, setSyncing] = useState(false);
-
-  const refreshCounts = async () => {
-    if (typeof window === 'undefined') return;
-    try {
-      setQueuedCount(await getPendingSalesCount());
-      setFailedCount(await getSyncFailedCount());
-    } catch {
-      // ignore IndexedDB errors
-    }
+  return {
+    isOnline,
+    pendingCount,
+    failedCount,
+    syncing,
+    // Back-compat aliases used by sidebar
+    online: isOnline,
+    queuedCount: pendingCount,
   };
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const handleSync = async () => {
-      if (!navigator.onLine) return;
-      setSyncing(true);
-      try {
-        await syncQueuedSales();
-      } finally {
-        setSyncing(false);
-        await refreshCounts();
-      }
-    };
-
-    const checkStatus = () => {
-      const currentStatus = navigator.onLine;
-      setOnline((prev) => {
-        if (prev !== currentStatus) {
-          if (currentStatus) {
-            console.log('Browser reports: back online');
-            handleSync();
-          } else {
-            console.log('Browser reports: went offline');
-          }
-          return currentStatus;
-        }
-        return prev;
-      });
-    };
-
-    const handleOnline = () => {
-      console.log('Browser reports: back online');
-      setOnline(true);
-      handleSync();
-    };
-
-    const handleOffline = () => {
-      console.log('Browser reports: went offline');
-      setOnline(false);
-    };
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    const timer = setInterval(() => {
-      checkStatus();
-      void refreshCounts();
-    }, 1000);
-
-    void Promise.resolve().then(refreshCounts);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-      clearInterval(timer);
-    };
-  }, []);
-
-  return { online, queuedCount, failedCount, syncing };
 }
