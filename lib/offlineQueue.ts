@@ -1,6 +1,12 @@
 import Dexie, { Table } from 'dexie';
+import { triggerQueueUpdate } from '@/lib/useOfflineSync';
 
-export type Category1ActionType = 'pos_sale' | 'add_utang' | 'record_payment';
+export type Category1ActionType =
+  | 'pos_sale'
+  | 'add_utang'
+  | 'record_payment'
+  | 'open_shift'
+  | 'close_shift';
 
 export interface QueuedSaleItem {
   productId: number;
@@ -18,6 +24,13 @@ export interface QueuedActionPayload {
   note?: string;
   amount?: number;
   expectedBalance?: number;
+
+  // Shift items
+  openingFloat?: number;
+  closingCash?: number;
+  notes?: string;
+  openedAt?: string;
+  closedAt?: string;
 }
 
 export interface QueuedCategory1Action {
@@ -61,13 +74,15 @@ export async function queueCategory1Action(
   type: Category1ActionType,
   payload: QueuedActionPayload
 ): Promise<number> {
-  return db.queuedActions.add({
+  const res = await db.queuedActions.add({
     type,
     payload,
     createdAt: new Date().toISOString(),
     synced: false,
     syncFailed: false,
   });
+  triggerQueueUpdate();
+  return res;
 }
 
 export async function queueSale(sale: {
@@ -77,7 +92,7 @@ export async function queueSale(sale: {
   customerId?: number | null;
   createdAt?: string;
 }): Promise<number> {
-  return db.queuedActions.add({
+  const res = await db.queuedActions.add({
     type: 'pos_sale',
     payload: {
       items: sale.items,
@@ -89,6 +104,8 @@ export async function queueSale(sale: {
     synced: false,
     syncFailed: false,
   });
+  triggerQueueUpdate();
+  return res;
 }
 
 export async function queueAddUtang(utang: {
@@ -114,6 +131,30 @@ export async function queueUtangPayment(payment: {
     amount: payment.amount,
     note: payment.note,
     expectedBalance: payment.expectedBalance,
+  });
+}
+
+export async function queueOpenShift(shift: {
+  openingFloat: number;
+  notes?: string;
+  openedAt?: string;
+}): Promise<number> {
+  return queueCategory1Action('open_shift', {
+    openingFloat: shift.openingFloat,
+    notes: shift.notes,
+    openedAt: shift.openedAt || new Date().toISOString(),
+  });
+}
+
+export async function queueCloseShift(shift: {
+  closingCash: number;
+  notes?: string;
+  closedAt?: string;
+}): Promise<number> {
+  return queueCategory1Action('close_shift', {
+    closingCash: shift.closingCash,
+    notes: shift.notes,
+    closedAt: shift.closedAt || new Date().toISOString(),
   });
 }
 
@@ -174,14 +215,17 @@ export async function getSyncFailedSales(): Promise<QueuedSale[]> {
 
 export async function markActionSynced(id: number) {
   await db.queuedActions.update(id, { synced: true, syncFailed: false, errorMessage: undefined });
+  triggerQueueUpdate();
 }
 
 export async function markActionFailed(id: number, errorMsg?: string) {
   await db.queuedActions.update(id, { syncFailed: true, errorMessage: errorMsg || 'Sync failed' });
+  triggerQueueUpdate();
 }
 
 export async function clearQueuedAction(id: number) {
   await db.queuedActions.delete(id);
+  triggerQueueUpdate();
 }
 
 // Category 1 Sync Executor
@@ -240,17 +284,47 @@ export async function syncQueuedSales() {
 
         if (res.ok) {
           const data = await res.json();
-          // Check if expected balance changed unexpectedly
           if (
             action.payload.expectedBalance !== undefined &&
             data.result?.unallocatedRemainder &&
             data.result.unallocatedRemainder > 0
           ) {
-            // Flag syncFailed for manual Admin review due to unexpected remaining balance mismatch
             await markActionFailed(action.id, 'Balance changed unexpectedly while offline. Flagged for Admin review.');
           } else {
             await markActionSynced(action.id);
           }
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          await markActionFailed(action.id, errData.error || `HTTP ${res.status}`);
+        }
+      } else if (action.type === 'open_shift') {
+        const res = await fetch('/api/shift', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'open',
+            openingFloat: action.payload.openingFloat,
+            notes: action.payload.notes,
+          }),
+        });
+        if (res.ok) {
+          await markActionSynced(action.id);
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          await markActionFailed(action.id, errData.error || `HTTP ${res.status}`);
+        }
+      } else if (action.type === 'close_shift') {
+        const res = await fetch('/api/shift', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'close',
+            closingCash: action.payload.closingCash,
+            notes: action.payload.notes,
+          }),
+        });
+        if (res.ok) {
+          await markActionSynced(action.id);
         } else {
           const errData = await res.json().catch(() => ({}));
           await markActionFailed(action.id, errData.error || `HTTP ${res.status}`);
