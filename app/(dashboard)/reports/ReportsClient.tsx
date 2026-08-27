@@ -1,9 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { getReports } from '@/lib/api/inventory';
 import { useRealtime } from '@/lib/use-realtime';
 import { ShiftDetails } from '@/lib/api/shift';
+import { getCategory2Cache, saveCategory2Cache } from '@/lib/localStorageCache';
+import { CachedDataBanner } from '@/components/CachedDataBanner';
+import { RECONNECT_EVENT_NAME } from '@/lib/useOfflineSync';
 
 interface ShiftHistoryItem extends ShiftDetails {
   verificationStatus?: 'verified' | 'flagged' | null;
@@ -23,22 +26,48 @@ export default function ReportsClient() {
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [isCached, setIsCached] = useState(false);
+  const [cachedTime, setCachedTime] = useState<string | null>(null);
+  const [isOffline, setIsOffline] = useState(false);
 
-  async function loadReports(selectedRange: 'week' | 'month' | 'all') {
+  const loadReports = useCallback(async (selectedRange: 'week' | 'month' | 'all') => {
     setLoading(true);
     setError('');
+    const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
+    setIsOffline(offlineNow);
 
     try {
-      const reportData = await getReports<ReportData>(selectedRange);
-      setData(reportData);
+      if (offlineNow) {
+        const cached = getCategory2Cache<ReportData>(`reports_${selectedRange}`);
+        if (cached.data) {
+          setData(cached.data);
+          setIsCached(true);
+          setCachedTime(cached.formattedTime || cached.cachedAt);
+        } else {
+          throw new Error('Offline and no cached report snapshot available');
+        }
+      } else {
+        const reportData = await getReports<ReportData>(selectedRange);
+        setData(reportData);
+        saveCategory2Cache(`reports_${selectedRange}`, reportData);
+        setIsCached(false);
+        setCachedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }));
+      }
     } catch (err) {
       console.error('Failed to fetch reports:', err);
-      setError(err instanceof Error ? err.message : 'Unable to load reports');
-      setData(null);
+      const cached = getCategory2Cache<ReportData>(`reports_${selectedRange}`);
+      if (cached.data) {
+        setData(cached.data);
+        setIsCached(true);
+        setCachedTime(cached.formattedTime || cached.cachedAt);
+      } else {
+        setError(err instanceof Error ? err.message : 'Unable to load reports');
+        setData(null);
+      }
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
   useRealtime({
     transactions: () => void loadReports(range),
@@ -49,14 +78,28 @@ export default function ReportsClient() {
   });
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadReports(range);
-  }, [range]);
+
+    function handleReconnect() {
+      void loadReports(range);
+    }
+
+    window.addEventListener(RECONNECT_EVENT_NAME, handleReconnect);
+    return () => window.removeEventListener(RECONNECT_EVENT_NAME, handleReconnect);
+  }, [range, loadReports]);
 
   const lowStockCount = data?.stockLevels.filter((s) => s.status === 'Critical').length ?? 0;
 
   return (
     <div className="space-y-6">
+      <CachedDataBanner
+        cachedAt={cachedTime}
+        formattedTime={cachedTime}
+        isOffline={isOffline}
+        isCached={isCached}
+        onRefresh={() => loadReports(range)}
+      />
+
       <section className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-6 shadow-[0_24px_80px_-46px_rgba(0,0,0,0.85)] backdrop-blur-xl">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-3">
@@ -188,7 +231,7 @@ export default function ReportsClient() {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-                  <span>💼</span> Shift & Cash Drawer Audit Log (Z-Read History)
+                  <span>💼</span> Shift &amp; Cash Drawer Audit Log (Z-Read History)
                 </h2>
                 <p className="text-sm text-slate-500">Track cashier register opening floats, cash sales, end-of-shift reconciliation, and cash overage/shortage variance.</p>
               </div>
@@ -222,6 +265,10 @@ function ActiveSpotCheckSection() {
   const [loading, setLoading] = useState(true);
 
   function loadSpotCheck() {
+    if (typeof window !== 'undefined' && !navigator.onLine) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     fetch('/api/shift/active-shifts')
       .then((res) => res.json())
@@ -284,8 +331,13 @@ function ShiftHistoryTable() {
   const [verifyStatus, setVerifyStatus] = useState<'verified' | 'flagged'>('verified');
   const [auditNotes, setAuditNotes] = useState('');
   const [submittingAudit, setSubmittingAudit] = useState(false);
+  const [auditError, setAuditError] = useState('');
 
   function loadHistory() {
+    if (typeof window !== 'undefined' && !navigator.onLine) {
+      setLoadingShifts(false);
+      return;
+    }
     import('@/lib/api/shift').then(({ fetchShiftHistory }) => {
       fetchShiftHistory().then((data) => {
         setShifts(data);
@@ -301,6 +353,11 @@ function ShiftHistoryTable() {
   async function handleVerifySubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!verifyingShift) return;
+    if (typeof window !== 'undefined' && !navigator.onLine) {
+      setAuditError('This action requires an internet connection');
+      return;
+    }
+    setAuditError('');
     setSubmittingAudit(true);
     try {
       const res = await fetch('/api/shift', {
@@ -317,9 +374,12 @@ function ShiftHistoryTable() {
         setVerifyingShift(null);
         setAuditNotes('');
         loadHistory();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        setAuditError(errData.error || 'Audit sign-off failed');
       }
     } catch (err) {
-      console.error(err);
+      setAuditError(err instanceof Error ? err.message : 'Audit sign-off failed');
     } finally {
       setSubmittingAudit(false);
     }
@@ -395,7 +455,10 @@ function ShiftHistoryTable() {
                         </span>
                       ) : (
                         <button
-                          onClick={() => setVerifyingShift(s)}
+                          onClick={() => {
+                            setAuditError('');
+                            setVerifyingShift(s);
+                          }}
                           className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-semibold px-2.5 py-1 rounded-md transition"
                         >
                           Sign-off / Audit
@@ -422,6 +485,7 @@ function ShiftHistoryTable() {
               </h3>
               <button type="button" onClick={() => setVerifyingShift(null)} className="text-slate-400 hover:text-slate-200">✕</button>
             </div>
+            {auditError && <p className="text-sm text-rose-400">{auditError}</p>}
 
             <div className="text-xs text-slate-300 space-y-1 bg-slate-950 p-3 rounded-xl border border-slate-800">
               <div><strong className="text-slate-400">Cashier:</strong> {verifyingShift.cashier?.fullName}</div>
@@ -497,4 +561,3 @@ function DashboardStatCard({ label, value, accent }: { label: string; value: str
     </div>
   );
 }
-

@@ -3,6 +3,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getFailedCount, getPendingCount, syncQueuedSales } from '@/lib/offlineQueue';
 
+export const RECONNECT_EVENT_NAME = 'sari-pos-online-refresh';
+
+export function triggerCategory2Refresh() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(RECONNECT_EVENT_NAME));
+  }
+}
+
 export function useOfflineSync() {
   const [isOnline, setIsOnline] = useState(
     typeof window !== 'undefined' ? navigator.onLine : true
@@ -27,6 +35,7 @@ export function useOfflineSync() {
     setSyncing(true);
     try {
       await syncQueuedSales();
+      triggerCategory2Refresh();
     } finally {
       await refreshPendingCount();
       setSyncing(false);
@@ -62,6 +71,8 @@ export function useOfflineSync() {
     pendingCount,
     failedCount,
     syncing,
+    syncQueue,
+    refreshPendingCount,
     // Back-compat aliases used by sidebar
     online: isOnline,
     queuedCount: pendingCount,

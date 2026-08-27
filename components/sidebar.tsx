@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
 import { useEffect, useState } from 'react';
 import { useOfflineSync } from '@/lib/useOfflineSync';
-import type { QueuedSale } from '@/lib/offlineQueue';
+import type { QueuedCategory1Action } from '@/lib/offlineQueue';
 import { ShiftDetails, fetchActiveShift } from '@/lib/api/shift';
 import Image from 'next/image';
 import {
@@ -56,8 +56,8 @@ export function Sidebar() {
   const [mounted, setMounted] = useState(false);
   const [activeShift, setActiveShift] = useState<ShiftDetails | null>(null);
   const [showSyncModal, setShowSyncModal] = useState(false);
-  const [queuedItems, setQueuedItems] = useState<QueuedSale[]>([]);
-  const { online, queuedCount, failedCount, syncing } = useOfflineSync();
+  const [queuedItems, setQueuedItems] = useState<QueuedCategory1Action[]>([]);
+  const { online, queuedCount, failedCount, syncing, syncQueue } = useOfflineSync();
 
   const role = mounted && session?.user?.role ? session.user.role : 'cashier';
   const displayName = mounted ? session?.user?.name ?? '...' : '...';
@@ -73,6 +73,53 @@ export function Sidebar() {
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const nav = mounted ? activeNav : CASHIER_NAV;
+
+  const openModal = async () => {
+    setShowSyncModal(true);
+    const { getAllQueuedCategory1Actions } = await import('@/lib/offlineQueue');
+    const actions = await getAllQueuedCategory1Actions();
+    setQueuedItems(actions);
+  };
+
+  const statusPill = (
+    <button
+      type="button"
+      onClick={openModal}
+      className="hover:opacity-80 transition cursor-pointer text-left"
+    >
+      <span
+        className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full ${
+          syncing
+            ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
+            : online && queuedCount === 0
+            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+            : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+        }`}
+      >
+        <span
+          className={`mr-1.5 h-2 w-2 rounded-full ${
+            syncing
+              ? 'bg-sky-400 animate-pulse'
+              : online && queuedCount === 0
+              ? 'bg-emerald-400'
+              : 'bg-amber-400'
+          }`}
+        />
+        {syncing
+          ? '🔵 Syncing...'
+          : online && queuedCount === 0
+          ? '🟢 Online'
+          : online
+          ? `🟢 Online (${queuedCount} queued)`
+          : `🟡 Offline (${queuedCount} queued)`}
+      </span>
+      {failedCount > 0 ? (
+        <span className="ml-1 inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40">
+          ⚠️ {failedCount} failed
+        </span>
+      ) : null}
+    </button>
+  );
 
   return (
     <>
@@ -138,31 +185,7 @@ export function Sidebar() {
                   Shift Open
                 </span>
               )}
-              {mounted ? (
-                <button
-                  type="button"
-                  onClick={async () => {
-                    setShowSyncModal(true);
-                    const { getPendingSales, getSyncFailedSales } = await import('@/lib/offlineQueue');
-                    const pending = await getPendingSales();
-                    const failed = await getSyncFailedSales();
-                    setQueuedItems([...pending, ...failed]);
-                  }}
-                  className="hover:opacity-80 transition cursor-pointer text-left"
-                >
-                  <span
-                    className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full ${syncing ? 'bg-sky-100 text-sky-800' : online ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}
-                  >
-                    <span className={`mr-1.5 h-2 w-2 rounded-full ${syncing ? 'bg-sky-500 animate-pulse' : online ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                    {syncing ? 'Syncing...' : online ? `Online (${queuedCount} queued)` : `Offline (${queuedCount} queued)`}
-                  </span>
-                  {failedCount > 0 ? (
-                    <span className="ml-1 inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800">
-                      {failedCount} failed
-                    </span>
-                  ) : null}
-                </button>
-              ) : (
+              {mounted ? statusPill : (
                 <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-500">
                   <span className="mr-2 h-2.5 w-2.5 rounded-full bg-slate-500" />
                   Loading
@@ -249,29 +272,7 @@ export function Sidebar() {
                   <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
                     {role.toUpperCase()}
                   </span>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      setShowSyncModal(true);
-                      const { getPendingSales, getSyncFailedSales } = await import('@/lib/offlineQueue');
-                      const pending = await getPendingSales();
-                      const failed = await getSyncFailedSales();
-                      setQueuedItems([...pending, ...failed]);
-                    }}
-                    className="hover:opacity-80 transition cursor-pointer text-left"
-                  >
-                    <span
-                      className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full ${syncing ? 'bg-sky-100 text-sky-800' : online ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}
-                    >
-                      <span className={`mr-1.5 h-2 w-2 rounded-full ${syncing ? 'bg-sky-500 animate-pulse' : online ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                      {syncing ? 'Syncing...' : online ? `Online (${queuedCount} queued)` : `Offline (${queuedCount} queued)`}
-                    </span>
-                    {failedCount > 0 ? (
-                      <span className="ml-1 inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800">
-                        {failedCount} failed
-                      </span>
-                    ) : null}
-                  </button>
+                  {statusPill}
                 </div>
               </div>
 
@@ -306,40 +307,61 @@ export function Sidebar() {
         </div>
       )}
 
-      {/* Sync Review Panel Modal */}
+      {/* Category 1 Sync Review Panel Modal */}
       {showSyncModal && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center z-50 p-4">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 font-sans text-slate-100">
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
               <h3 className="font-bold text-base text-slate-100 flex items-center gap-2">
-                <span>🔄</span> Offline Queue & Sync Review
+                <span>🔄</span> Category 1 Offline Queue &amp; Sync Review
               </h3>
               <button onClick={() => setShowSyncModal(false)} className="text-slate-400 hover:text-white">✕</button>
             </div>
 
             <div className="text-xs text-slate-400 flex justify-between items-center bg-slate-950 p-3 rounded-xl border border-slate-800">
               <div>Status: <strong className={online ? 'text-emerald-400' : 'text-amber-400'}>{online ? '🟢 Connected' : '🟡 Offline Mode'}</strong></div>
-              <div>Queued Actions: <strong className="text-cyan-300">{queuedCount}</strong></div>
+              <div>Category 1 Queued: <strong className="text-cyan-300">{queuedCount}</strong></div>
             </div>
 
             <div className="space-y-2 max-h-60 overflow-y-auto pr-1 text-xs">
               {queuedItems.length === 0 ? (
-                <p className="text-slate-500 text-center py-6">No pending offline actions in queue. All data synced!</p>
+                <p className="text-slate-500 text-center py-6">No pending Category 1 offline actions in queue. All data synced!</p>
               ) : (
-                queuedItems.map((item, idx) => (
-                  <div key={idx} className="bg-slate-950/80 border border-slate-800 p-3 rounded-xl space-y-1">
-                    <div className="flex justify-between font-bold">
-                      <span className="text-slate-200">POS Sale Transaction</span>
-                      <span className={item.syncFailed ? 'text-rose-400' : item.synced ? 'text-emerald-400' : 'text-amber-300'}>
-                        {item.syncFailed ? '⚠️ Sync Failed' : item.synced ? '✓ Synced' : '🟡 Pending Sync'}
-                      </span>
+                queuedItems.map((item, idx) => {
+                  const title =
+                    item.type === 'pos_sale'
+                      ? 'POS Complete Sale'
+                      : item.type === 'add_utang'
+                      ? 'Utang — Add Utang'
+                      : 'Utang — Record Payment';
+
+                  const detail =
+                    item.type === 'pos_sale'
+                      ? `Items: ${item.payload.items?.length || 0} · Method: ${item.payload.paymentMethod}`
+                      : item.type === 'add_utang'
+                      ? `Customer: ${item.payload.customerName} · Items: ${item.payload.items?.length || 0}`
+                      : `Customer: ${item.payload.customerName} · Amount: ₱${item.payload.amount?.toFixed(2) || '0.00'}`;
+
+                  return (
+                    <div key={idx} className="bg-slate-950/80 border border-slate-800 p-3 rounded-xl space-y-1">
+                      <div className="flex justify-between font-bold">
+                        <span className="text-slate-200">{title}</span>
+                        <span className={item.syncFailed ? 'text-rose-400' : item.synced ? 'text-emerald-400' : 'text-amber-300'}>
+                          {item.syncFailed ? '⚠️ Sync Failed (Admin Review)' : item.synced ? '✓ Synced' : '🟡 Pending Sync'}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-400 flex justify-between">
+                        <span>{detail}</span>
+                        <span>{new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+                      {item.errorMessage && (
+                        <div className="text-[10px] text-rose-300 bg-rose-950/40 p-1.5 rounded border border-rose-800/40">
+                          {item.errorMessage}
+                        </div>
+                      )}
                     </div>
-                    <div className="text-[11px] text-slate-400 flex justify-between">
-                      <span>Amount: ₱{item.tendered?.toFixed(2) || '0.00'} · Method: {item.paymentMethod}</span>
-                      <span>{new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
 
@@ -347,10 +369,9 @@ export function Sidebar() {
               <button
                 type="button"
                 onClick={async () => {
-                  const { syncQueuedSales } = await import('@/lib/offlineQueue');
-                  await syncQueuedSales();
-                  const { getPendingSales, getSyncFailedSales } = await import('@/lib/offlineQueue');
-                  setQueuedItems([...(await getPendingSales()), ...(await getSyncFailedSales())]);
+                  await syncQueue();
+                  const { getAllQueuedCategory1Actions } = await import('@/lib/offlineQueue');
+                  setQueuedItems(await getAllQueuedCategory1Actions());
                 }}
                 disabled={!online || syncing}
                 className="flex-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl py-2 text-xs font-semibold transition disabled:opacity-50"

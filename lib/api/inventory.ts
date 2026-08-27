@@ -1,4 +1,17 @@
-import { cachedGet, getLowStockOffline, getTransactionsOffline, getUtangEntriesOffline, getExpensesOffline, getItemLogOffline, getReportsOffline, getSettingsOffline, queueOrFetch, getCachedUsers, saveUsers } from '@/lib/api/offline';
+import {
+  getLowStockOffline,
+  getTransactionsOffline,
+  getUtangEntriesOffline,
+  getExpensesOffline,
+  getItemLogOffline,
+  getReportsOffline,
+  getSettingsOffline,
+  getCachedUsers,
+  saveUsers,
+  cachedGet,
+} from '@/lib/api/offline';
+import { queueAddUtang, queueUtangPayment } from '@/lib/offlineQueue';
+import { updateCachedProductStock } from '@/lib/offline';
 
 interface Expense {
   id: number;
@@ -19,22 +32,38 @@ interface InventoryUser {
   deleted?: boolean;
 }
 
-// Low Stock
+function checkOnlineOrThrow() {
+  if (typeof window !== 'undefined' && !navigator.onLine) {
+    throw new Error('This action requires an internet connection');
+  }
+}
+
+// Low Stock (Category 2)
 export async function getLowStock() {
   return getLowStockOffline();
 }
 
+// Restock (Category 3 - Blocked offline)
 export async function restockProduct(data: {
   productId: number;
   quantity: number;
   supplier?: string;
   costPerUnit?: number;
 }) {
-  const result = await queueOrFetch('/api/restock', 'POST', data, 'restock-product');
-  return result.data;
+  checkOnlineOrThrow();
+  const res = await fetch('/api/restock', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to restock product');
+  }
+  return res.json();
 }
 
-// Orders / Transactions
+// Orders / Transactions (Category 2 Read-Only, Category 3 Void)
 export async function getTransactions<T = Record<string, unknown>>(): Promise<T[]> {
   return getTransactionsOffline<T>();
 }
@@ -51,11 +80,17 @@ export async function addCustomer(data: {
   email?: string;
   notes?: string;
 }) {
-  const result = await queueOrFetch('/api/customers', 'POST', data, 'add-customer');
-  if (result.offlineQueued) {
-    return result.data;
+  checkOnlineOrThrow();
+  const res = await fetch('/api/customers', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to add customer');
   }
-  return result.data;
+  return res.json();
 }
 
 export async function updateCustomer(id: number, data: {
@@ -64,19 +99,35 @@ export async function updateCustomer(id: number, data: {
   email?: string;
   notes?: string;
 }) {
-  const result = await queueOrFetch(`/api/customers/${id}`, 'PATCH', data, 'update-customer');
-  return result.data;
-}
-
-export async function voidTransaction(id: number, reason: string, adminUsername?: string, adminPassword?: string) {
-  const result = await queueOrFetch(`/api/transactions/${id}/void`, 'POST', { reason, adminUsername, adminPassword }, 'void-transaction');
-  if (result.offlineQueued) {
-    return result.data;
+  checkOnlineOrThrow();
+  const res = await fetch(`/api/customers/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to update customer');
   }
-  return result.data;
+  return res.json();
 }
 
-// Utang / Credit
+// Void Order (Category 3 - Blocked offline)
+export async function voidTransaction(id: number, reason: string, adminUsername?: string, adminPassword?: string) {
+  checkOnlineOrThrow();
+  const res = await fetch(`/api/transactions/${id}/void`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason, adminUsername, adminPassword }),
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to void transaction');
+  }
+  return res.json();
+}
+
+// Utang / Credit (Category 1 Full Offline Queue for Add & Pay)
 export async function getUtangEntries<T = Record<string, unknown>>(): Promise<T[]> {
   return getUtangEntriesOffline<T>();
 }
@@ -86,22 +137,60 @@ export async function addUtang(data: {
   items: Array<{ productId: number; quantity: number; unitPrice: number }>;
   note?: string;
 }) {
-  const result = await queueOrFetch('/api/utang', 'POST', data, 'add-utang');
-  if (result.offlineQueued) {
-    return result.data;
+  if (typeof window !== 'undefined' && !navigator.onLine) {
+    await queueAddUtang(data);
+    await updateCachedProductStock(data.items);
+    const totalAmount = data.items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
+    return {
+      id: Date.now(),
+      customer: { name: data.customerName },
+      totalAmount,
+      amountPaid: 0,
+      remainingBalance: totalAmount,
+      note: data.note ?? null,
+      status: 'unpaid',
+      createdAt: new Date().toISOString(),
+      offline: true,
+    };
   }
-  return result.data;
+
+  const res = await fetch('/api/utang', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to add utang');
+  }
+  return res.json();
 }
 
-export async function recordUtangPayment(data: { customerName: string; amount: number; note?: string }) {
-  const result = await queueOrFetch('/api/utang/payment', 'POST', data, 'utang-payment');
-  if (result.offlineQueued) {
-    return result.data;
+export async function recordUtangPayment(data: { customerName: string; amount: number; note?: string; expectedBalance?: number }) {
+  if (typeof window !== 'undefined' && !navigator.onLine) {
+    await queueUtangPayment(data);
+    return {
+      id: Date.now(),
+      amount: data.amount,
+      note: data.note ?? null,
+      createdAt: new Date().toISOString(),
+      offline: true,
+    };
   }
-  return result.data;
+
+  const res = await fetch('/api/utang/payment', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ customerName: data.customerName, amount: data.amount, note: data.note }),
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to record payment');
+  }
+  return res.json();
 }
 
-// Users (Admin only)
+// Users (Category 3 - Blocked offline)
 export async function getUsers<T = InventoryUser>(): Promise<T[]> {
   return cachedGet<T[]>(
     () => getCachedUsers<T>(),
@@ -123,11 +212,17 @@ export async function addUser(data: {
   password: string;
   role: 'admin' | 'cashier';
 }): Promise<InventoryUser> {
-  const result = await queueOrFetch<InventoryUser>('/api/users', 'POST', data, 'add-user');
-  if (result.offlineQueued) {
-    return { id: Date.now(), ...data, status: 'pending' };
+  checkOnlineOrThrow();
+  const res = await fetch('/api/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to add user');
   }
-  return result.data!;
+  return res.json();
 }
 
 export async function updateUser(id: number, data: {
@@ -137,36 +232,68 @@ export async function updateUser(id: number, data: {
   status?: string;
   newPassword?: string;
 }): Promise<InventoryUser> {
-  const result = await queueOrFetch<InventoryUser>(`/api/users/${id}`, 'PATCH', data, 'update-user');
-  return result.data!;
+  checkOnlineOrThrow();
+  const res = await fetch(`/api/users/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to update user');
+  }
+  return res.json();
 }
 
 export async function deleteUser(id: number): Promise<void> {
-  await queueOrFetch<{ id: number; deleted: boolean }>(`/api/users/${id}`, 'DELETE', null, 'delete-user');
+  checkOnlineOrThrow();
+  const res = await fetch(`/api/users/${id}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to delete user');
+  }
 }
 
 export async function deactivateUser(id: number): Promise<void> {
-  await queueOrFetch<{ id: number; status: 'inactive' }>(`/api/users/${id}`, 'PATCH', { status: 'inactive' }, 'deactivate-user');
+  return updateUser(id, { status: 'inactive' }).then(() => undefined);
 }
 
-// Settings
+// Settings (Category 3 - Blocked offline)
 export async function getSettings<T = Record<string, unknown>>(): Promise<T> {
   return getSettingsOffline<T>();
 }
 
 export async function updateSettings(data: object) {
-  const result = await queueOrFetch('/api/settings', 'PATCH', data, 'update-settings');
-  return result.data;
+  checkOnlineOrThrow();
+  const res = await fetch('/api/settings', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to update settings');
+  }
+  return res.json();
 }
 
-// Expenses
+// Expenses (Category 3 - Blocked offline)
 export async function getExpenses(): Promise<Expense[]> {
   return getExpensesOffline<Expense>();
 }
 
 export async function addExpense(data: { type: string; amount: number; period: string; note?: string }) {
-  const result = await queueOrFetch('/api/expenses', 'POST', data, 'add-expense');
-  return result.data;
+  checkOnlineOrThrow();
+  const res = await fetch('/api/expenses', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to add expense');
+  }
+  return res.json();
 }
 
 // Item Log

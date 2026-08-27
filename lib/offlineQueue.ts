@@ -1,11 +1,36 @@
 import Dexie, { Table } from 'dexie';
 
+export type Category1ActionType = 'pos_sale' | 'add_utang' | 'record_payment';
+
 export interface QueuedSaleItem {
   productId: number;
   quantity: number;
   unitPrice: number;
 }
 
+export interface QueuedActionPayload {
+  // POS Sale & Add Utang items
+  items?: QueuedSaleItem[];
+  paymentMethod?: 'cash' | 'gcash' | string;
+  tendered?: number;
+  customerId?: number | null;
+  customerName?: string;
+  note?: string;
+  amount?: number;
+  expectedBalance?: number;
+}
+
+export interface QueuedCategory1Action {
+  id?: number;
+  type: Category1ActionType;
+  payload: QueuedActionPayload;
+  createdAt: string;
+  synced: boolean;
+  syncFailed?: boolean;
+  errorMessage?: string;
+}
+
+// Back-compat interface for existing components reading queued sales
 export interface QueuedSale {
   id?: number;
   items: QueuedSaleItem[];
@@ -18,74 +43,223 @@ export interface QueuedSale {
 }
 
 class OfflineQueueDB extends Dexie {
-  queuedSales!: Table<QueuedSale, number>;
+  queuedActions!: Table<QueuedCategory1Action, number>;
 
   constructor() {
-    super('SariSariOfflineQueue');
-    this.version(1).stores({ queuedSales: '++id, createdAt, synced, syncFailed' });
+    super('SariSariOfflineQueueV2');
+    this.version(1).stores({
+      queuedActions: '++id, type, createdAt, synced, syncFailed',
+    });
   }
 }
 
 const db = new OfflineQueueDB();
-
 export const offlineDb = db;
 
-export async function queueSale(sale: Omit<QueuedSale, 'id' | 'synced' | 'syncFailed'>) {
-  return db.queuedSales.add({ ...sale, synced: false, syncFailed: false });
+// Category 1 Queueing Functions
+export async function queueCategory1Action(
+  type: Category1ActionType,
+  payload: QueuedActionPayload
+): Promise<number> {
+  return db.queuedActions.add({
+    type,
+    payload,
+    createdAt: new Date().toISOString(),
+    synced: false,
+    syncFailed: false,
+  });
 }
 
-export async function getPendingSales(): Promise<QueuedSale[]> {
-  const sales = await db.queuedSales.toArray();
-  return sales.filter((s) => !s.synced).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+export async function queueSale(sale: {
+  items: QueuedSaleItem[];
+  paymentMethod: string;
+  tendered: number;
+  customerId?: number | null;
+  createdAt?: string;
+}): Promise<number> {
+  return db.queuedActions.add({
+    type: 'pos_sale',
+    payload: {
+      items: sale.items,
+      paymentMethod: sale.paymentMethod,
+      tendered: sale.tendered,
+      customerId: sale.customerId ?? null,
+    },
+    createdAt: sale.createdAt || new Date().toISOString(),
+    synced: false,
+    syncFailed: false,
+  });
+}
+
+export async function queueAddUtang(utang: {
+  customerName: string;
+  items: QueuedSaleItem[];
+  note?: string;
+}): Promise<number> {
+  return queueCategory1Action('add_utang', {
+    customerName: utang.customerName,
+    items: utang.items,
+    note: utang.note,
+  });
+}
+
+export async function queueUtangPayment(payment: {
+  customerName: string;
+  amount: number;
+  note?: string;
+  expectedBalance?: number;
+}): Promise<number> {
+  return queueCategory1Action('record_payment', {
+    customerName: payment.customerName,
+    amount: payment.amount,
+    note: payment.note,
+    expectedBalance: payment.expectedBalance,
+  });
+}
+
+// Queries
+export async function getPendingActions(): Promise<QueuedCategory1Action[]> {
+  const actions = await db.queuedActions.toArray();
+  return actions
+    .filter((a) => !a.synced && !a.syncFailed)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+export async function getAllQueuedCategory1Actions(): Promise<QueuedCategory1Action[]> {
+  const actions = await db.queuedActions.toArray();
+  return actions.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
 export async function getPendingCount(): Promise<number> {
-  const sales = await db.queuedSales.toArray();
-  return sales.filter((s) => !s.synced).length;
-}
-
-export async function getSyncFailedSales(): Promise<QueuedSale[]> {
-  const sales = await db.queuedSales.toArray();
-  return sales.filter((s) => s.syncFailed).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const actions = await db.queuedActions.toArray();
+  return actions.filter((a) => !a.synced && !a.syncFailed).length;
 }
 
 export async function getFailedCount(): Promise<number> {
-  const sales = await db.queuedSales.toArray();
-  return sales.filter((s) => s.syncFailed).length;
+  const actions = await db.queuedActions.toArray();
+  return actions.filter((a) => a.syncFailed).length;
 }
 
-export async function markSaleSynced(id: number) {
-  await db.queuedSales.update(id, { synced: true, syncFailed: false });
+export async function getPendingSales(): Promise<QueuedSale[]> {
+  const actions = await db.queuedActions.toArray();
+  return actions
+    .filter((a) => a.type === 'pos_sale' && !a.synced)
+    .map((a) => ({
+      id: a.id,
+      items: a.payload.items || [],
+      paymentMethod: a.payload.paymentMethod || 'cash',
+      tendered: a.payload.tendered || 0,
+      customerId: a.payload.customerId,
+      createdAt: a.createdAt,
+      synced: a.synced,
+      syncFailed: a.syncFailed,
+    }));
 }
 
-export async function markSaleFailed(id: number) {
-  await db.queuedSales.update(id, { syncFailed: true });
+export async function getSyncFailedSales(): Promise<QueuedSale[]> {
+  const actions = await db.queuedActions.toArray();
+  return actions
+    .filter((a) => a.type === 'pos_sale' && a.syncFailed)
+    .map((a) => ({
+      id: a.id,
+      items: a.payload.items || [],
+      paymentMethod: a.payload.paymentMethod || 'cash',
+      tendered: a.payload.tendered || 0,
+      customerId: a.payload.customerId,
+      createdAt: a.createdAt,
+      synced: a.synced,
+      syncFailed: a.syncFailed,
+    }));
 }
 
-export async function clearFailedSale(id: number) {
-  await db.queuedSales.delete(id);
+export async function markActionSynced(id: number) {
+  await db.queuedActions.update(id, { synced: true, syncFailed: false, errorMessage: undefined });
 }
 
+export async function markActionFailed(id: number, errorMsg?: string) {
+  await db.queuedActions.update(id, { syncFailed: true, errorMessage: errorMsg || 'Sync failed' });
+}
+
+export async function clearQueuedAction(id: number) {
+  await db.queuedActions.delete(id);
+}
+
+// Category 1 Sync Executor
 export async function syncQueuedSales() {
   if (typeof window === 'undefined' || !navigator.onLine) return;
-  const pending = await getPendingSales();
-  for (const sale of pending) {
+
+  const pending = await db.queuedActions.toArray();
+  const toSync = pending.filter((a) => !a.synced).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+  for (const action of toSync) {
+    if (!action.id) continue;
     try {
-      const res = await fetch('/api/pos/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: sale.items, paymentMethod: sale.paymentMethod, tendered: sale.tendered, customerId: sale.customerId }),
-      });
-      if (res.ok) {
-        await markSaleSynced(sale.id!);
-      } else {
-        await markSaleFailed(sale.id!);
+      if (action.type === 'pos_sale') {
+        const res = await fetch('/api/pos/checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items: action.payload.items,
+            paymentMethod: action.payload.paymentMethod,
+            tendered: action.payload.tendered,
+            customerId: action.payload.customerId,
+          }),
+        });
+        if (res.ok) {
+          await markActionSynced(action.id);
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          await markActionFailed(action.id, errData.error || `HTTP ${res.status}`);
+        }
+      } else if (action.type === 'add_utang') {
+        const res = await fetch('/api/utang', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customerName: action.payload.customerName,
+            items: action.payload.items,
+            note: action.payload.note,
+          }),
+        });
+        if (res.ok) {
+          await markActionSynced(action.id);
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          await markActionFailed(action.id, errData.error || `HTTP ${res.status}`);
+        }
+      } else if (action.type === 'record_payment') {
+        const res = await fetch('/api/utang/payment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customerName: action.payload.customerName,
+            amount: action.payload.amount,
+            note: action.payload.note,
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          // Check if expected balance changed unexpectedly
+          if (
+            action.payload.expectedBalance !== undefined &&
+            data.result?.unallocatedRemainder &&
+            data.result.unallocatedRemainder > 0
+          ) {
+            // Flag syncFailed for manual Admin review due to unexpected remaining balance mismatch
+            await markActionFailed(action.id, 'Balance changed unexpectedly while offline. Flagged for Admin review.');
+          } else {
+            await markActionSynced(action.id);
+          }
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          await markActionFailed(action.id, errData.error || `HTTP ${res.status}`);
+        }
       }
     } catch (err) {
-      // network blip — leave for next retry
+      // Network blip — leave for next retry round
     }
   }
 }
 
 export default db;
-

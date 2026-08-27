@@ -1,9 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { getReports } from '@/lib/api/inventory';
 import { useRealtime } from '@/lib/use-realtime';
+import { getCategory2Cache, saveCategory2Cache } from '@/lib/localStorageCache';
+import { CachedDataBanner } from '@/components/CachedDataBanner';
+import { RECONNECT_EVENT_NAME } from '@/lib/useOfflineSync';
 
 interface ReportData {
   totalRevenue: number;
@@ -19,21 +22,49 @@ export default function DashboardClient() {
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [isCached, setIsCached] = useState(false);
+  const [cachedTime, setCachedTime] = useState<string | null>(null);
+  const [isOffline, setIsOffline] = useState(false);
 
-  async function loadReports(selectedRange: 'week' | 'month' | 'all') {
+  const loadReports = useCallback(async (selectedRange: 'week' | 'month' | 'all') => {
     setLoading(true);
     setError('');
+    const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
+    setIsOffline(offlineNow);
+
     try {
-      const reportData = await getReports<ReportData>(selectedRange);
-      setData(reportData);
+      if (offlineNow) {
+        const cached = getCategory2Cache<ReportData>(`dashboard_${selectedRange}`);
+        if (cached.data) {
+          setData(cached.data);
+          setIsCached(true);
+          setCachedTime(cached.formattedTime || cached.cachedAt);
+        } else {
+          throw new Error('Offline and no cached snapshot available');
+        }
+      } else {
+        const reportData = await getReports<ReportData>(selectedRange);
+        setData(reportData);
+        saveCategory2Cache(`dashboard_${selectedRange}`, reportData);
+        setIsCached(false);
+        setCachedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }));
+      }
     } catch (err) {
       console.error('Failed to fetch reports:', err);
-      setError(err instanceof Error ? err.message : 'Unable to load reports');
-      setData(null);
+      // Fallback to cache if network error
+      const cached = getCategory2Cache<ReportData>(`dashboard_${selectedRange}`);
+      if (cached.data) {
+        setData(cached.data);
+        setIsCached(true);
+        setCachedTime(cached.formattedTime || cached.cachedAt);
+      } else {
+        setError(err instanceof Error ? err.message : 'Unable to load reports');
+        setData(null);
+      }
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
   useRealtime({
     transactions: () => void loadReports(range),
@@ -44,16 +75,28 @@ export default function DashboardClient() {
   });
 
   useEffect(() => {
-    const fetchReports = async () => {
-      await loadReports(range);
-    };
-    void fetchReports();
-  }, [range]);
+    void loadReports(range);
+
+    function handleReconnect() {
+      void loadReports(range);
+    }
+
+    window.addEventListener(RECONNECT_EVENT_NAME, handleReconnect);
+    return () => window.removeEventListener(RECONNECT_EVENT_NAME, handleReconnect);
+  }, [range, loadReports]);
 
   const lowStockCount = data?.stockLevels.filter((s) => s.status === 'Critical').length ?? 0;
 
   return (
     <div className="space-y-6">
+      <CachedDataBanner
+        cachedAt={cachedTime}
+        formattedTime={cachedTime}
+        isOffline={isOffline}
+        isCached={isCached}
+        onRefresh={() => loadReports(range)}
+      />
+
       <section className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-6 shadow-[0_24px_80px_-46px_rgba(0,0,0,0.85)] backdrop-blur-xl">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-3">

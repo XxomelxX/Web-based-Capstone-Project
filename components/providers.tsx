@@ -13,5 +13,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
     installOfflineSync();
   }, []);
 
-  return <SessionProvider>{children}</SessionProvider>;
+  return (
+    <SessionProvider refetchOnWindowFocus={false} refetchWhenOffline={false}>
+      {children}
+    </SessionProvider>
+  );
 }

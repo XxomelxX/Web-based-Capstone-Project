@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { getUsers, addUser, updateUser, deleteUser, deactivateUser } from '@/lib/api/inventory';
 import { useRealtime } from '@/lib/use-realtime';
@@ -21,19 +21,48 @@ export default function UsersClient() {
   const [editName, setEditName] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [editError, setEditError] = useState('');
+  const [isOffline, setIsOffline] = useState(false);
 
-  function refresh() {
-    getUsers<User>().then(setUsers);
-  }
+  const refresh = useCallback(() => {
+    const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
+    setIsOffline(offlineNow);
+    getUsers<User>().then(setUsers).catch(() => {});
+  }, []);
 
   useRealtime({
     users: refresh,
   });
 
-  useEffect(refresh, []);
+  useEffect(() => {
+    refresh();
+    function handleOnlineChange() {
+      setIsOffline(typeof window !== 'undefined' && !navigator.onLine);
+    }
+    window.addEventListener('online', handleOnlineChange);
+    window.addEventListener('offline', handleOnlineChange);
+    return () => {
+      window.removeEventListener('online', handleOnlineChange);
+      window.removeEventListener('offline', handleOnlineChange);
+    };
+  }, [refresh]);
+
+  function checkOnlineOrSetError(setErrFn: (msg: string) => void): boolean {
+    if (typeof window !== 'undefined' && !navigator.onLine) {
+      setErrFn('This action requires an internet connection');
+      return false;
+    }
+    return true;
+  }
+
+  function openAdd() {
+    if (!checkOnlineOrSetError(setError)) return;
+    setError('');
+    setShowModal(true);
+  }
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
+    if (!checkOnlineOrSetError(setError)) return;
     setError('');
     try {
       await addUser(form);
@@ -47,6 +76,7 @@ export default function UsersClient() {
 
   async function handleEdit() {
     if (!editTarget) return;
+    if (!checkOnlineOrSetError(setEditError)) return;
     setEditError('');
     try {
       await updateUser(editTarget.id, { fullName: editName, newPassword: newPassword || undefined });
@@ -62,14 +92,23 @@ export default function UsersClient() {
   }
 
   function openEdit(u: User) {
+    if (!checkOnlineOrSetError(setError)) return;
     setEditTarget(u);
     setEditName(u.fullName);
     setNewPassword('');
     setEditError('');
   }
 
+  function openDelete(u: User) {
+    if (!checkOnlineOrSetError(setError)) return;
+    setDeleteTarget(u);
+    setDeleteError('');
+    setCanDeactivate(false);
+  }
+
   async function handleDelete() {
     if (!deleteTarget) return;
+    if (!checkOnlineOrSetError(setDeleteError)) return;
     setDeleteError('');
     setCanDeactivate(false);
     try {
@@ -87,6 +126,7 @@ export default function UsersClient() {
 
   async function handleDeactivate() {
     if (!deleteTarget) return;
+    if (!checkOnlineOrSetError(setDeleteError)) return;
     try {
       await deactivateUser(deleteTarget.id);
       setDeleteTarget(null);
@@ -98,142 +138,158 @@ export default function UsersClient() {
     }
   }
 
+  if (!isAdmin) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-bold text-white">Page Not Available</h1>
+        <p className="text-slate-400 text-sm">User management is only available to store administrators.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
+      {isOffline && (
+        <div className="p-3 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-semibold">
+          ⚠️ User Account Management is disabled while offline. (Category 3 Security Risk)
+        </div>
+      )}
+
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold">User Management</h1>
-          <p className="text-sm text-gray-500">{users.length} users registered</p>
+          <h1 className="text-2xl font-bold text-white">User Accounts</h1>
+          <p className="text-sm text-slate-400">Manage cashier and admin accounts</p>
         </div>
-        <button onClick={() => setShowModal(true)} className="bg-green-700 text-white rounded-md px-4 py-2 text-sm">+ Add User</button>
+        <button
+          onClick={openAdd}
+          disabled={isOffline}
+          className="bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold transition"
+        >
+          + Add User
+        </button>
       </div>
 
-      <div className="bg-white rounded-xl shadow overflow-hidden overflow-x-auto">
+      {error && <p className="text-sm text-rose-400 bg-rose-950/40 border border-rose-800/50 rounded-md px-3 py-2">{error}</p>}
+
+      <div className="bg-slate-950/80 border border-slate-800 rounded-xl shadow overflow-hidden overflow-x-auto">
         <table className="min-w-full text-sm">
-          <thead className="bg-gray-50 text-left text-gray-500">
+          <thead className="bg-slate-900 text-left text-slate-400">
             <tr>
-              <th className="p-3">User</th><th className="p-3">Email</th><th className="p-3">Role</th><th className="p-3">Status</th><th className="p-3">Joined</th>
-              {isAdmin && <th className="p-3">Actions</th>}
+              <th className="p-3">Full Name</th>
+              <th className="p-3">Username</th>
+              <th className="p-3">Email</th>
+              <th className="p-3">Role</th>
+              <th className="p-3">Status</th>
+              <th className="p-3">Actions</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-slate-800 text-slate-200">
             {users.map((u) => (
-              <tr key={u.id} className="border-t">
-                <td className="p-3">{u.fullName}</td>
-                <td className="p-3">{u.email}</td>
+              <tr key={u.id} className="hover:bg-slate-900/50">
+                <td className="p-3 font-medium text-slate-100">{u.fullName}</td>
+                <td className="p-3 text-cyan-400">@{u.username}</td>
+                <td className="p-3 text-slate-400">{u.email}</td>
                 <td className="p-3">
-                  <span className={`text-xs px-2 py-1 rounded-full ${u.role === 'admin' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-600'}`}>{u.role}</span>
-                </td>
-                <td className="p-3">
-                  <span className={`text-xs px-2 py-1 rounded-full ${u.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                    {u.status}
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-bold uppercase ${u.role === 'admin' ? 'bg-amber-500/20 text-amber-300' : 'bg-slate-800 text-slate-300'}`}>
+                    {u.role}
                   </span>
                 </td>
-                <td className="p-3">{new Date(u.createdAt).toLocaleDateString()}</td>
-                {isAdmin && (
-                  <td className="p-3">
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => openEdit(u)} className="text-gray-500 hover:text-blue-600 transition" title="Edit user name">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5" />
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
-                        </svg>
-                      </button>
-                      {u.id !== Number(session?.user?.id) && (
-                        <button onClick={() => { setDeleteTarget(u); setDeleteError(''); setCanDeactivate(false); }} className="text-gray-500 hover:text-red-600 transition" title="Delete user">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                )}
+                <td className="p-3">
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${u.status === 'inactive' ? 'bg-rose-500/20 text-rose-300' : 'bg-emerald-500/20 text-emerald-300'}`}>
+                    {u.status || 'active'}
+                  </span>
+                </td>
+                <td className="p-3 space-x-2">
+                  <button onClick={() => openEdit(u)} disabled={isOffline} className="text-xs text-cyan-400 hover:underline disabled:opacity-40">Edit</button>
+                  <button onClick={() => openDelete(u)} disabled={isOffline} className="text-xs text-rose-400 hover:underline disabled:opacity-40">Delete</button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
+      {/* Add User Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <form onSubmit={handleAdd} className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
-            <div className="flex justify-between"><h3 className="font-bold text-lg">Add new user</h3><button type="button" onClick={() => setShowModal(false)}>×</button></div>
-            {error && <p className="text-sm text-red-600">{error}</p>}
-            <div>
-              <label className="text-sm font-medium">Full Name</label>
-              <input required value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} className="w-full border rounded-md px-3 py-2 mt-1" />
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <form onSubmit={handleAdd} className="bg-slate-900 border border-slate-700 rounded-xl shadow-xl max-w-md w-full p-6 space-y-4 text-slate-200">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="font-bold text-lg text-white">Add New User</h3>
+              <button type="button" onClick={() => setShowModal(false)} className="text-slate-400 hover:text-white">✕</button>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="text-sm font-medium">Username</label>
-                <input required value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} className="w-full border rounded-md px-3 py-2 mt-1" />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Email</label>
-                <input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full border rounded-md px-3 py-2 mt-1" />
-              </div>
+            {error && <p className="text-sm text-rose-400">{error}</p>}
+            <div>
+              <label className="text-sm font-medium text-slate-300">Full Name</label>
+              <input required value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-cyan-500 mt-1" />
             </div>
             <div>
-              <label className="text-sm font-medium">Password</label>
-              <input required type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="w-full border rounded-md px-3 py-2 mt-1" />
+              <label className="text-sm font-medium text-slate-300">Username</label>
+              <input required value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-cyan-500 mt-1" />
             </div>
             <div>
-              <label className="text-sm font-medium">Role</label>
-              <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as 'admin' | 'cashier' })} className="w-full border rounded-md px-3 py-2 mt-1">
+              <label className="text-sm font-medium text-slate-300">Email</label>
+              <input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-cyan-500 mt-1" />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-300">Password</label>
+              <input required type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-cyan-500 mt-1" />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-300">Role</label>
+              <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as 'admin' | 'cashier' })} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-cyan-500 mt-1">
                 <option value="cashier">Cashier</option>
                 <option value="admin">Admin</option>
               </select>
             </div>
             <div className="flex gap-2 justify-end pt-2">
-              <button type="button" onClick={() => setShowModal(false)} className="border rounded-md px-4 py-2 text-sm">Cancel</button>
-              <button type="submit" className="bg-green-700 text-white rounded-md px-4 py-2 text-sm">Create user</button>
+              <button type="button" onClick={() => setShowModal(false)} className="border border-slate-700 rounded-xl px-4 py-2 text-sm text-slate-300 hover:bg-slate-800">Cancel</button>
+              <button type="submit" disabled={isOffline} className="bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold">Create Account</button>
             </div>
           </form>
         </div>
       )}
 
+      {/* Edit User Modal */}
       {editTarget && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-4">
-            <div className="flex justify-between items-center"><h3 className="font-bold text-lg">Edit User</h3><button type="button" onClick={() => { setEditTarget(null); setNewPassword(''); }}>×</button></div>
-            <p className="text-sm text-gray-600">Update the user details and optionally reset their password.</p>
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-xl max-w-md w-full p-6 space-y-4 text-slate-200">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="font-bold text-lg text-white">Edit User: @{editTarget.username}</h3>
+              <button onClick={() => setEditTarget(null)} className="text-slate-400 hover:text-white">✕</button>
+            </div>
+            {editError && <p className="text-sm text-rose-400">{editError}</p>}
             <div>
-              <label className="text-sm font-medium">Full Name</label>
-              <input value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full border rounded-md px-3 py-2 mt-1" />
+              <label className="text-sm font-medium text-slate-300">Full Name</label>
+              <input value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-cyan-500 mt-1" />
             </div>
             <div>
-              <label className="text-sm font-medium">Reset Password (optional)</label>
-              <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Leave blank to keep current password" className="w-full border rounded-md px-3 py-2 mt-1" />
-              <p className="text-xs text-gray-400 mt-1">Only fill this in if the cashier forgot their password.</p>
+              <label className="text-sm font-medium text-slate-300">New Password (leave blank to keep current)</label>
+              <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-cyan-500 mt-1" />
             </div>
-            {editError && <p className="text-sm text-red-600">{editError}</p>}
             <div className="flex gap-2 justify-end pt-2">
-              <button onClick={() => { setEditTarget(null); setNewPassword(''); }} className="border rounded-md px-4 py-2 text-sm">Cancel</button>
-              <button onClick={handleEdit} className="bg-blue-700 text-white rounded-md px-4 py-2 text-sm">Save</button>
+              <button onClick={() => setEditTarget(null)} className="border border-slate-700 rounded-xl px-4 py-2 text-sm text-slate-300 hover:bg-slate-800">Cancel</button>
+              <button onClick={handleEdit} disabled={isOffline} className="bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold">Save Changes</button>
             </div>
           </div>
         </div>
       )}
 
+      {/* Delete User Modal */}
       {deleteTarget && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-4">
-            <h3 className="font-bold text-lg">Delete User</h3>
-            <p className="text-sm text-gray-600">Are you sure you want to delete <strong>{deleteTarget.fullName}</strong>?</p>
-
-            {deleteError && (
-              <div className="bg-red-50 border border-red-200 rounded-md p-3">
-                <p className="text-sm text-red-700">{deleteError}</p>
-              </div>
-            )}
-
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-xl max-w-md w-full p-6 space-y-4 text-slate-200">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="font-bold text-lg text-white">Delete User: {deleteTarget.fullName}</h3>
+              <button onClick={() => setDeleteTarget(null)} className="text-slate-400 hover:text-white">✕</button>
+            </div>
+            {deleteError && <p className="text-sm text-rose-400">{deleteError}</p>}
+            <p className="text-sm text-slate-300">Are you sure you want to delete user <strong>@{deleteTarget.username}</strong>?</p>
             <div className="flex gap-2 justify-end pt-2">
-              <button onClick={() => setDeleteTarget(null)} className="border rounded-md px-4 py-2 text-sm">Cancel</button>
+              <button onClick={() => setDeleteTarget(null)} className="border border-slate-700 rounded-xl px-4 py-2 text-sm text-slate-300 hover:bg-slate-800">Cancel</button>
               {canDeactivate ? (
-                <button onClick={handleDeactivate} className="bg-orange-500 text-white rounded-md px-4 py-2 text-sm">Deactivate Instead</button>
+                <button onClick={handleDeactivate} disabled={isOffline} className="bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold">Deactivate User</button>
               ) : (
-                <button onClick={handleDelete} className="bg-red-600 text-white rounded-md px-4 py-2 text-sm">Delete</button>
+                <button onClick={handleDelete} disabled={isOffline} className="bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold">Delete Account</button>
               )}
             </div>
           </div>

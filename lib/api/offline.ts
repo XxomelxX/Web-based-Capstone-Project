@@ -259,11 +259,16 @@ export async function checkoutOffline(
     const data = (await response.json()) as CheckoutResult;
     return { ...data, offline: false };
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+
     const isNetworkError =
       error instanceof TypeError ||
-      (error instanceof Error && /failed to fetch|network|offline/i.test(error.message));
+      /failed to fetch|network|offline/i.test(message);
 
-    if (typeof window !== 'undefined' && isNetworkError) {
+    const isDatabaseUnreachable =
+      /can't reach database server|connection refused|econnrefused|timeout|p1001/i.test(message);
+
+    if (typeof window !== 'undefined' && (isNetworkError || isDatabaseUnreachable)) {
       await queueSale({
         items,
         paymentMethod,

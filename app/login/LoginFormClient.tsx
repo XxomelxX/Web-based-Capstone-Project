@@ -15,6 +15,12 @@ export default function LoginFormClient() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+
+    if (typeof window !== 'undefined' && !navigator.onLine) {
+      setError('This action requires an internet connection');
+      return;
+    }
+
     setLoading(true);
 
     const result = await signIn('credentials', {
