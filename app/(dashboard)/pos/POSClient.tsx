@@ -353,7 +353,7 @@ export default function POSClient() {
         {receipt && (
           <ReceiptModal
             receipt={receipt}
-            cashierName={session?.user?.name ?? ''}
+            cashierName={user?.name ?? ''}
             storeName={settings.storeName}
             storeAddress={settings.address ?? ''}
             onClose={() => setReceipt(null)}
