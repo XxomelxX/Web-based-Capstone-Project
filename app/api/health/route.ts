@@ -10,8 +10,24 @@ export async function GET() {
     );
 
     await Promise.race([dbTest, timeout]);
-    return NextResponse.json({ status: 'ok', online: true }, { status: 200 });
+    return NextResponse.json(
+      { status: 'ok', online: true, timestamp: Date.now() },
+      {
+        status: 200,
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        },
+      }
+    );
   } catch {
-    return NextResponse.json({ status: 'offline', online: false }, { status: 503 });
+    return NextResponse.json(
+      { status: 'offline', online: false },
+      {
+        status: 503,
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        },
+      }
+    );
   }
 }
