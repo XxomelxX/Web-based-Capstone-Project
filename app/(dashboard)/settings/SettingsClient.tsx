@@ -109,9 +109,9 @@ export default function SettingsClient() {
         <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4">
           <h3 className="font-semibold flex items-center gap-2 mb-2 text-white">👤 Account</h3>
           <p className="text-xs text-slate-400">Signed in as</p>
-          <p className="font-medium text-slate-100">{session?.user?.name}</p>
+          <p className="font-medium text-slate-100">{user?.name ?? 'Store User'}</p>
           <p className="text-xs text-slate-400 mt-2">Role</p>
-          <p className="font-medium uppercase text-xs text-cyan-400">{session?.user?.role}</p>
+          <p className="font-medium uppercase text-xs text-cyan-400">{user?.role ?? 'Cashier'}</p>
         </div>
 
         {isAdmin && (

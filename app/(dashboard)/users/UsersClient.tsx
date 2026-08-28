@@ -83,7 +83,7 @@ export default function UsersClient() {
       setEditTarget(null);
       setNewPassword('');
       refresh();
-      if (editTarget.id === Number(session?.user?.id)) {
+      if (editTarget.id === Number(user?.id)) {
         window.location.reload();
       }
     } catch (err) {

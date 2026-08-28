@@ -38,7 +38,7 @@ export function useCurrentUser(): { user: CurrentUser | null; status: 'loading' 
         id: session.user.id,
         name: session.user.name ?? '',
         role: session.user.role ?? 'cashier',
-        username: session.user.username,
+        username: (session.user as unknown as { username?: string }).username,
         isOfflineSession: false,
       },
       status: 'authenticated',

@@ -546,7 +546,7 @@ export default function POSClient() {
         {zReadReceipt && (
           <ZReadModal
             summary={zReadReceipt}
-            cashierName={session?.user?.name ?? ''}
+            cashierName={user?.name ?? ''}
             storeName={settings.storeName}
             onClose={() => setZReadReceipt(null)}
           />
