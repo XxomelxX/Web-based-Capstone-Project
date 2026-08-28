@@ -1,19 +1,19 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useSession } from 'next-auth/react';
 import { getSettings, updateSettings } from '@/lib/api/inventory';
 import { useRealtime } from '@/lib/use-realtime';
+import { useCurrentUser } from '@/lib/useCurrentUser';
 
 interface Settings { id: number; storeName: string; currency: string; address?: string; taxRate: number; lowStockThreshold: number }
 
 export default function SettingsClient() {
-  const { data: session } = useSession();
+  const { user } = useCurrentUser();
   const [settings, setSettings] = useState<Settings | null>(null);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
   const [isOffline, setIsOffline] = useState(false);
-  const isAdmin = session?.user?.role === 'admin';
+  const isAdmin = user?.role === 'admin';
 
   const refresh = useCallback(() => {
     const offlineNow = typeof window !== 'undefined' && !navigator.onLine;

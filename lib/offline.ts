@@ -15,6 +15,15 @@ export interface OfflineCacheEntry {
   value: unknown;
 }
 
+export interface CachedCredential {
+  username: string;
+  passwordHash: string;
+  role: 'admin' | 'cashier' | string;
+  fullName: string;
+  userId: number;
+  cachedAt: string;
+}
+
 class SariSariPOSOfflineDB extends Dexie {
   products!: Dexie.Table<Record<string, unknown>, number>;
   categories!: Dexie.Table<Record<string, unknown>, number>;
@@ -26,6 +35,7 @@ class SariSariPOSOfflineDB extends Dexie {
   settings!: Dexie.Table<OfflineCacheEntry, string>;
   reportCache!: Dexie.Table<OfflineCacheEntry, string>;
   queue!: Dexie.Table<OfflineQueuedRequest, number>;
+  cachedCredentials!: Dexie.Table<CachedCredential, string>;
 
   constructor() {
     super('SariSariPOSOffline');
@@ -40,6 +50,7 @@ class SariSariPOSOfflineDB extends Dexie {
       settings: 'key',
       reportCache: 'key',
       queue: '++id, status, action, createdAt',
+      cachedCredentials: 'username',
     });
   }
 }

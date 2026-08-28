@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useSession } from 'next-auth/react';
+import { useCurrentUser } from '@/lib/useCurrentUser';
 import { getReports } from '@/lib/api/inventory';
 import { useRealtime } from '@/lib/use-realtime';
 import { getCategory2Cache, saveCategory2Cache } from '@/lib/localStorageCache';
@@ -17,7 +17,7 @@ interface ReportData {
 }
 
 export default function DashboardClient() {
-  const { data: session } = useSession();
+  const { user } = useCurrentUser();
   const [range, setRange] = useState<'week' | 'month' | 'all'>('all');
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -101,7 +101,7 @@ export default function DashboardClient() {
         <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-3">
             <p className="text-xs font-semibold uppercase tracking-[0.32em] text-cyan-300/80">Retail insights</p>
-            <h1 className="text-3xl font-semibold tracking-tight text-white">Welcome back, {session?.user?.name ?? 'Store Manager'}</h1>
+            <h1 className="text-3xl font-semibold tracking-tight text-white">Welcome back, {user?.name ?? 'Store Manager'}</h1>
             <p className="max-w-2xl text-sm leading-6 text-slate-400">
               A professional summary of store performance, stock health, and sales trends for the selected reporting period.
             </p>

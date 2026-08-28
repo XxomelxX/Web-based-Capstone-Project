@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useSession } from 'next-auth/react';
+import { useCurrentUser } from '@/lib/useCurrentUser';
 import { getProducts, Product } from '@/lib/api/products';
 import { checkout, CheckoutResult } from '@/lib/api/pos';
 import { getSettings } from '@/lib/api/inventory';
@@ -19,7 +19,7 @@ interface StoreSettings {
 }
 
 export default function POSClient() {
-  const { data: session } = useSession();
+  const { user } = useCurrentUser();
   const [products, setProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [search, setSearch] = useState('');

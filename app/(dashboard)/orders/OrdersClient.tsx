@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useSession } from 'next-auth/react';
 import { getTransactions, voidTransaction } from '@/lib/api/inventory';
 import { useRealtime } from '@/lib/use-realtime';
 import { getCategory2Cache, saveCategory2Cache } from '@/lib/localStorageCache';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
 import { RECONNECT_EVENT_NAME } from '@/lib/useOfflineSync';
+import { useCurrentUser } from '@/lib/useCurrentUser';
 
 interface OrderItem { productId: number; quantity: number; unitPrice: number; lineTotal: number; product: { name: string } }
 interface Order {
@@ -15,7 +15,7 @@ interface Order {
 }
 
 export default function OrdersClient() {
-  const { data: session } = useSession();
+  const { user } = useCurrentUser();
   const [orders, setOrders] = useState<Order[]>([]);
   const [viewing, setViewing] = useState<Order | null>(null);
   const [voiding, setVoiding] = useState<Order | null>(null);
@@ -216,7 +216,7 @@ export default function OrdersClient() {
               <input required value={reason} onChange={(e) => setReason(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-cyan-500 mt-1" placeholder="e.g. Wrong item scanned" />
             </div>
 
-            {session?.user?.role === 'cashier' && (
+            {user?.role === 'cashier' && (
               <div className="bg-amber-950/30 border border-amber-800/40 rounded-xl p-3 space-y-2">
                 <div className="text-xs font-semibold text-amber-300 flex items-center gap-1">
                   <span>🔒</span> Supervisor Credentials Required

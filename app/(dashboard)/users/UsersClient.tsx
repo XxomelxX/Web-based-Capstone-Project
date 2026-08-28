@@ -1,15 +1,15 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useSession } from 'next-auth/react';
 import { getUsers, addUser, updateUser, deleteUser, deactivateUser } from '@/lib/api/inventory';
 import { useRealtime } from '@/lib/use-realtime';
+import { useCurrentUser } from '@/lib/useCurrentUser';
 
 interface User { id: number; fullName: string; username: string; email: string; role: string; status: string; createdAt: string }
 
 export default function UsersClient() {
-  const { data: session } = useSession();
-  const isAdmin = session?.user?.role === 'admin';
+  const { user } = useCurrentUser();
+  const isAdmin = user?.role === 'admin';
   const [users, setUsers] = useState<User[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState({ fullName: '', username: '', email: '', password: '', role: 'cashier' as 'admin' | 'cashier' });

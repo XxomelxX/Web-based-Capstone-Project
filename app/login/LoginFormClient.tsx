@@ -2,8 +2,10 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
-import { signIn } from 'next-auth/react';
+import { getSession, signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import bcrypt from 'bcryptjs';
+import { db } from '@/lib/offline';
 
 export default function LoginFormClient() {
   const router = useRouter();
@@ -15,30 +17,89 @@ export default function LoginFormClient() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    const cleanUsername = username.trim().toLowerCase();
 
+    // --- 1. OFFLINE LOGIN FLOW ---
     if (typeof window !== 'undefined' && !navigator.onLine) {
-      setError('This action requires an internet connection');
-      return;
+      setLoading(true);
+      try {
+        const cached = await db.cachedCredentials.get(cleanUsername);
+
+        if (!cached) {
+          setError(
+            'This account has never logged in on this device while online. Please connect to the internet once to enable offline login.'
+          );
+          setLoading(false);
+          return;
+        }
+
+        const passwordMatches = await bcrypt.compare(password, cached.passwordHash);
+        if (!passwordMatches) {
+          setError('Incorrect username or password.');
+          setLoading(false);
+          return;
+        }
+
+        // Store offline session locally — preserves exact cached role ('admin' or 'cashier')
+        sessionStorage.setItem(
+          'offlineSession',
+          JSON.stringify({
+            id: cached.userId,
+            name: cached.fullName,
+            username: cached.username,
+            role: cached.role,
+          })
+        );
+
+        setLoading(false);
+        router.push('/dashboard');
+        return;
+      } catch (err) {
+        console.error('Offline authentication error:', err);
+        setError('Offline authentication failed.');
+        setLoading(false);
+        return;
+      }
     }
 
+    // --- 2. ONLINE LOGIN FLOW ---
     setLoading(true);
 
     const result = await signIn('credentials', {
-      username,
+      username: cleanUsername,
       password,
       redirect: false,
       callbackUrl: '/dashboard',
     });
 
-    setLoading(false);
-
     if (!result || !result.ok) {
+      setLoading(false);
       setError(
         `Invalid username or password. ${result?.error ? `(${result.error})` : ''}`
       );
       return;
     }
 
+    // On successful online login, clear old offline session and cache fresh credentials
+    sessionStorage.removeItem('offlineSession');
+    try {
+      const session = await getSession();
+      if (session?.user) {
+        const localHash = await bcrypt.hash(password, 10);
+        await db.cachedCredentials.put({
+          username: cleanUsername,
+          passwordHash: localHash,
+          role: (session.user.role as 'admin' | 'cashier') || 'cashier',
+          fullName: session.user.name || username,
+          userId: Number(session.user.id || 0),
+          cachedAt: new Date().toISOString(),
+        });
+      }
+    } catch (cacheErr) {
+      console.warn('Failed to cache user credentials locally:', cacheErr);
+    }
+
+    setLoading(false);
     const destination = result.url ?? '/dashboard';
     router.push(destination);
   }

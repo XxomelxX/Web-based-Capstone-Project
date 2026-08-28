@@ -26,6 +26,8 @@ import {
   X,
 } from 'lucide-react';
 
+import { useCurrentUser } from '@/lib/useCurrentUser';
+
 const ADMIN_NAV = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/pos', label: 'POS', icon: ShoppingCart },
@@ -52,7 +54,7 @@ const CASHIER_NAV = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { data: session } = useSession();
+  const { user } = useCurrentUser();
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -61,11 +63,18 @@ export function Sidebar() {
   const [queuedItems, setQueuedItems] = useState<QueuedCategory1Action[]>([]);
   const { online, queuedCount, failedCount, syncing, syncQueue } = useOfflineSync();
 
-  const role = mounted && session?.user?.role ? session.user.role : 'cashier';
-  const displayName = mounted ? session?.user?.name ?? '...' : '...';
+  const role = mounted && user?.role ? user.role : 'cashier';
+  const displayName = mounted ? user?.name ?? '...' : '...';
   const activeNav = role === 'admin' ? ADMIN_NAV : CASHIER_NAV;
 
   const userDisplayName = displayName;
+
+  const handleLogout = () => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('offlineSession');
+    }
+    signOut({ callbackUrl: '/login' });
+  };
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
@@ -215,7 +224,7 @@ export function Sidebar() {
                   Cancel
                 </button>
                 <button
-                  onClick={() => signOut({ callbackUrl: '/login' })}
+                  onClick={handleLogout}
                   className="flex-1 bg-purple-600 text-white rounded-md py-1 text-xs"
                 >
                   Logout
@@ -298,7 +307,7 @@ export function Sidebar() {
                       Cancel
                     </button>
                     <button
-                      onClick={() => signOut({ callbackUrl: '/login' })}
+                      onClick={handleLogout}
                       className="flex-1 bg-purple-600 text-white rounded-md py-1 text-xs"
                     >
                       Logout
