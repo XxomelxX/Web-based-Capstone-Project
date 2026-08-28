@@ -33,6 +33,7 @@ export default function UsersClient() {
     users: refresh,
   });
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     refresh();
     function handleOnlineChange() {

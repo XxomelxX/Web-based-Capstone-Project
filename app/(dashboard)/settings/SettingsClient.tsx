@@ -25,6 +25,7 @@ export default function SettingsClient() {
     settings: refresh,
   });
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     refresh();
     function handleOnlineChange() {

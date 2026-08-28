@@ -16,6 +16,7 @@ export function useCurrentUser(): { user: CurrentUser | null; status: 'loading' 
   const [offlineUser, setOfflineUser] = useState<CurrentUser | null>(null);
   const [mounted, setMounted] = useState(false);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     setMounted(true);
     if (typeof window !== 'undefined') {

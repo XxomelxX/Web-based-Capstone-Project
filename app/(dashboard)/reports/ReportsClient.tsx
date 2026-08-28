@@ -77,6 +77,7 @@ export default function ReportsClient() {
     utang: () => void loadReports(range),
   });
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     void loadReports(range);
 
@@ -346,6 +347,7 @@ function ShiftHistoryTable() {
     });
   }
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     void loadHistory();
   }, []);

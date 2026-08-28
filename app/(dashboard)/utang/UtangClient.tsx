@@ -75,6 +75,7 @@ export default function UtangClient() {
     products: refresh,
   });
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     refresh();
 

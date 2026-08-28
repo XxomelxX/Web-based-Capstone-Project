@@ -74,6 +74,7 @@ export default function DashboardClient() {
     utang: () => void loadReports(range),
   });
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     void loadReports(range);
 

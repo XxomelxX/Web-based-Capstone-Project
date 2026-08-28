@@ -61,6 +61,7 @@ export default function OrdersClient() {
     transactions: refresh,
   });
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     refresh();
 

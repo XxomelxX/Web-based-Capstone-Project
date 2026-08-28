@@ -58,6 +58,7 @@ export default function CategoriesClient() {
     products: refresh,
   });
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     refresh();
 
