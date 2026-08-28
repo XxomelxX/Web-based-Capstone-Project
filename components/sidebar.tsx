@@ -22,6 +22,8 @@ import {
   BarChart3,
   Users,
   Settings,
+  Menu,
+  X,
 } from 'lucide-react';
 
 const ADMIN_NAV = [
@@ -123,10 +125,10 @@ export function Sidebar() {
 
   return (
     <>
-      <div className="lg:hidden bg-slate-950/65 backdrop-blur-md border-b border-slate-800/50 p-4 flex items-center justify-between">
+      <div className="lg:hidden sticky top-0 z-40 bg-slate-950/90 backdrop-blur-md border-b border-slate-800/80 p-3.5 flex items-center justify-between">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-24 h-16 flex items-center justify-center overflow-hidden rounded-lg bg-black">
-            <Image src="/1130f5ee-b20d-41b4-89c5-23c877b4d396.jpg" alt="Sari-Sari POS" width={96} height={64} className="object-contain" />
+          <div className="w-10 h-10 flex items-center justify-center overflow-hidden rounded-lg bg-black shrink-0 border border-slate-800">
+            <Image src="/1130f5ee-b20d-41b4-89c5-23c877b4d396.jpg" alt="Sari-Sari POS" width={40} height={40} className="object-contain" />
           </div>
           <div className="min-w-0">
             <div className="font-bold text-sm leading-tight text-slate-100 truncate">Sari-Sari POS</div>
@@ -136,9 +138,10 @@ export function Sidebar() {
         <button
           type="button"
           onClick={() => setMobileOpen((open) => !open)}
-          className="rounded-md border border-slate-700 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800"
+          className="rounded-lg border border-slate-700 p-2 text-slate-200 hover:bg-slate-800 transition"
+          aria-label="Toggle navigation menu"
         >
-          {mobileOpen ? 'Close' : 'Menu'}
+          {mobileOpen ? <X size={20} /> : <Menu size={20} />}
         </button>
       </div>
 
@@ -224,12 +227,13 @@ export function Sidebar() {
       </aside>
 
       {mobileOpen && (
-        <div className="lg:hidden fixed inset-0 z-50 bg-black/40 backdrop-blur-sm">
-          <div className="absolute left-0 top-0 h-full w-72 bg-slate-950/80 backdrop-blur-xl border-r border-slate-800/50 p-4 flex flex-col">
+        <div className="lg:hidden fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
+          <div className="absolute left-0 top-0 h-full w-72 bg-slate-950/95 backdrop-blur-xl border-r border-slate-800/80 p-4 flex flex-col z-10 shadow-2xl">
             <div className="flex items-center justify-between mb-4 gap-3">
               <div className="flex items-center gap-3 min-w-0">
-                <div className="w-32 h-20 flex items-center justify-center overflow-hidden rounded-xl bg-black shrink-0">
-                  <Image src="/1130f5ee-b20d-41b4-89c5-23c877b4d396.jpg" alt="Sari-Sari POS" width={128} height={80} className="object-contain" />
+                <div className="w-12 h-12 flex items-center justify-center overflow-hidden rounded-xl bg-black shrink-0 border border-slate-800">
+                  <Image src="/1130f5ee-b20d-41b4-89c5-23c877b4d396.jpg" alt="Sari-Sari POS" width={48} height={48} className="object-contain" />
                 </div>
                 <div className="min-w-0">
                   <div className="font-bold text-sm leading-tight text-slate-100 truncate">Sari-Sari POS</div>
@@ -239,9 +243,9 @@ export function Sidebar() {
               <button
                 type="button"
                 onClick={() => setMobileOpen(false)}
-                className="rounded-md border border-slate-700 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 shrink-0"
+                className="rounded-lg border border-slate-700 p-2 text-slate-200 hover:bg-slate-800 shrink-0"
               >
-                Close
+                <X size={20} />
               </button>
             </div>
 

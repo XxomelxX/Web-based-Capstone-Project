@@ -98,7 +98,7 @@ export default function ItemLogClient() {
       </div>
 
       <div className="bg-white rounded-xl shadow overflow-hidden overflow-x-auto">
-        <table className="min-w-full text-sm">
+        <table className="min-w-[600px] w-full text-sm">
           <thead className="bg-gray-50 text-left text-gray-500">
             <tr><th className="p-3">Date</th><th className="p-3">Product</th><th className="p-3">Action</th><th className="p-3">Quantity</th><th className="p-3">Performed By</th></tr>
           </thead>

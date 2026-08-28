@@ -201,7 +201,7 @@ export default function UtangClient() {
         {customers.length === 0 ? (
           <p className="text-sm text-slate-500 text-center py-6">No customers yet.</p>
         ) : (
-          <table className="min-w-full text-sm">
+          <table className="min-w-[500px] w-full text-sm">
             <thead className="text-left text-slate-400">
               <tr>
                 <th className="py-2">Customer</th>
@@ -231,7 +231,7 @@ export default function UtangClient() {
         {entries.length === 0 ? (
           <p className="text-sm text-slate-500 text-center py-6">No entries.</p>
         ) : (
-          <table className="min-w-full text-sm">
+          <table className="min-w-[500px] w-full text-sm">
             <thead className="text-left text-slate-400">
               <tr>
                 <th className="py-2">Date</th>

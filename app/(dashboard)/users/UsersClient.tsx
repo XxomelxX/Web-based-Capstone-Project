@@ -172,7 +172,7 @@ export default function UsersClient() {
       {error && <p className="text-sm text-rose-400 bg-rose-950/40 border border-rose-800/50 rounded-md px-3 py-2">{error}</p>}
 
       <div className="bg-slate-950/80 border border-slate-800 rounded-xl shadow overflow-hidden overflow-x-auto">
-        <table className="min-w-full text-sm">
+        <table className="min-w-[600px] w-full text-sm">
           <thead className="bg-slate-900 text-left text-slate-400">
             <tr>
               <th className="p-3">Full Name</th>

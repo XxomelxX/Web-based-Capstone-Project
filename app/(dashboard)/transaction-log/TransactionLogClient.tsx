@@ -89,7 +89,7 @@ export default function TransactionLogClient() {
       </div>
 
       <div className="bg-white rounded-xl shadow overflow-hidden overflow-x-auto">
-        <table className="min-w-full text-sm">
+        <table className="min-w-[600px] w-full text-sm">
           <thead className="bg-gray-50 text-left text-gray-500">
             <tr><th className="p-3">Order#</th><th className="p-3">Date/Time</th><th className="p-3">Cashier</th><th className="p-3">Payment</th><th className="p-3">Total</th><th className="p-3">Status</th></tr>
           </thead>

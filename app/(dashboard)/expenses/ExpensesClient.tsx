@@ -145,7 +145,7 @@ export default function ExpensesClient() {
       </div>
 
       <div className="bg-slate-950/80 border border-slate-800 rounded-xl shadow overflow-hidden overflow-x-auto">
-        <table className="min-w-full text-sm">
+        <table className="min-w-[500px] w-full text-sm">
           <thead className="bg-slate-900 text-left text-slate-400">
             <tr><th className="p-3">Type</th><th className="p-3">Amount</th><th className="p-3">Period</th><th className="p-3">Notes</th><th className="p-3">Date Added</th></tr>
           </thead>

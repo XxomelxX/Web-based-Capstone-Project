@@ -396,7 +396,7 @@ function ShiftHistoryTable() {
   return (
     <div className="space-y-4">
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm text-slate-300 border-collapse">
+        <table className="w-full min-w-[750px] text-left text-sm text-slate-300 border-collapse">
           <thead>
             <tr className="border-b border-slate-800 text-xs font-semibold uppercase text-slate-400">
               <th className="pb-3 px-2">Cashier</th>
