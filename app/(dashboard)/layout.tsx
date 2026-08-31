@@ -1,10 +1,14 @@
-import { Sidebar } from '@/components/sidebar';
+import { TopNavbar } from '@/components/TopNavbar';
+import { MobileTopBar } from '@/components/MobileTopBar';
+import { BottomTabBar } from '@/components/BottomTabBar';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex flex-col lg:flex-row min-h-screen bg-transparent text-slate-100">
-      <Sidebar />
-      <main className="flex-1 min-w-0 bg-slate-950/40 p-4 lg:p-8 overflow-x-auto backdrop-blur-md">{children}</main>
+    <div className="min-h-screen bg-green-50">
+      <TopNavbar />
+      <MobileTopBar />
+      <main className="p-4 md:p-8 pb-24 md:pb-8">{children}</main>
+      <BottomTabBar />
     </div>
   );
 }

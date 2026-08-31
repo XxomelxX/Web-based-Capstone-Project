@@ -12,10 +12,12 @@ model User {
   fullName     String
   username     String   @unique
   email        String   @unique
-  passwordHash String
-  role         String   // "admin" | "cashier"
-  status       String   @default("active")
-  createdAt    DateTime @default(now())
+  passwordHash    String
+  role            String   // "admin" | "cashier"
+  status          String   @default("active")
+  resetToken      String?
+  resetTokenExpiry DateTime?
+  createdAt       DateTime @default(now())
 
   transactions Transaction[]
   itemLogs     ItemLog[]

@@ -7,6 +7,24 @@ import { useRouter } from 'next/navigation';
 import bcrypt from 'bcryptjs';
 import { db } from '@/lib/offline';
 
+async function checkRealConnectivity(): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+  if (!navigator.onLine) return false;
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
+    const res = await fetch('/api/health', {
+      method: 'GET',
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export default function LoginFormClient() {
   const router = useRouter();
   const [username, setUsername] = useState('');
@@ -18,10 +36,12 @@ export default function LoginFormClient() {
     e.preventDefault();
     setError('');
     const cleanUsername = username.trim().toLowerCase();
+    setLoading(true);
+
+    const reallyOnline = await checkRealConnectivity();
 
     // --- 1. OFFLINE LOGIN FLOW ---
-    if (typeof window !== 'undefined' && !navigator.onLine) {
-      setLoading(true);
+    if (!reallyOnline) {
       try {
         const cached = await db.cachedCredentials.get(cleanUsername);
 
@@ -63,45 +83,51 @@ export default function LoginFormClient() {
     }
 
     // --- 2. ONLINE LOGIN FLOW ---
-    setLoading(true);
-
-    const result = await signIn('credentials', {
-      username: cleanUsername,
-      password,
-      redirect: false,
-      callbackUrl: '/dashboard',
-    });
-
-    if (!result || !result.ok) {
-      setLoading(false);
-      setError(
-        `Invalid username or password. ${result?.error ? `(${result.error})` : ''}`
-      );
-      return;
-    }
-
-    // On successful online login, clear old offline session and cache fresh credentials
-    sessionStorage.removeItem('offlineSession');
     try {
-      const session = await getSession();
-      if (session?.user) {
-        const localHash = await bcrypt.hash(password, 10);
-        await db.cachedCredentials.put({
-          username: cleanUsername,
-          passwordHash: localHash,
-          role: (session.user.role as 'admin' | 'cashier') || 'cashier',
-          fullName: session.user.name || username,
-          userId: Number(session.user.id || 0),
-          cachedAt: new Date().toISOString(),
-        });
-      }
-    } catch (cacheErr) {
-      console.warn('Failed to cache user credentials locally:', cacheErr);
-    }
+      const result = await signIn('credentials', {
+        username: cleanUsername,
+        password,
+        redirect: false,
+        callbackUrl: '/dashboard',
+      });
 
-    setLoading(false);
-    const destination = result.url ?? '/dashboard';
-    router.push(destination);
+      if (!result || !result.ok) {
+        setLoading(false);
+        setError(
+          `Invalid username or password. ${result?.error ? `(${result.error})` : ''}`
+        );
+        return;
+      }
+
+      // On successful online login, clear old offline session and cache fresh credentials
+      sessionStorage.removeItem('offlineSession');
+      try {
+        const session = await getSession();
+        if (session?.user) {
+          const localHash = await bcrypt.hash(password, 10);
+          await db.cachedCredentials.put({
+            username: cleanUsername,
+            passwordHash: localHash,
+            role: (session.user.role as 'admin' | 'cashier') || 'cashier',
+            fullName: session.user.name || username,
+            userId: Number(session.user.id || 0),
+            cachedAt: new Date().toISOString(),
+          });
+        }
+      } catch (cacheErr) {
+        console.warn('Failed to cache user credentials locally:', cacheErr);
+      }
+
+      setLoading(false);
+      const destination = result.url ?? '/dashboard';
+      router.push(destination);
+    } catch (networkErr) {
+      console.error('signIn() threw unexpectedly (likely actually offline):', networkErr);
+      setError(
+        'Connection lost during sign in. Please try again once you have a stable connection, or use offline login if this device has logged in before.'
+      );
+      setLoading(false);
+    }
   }
 
   return (
@@ -158,6 +184,15 @@ export default function LoginFormClient() {
           {loading ? 'Signing in...' : 'Sign in'}
         </button>
       </form>
+
+      <div className="text-center mt-4">
+        <a
+          href="/forgot-password"
+          className="text-xs text-slate-400 hover:text-cyan-400 transition"
+        >
+          Forgot Password?
+        </a>
+      </div>
     </div>
   );
 }

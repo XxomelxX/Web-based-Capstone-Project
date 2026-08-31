@@ -31,13 +31,20 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full antialiased">
+    <html lang="en" className="h-full antialiased" data-theme="dark" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('sari-sari-theme');var d=t==='light'||t==='dark'?t:'dark';document.documentElement.setAttribute('data-theme',d);}catch(e){}})();`,
+          }}
+        />
+      </head>
       <body className="min-h-full flex flex-col bg-slate-950 text-slate-100 relative">
-        <div 
+        <div
           className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat bg-fixed"
           style={{ backgroundImage: "url('/mountain.png')" }}
         />
-        <div className="fixed inset-0 z-0 bg-slate-950/45 backdrop-blur-[2px]" />
+        <div className="theme-overlay fixed inset-0 z-0 backdrop-blur-[2px]" />
         <div className="relative z-10 flex flex-col min-h-screen">
           <Providers>{children}</Providers>
         </div>

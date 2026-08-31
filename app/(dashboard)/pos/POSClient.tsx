@@ -368,9 +368,13 @@ export default function POSClient() {
                 <h3 className="font-bold text-lg text-slate-100 flex items-center gap-2">
                   <span>💼</span> Open Cash Drawer Shift
                 </h3>
-                {activeShift && (
-                  <button onClick={() => setShowOpenShiftModal(false)} className="text-slate-400 hover:text-slate-200">✕</button>
-                )}
+                <button
+                  onClick={() => setShowOpenShiftModal(false)}
+                  className="text-slate-400 hover:text-slate-200 text-xl leading-none"
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
               </div>
 
               <p className="text-xs text-slate-400">
@@ -413,15 +417,13 @@ export default function POSClient() {
                 )}
 
                 <div className="flex gap-2 pt-2">
-                  {activeShift && (
-                    <button
-                      type="button"
-                      onClick={() => setShowOpenShiftModal(false)}
-                      className="flex-1 border border-slate-700 rounded-xl py-2.5 text-sm font-semibold text-slate-300 hover:bg-slate-800"
-                    >
-                      Cancel
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowOpenShiftModal(false)}
+                    className="flex-1 border border-slate-700 rounded-xl py-2.5 text-sm font-semibold text-slate-300 hover:bg-slate-800"
+                  >
+                    Cancel
+                  </button>
                   <button
                     type="submit"
                     disabled={shiftActionLoading}
