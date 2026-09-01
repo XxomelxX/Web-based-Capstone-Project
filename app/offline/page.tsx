@@ -6,14 +6,7 @@ export default function OfflinePage() {
   return (
     <div
       className="relative min-h-screen overflow-hidden bg-slate-950 text-slate-100"
-      style={{
-        backgroundImage: "url('/mountain.png')",
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat',
-      }}
     >
-      <div className="absolute inset-0 bg-slate-950/55 backdrop-blur-sm" />
       <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-12">
         <div className="w-full max-w-md rounded-2xl border border-slate-800/80 bg-slate-950/80 p-8 text-center shadow-2xl backdrop-blur-md">
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-amber-500/15 text-3xl">

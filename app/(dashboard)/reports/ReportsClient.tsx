@@ -111,12 +111,12 @@ export default function ReportsClient() {
             </p>
           </div>
 
-          <div className="inline-flex items-center gap-3 rounded-3xl border border-slate-800/80 bg-slate-900/95 px-4 py-3 text-sm text-slate-200 shadow-lg shadow-black/10">
-            <span className="text-slate-400">Report range</span>
+          <div className="inline-flex items-center gap-3 rounded-3xl border border-yellow-500 bg-yellow-400 px-4 py-3 text-sm text-gray-900 shadow-lg shadow-black/10">
+            <span className="text-gray-700">Report range</span>
             <select
               value={range}
               onChange={(e) => setRange(e.target.value as 'week' | 'month' | 'all')}
-              className="rounded-2xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-cyan-400"
+              className="rounded-2xl border border-yellow-500 bg-yellow-300 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-yellow-600"
             >
               <option value="week">This Week</option>
               <option value="month">This Month</option>

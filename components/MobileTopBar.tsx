@@ -20,7 +20,7 @@ export function MobileTopBar() {
   };
 
   return (
-    <div className="md:hidden sticky top-0 z-30 border-b flex items-center justify-between px-4 py-3">
+    <div className="md:hidden sticky top-0 z-30 border-b flex items-center justify-between px-4 py-3 bg-green-100">
       <span className="font-bold text-sm text-green-700">J &amp; J Merchandise Store</span>
       <div className="flex items-center gap-2">
         <OfflineStatusPill onClick={() => setShowSyncModal(true)} />

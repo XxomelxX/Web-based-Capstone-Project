@@ -1,29 +1,29 @@
 @import "tailwindcss";
 
 :root {
-  --background: #193882;
-  --foreground: #e2e8f0;
-  --panel: #111827;
-  --panel-alt: #1e293b;
-  --border: #334155;
+  --background: #000000;
+  --foreground: #ffffff;
+  --panel: #0a0a0a;
+  --panel-alt: #141414;
+  --border: #262626;
   --accent: #38bdf8;
   --accent-strong: #f97316;
-  --success: #86efac;
-  --warning: #fcd34d;
-  --danger: #fb7185;
-  --muted: #94a3b8;
-  --muted-strong: #cbd5e1;
+  --success: #4ade80;
+  --warning: #facc15;
+  --danger: #f87171;
+  --muted: #a3a3a3;
+  --muted-strong: #d4d4d4;
 
   /* Light-surface palette (used via [data-theme='light'] overrides) */
   --light-panel: #ffffff;
-  --light-panel-alt: #f1f5f9;
-  --light-panel-2: #e2e8f0;
-  --light-border: #cbd5e1;
-  --light-text: #0f172a;
+  --light-panel-alt: #f5f5f5;
+  --light-panel-2: #e5e5e5;
+  --light-border: #e5e5e5;
+  --light-text: #000000;
   --light-text-strong: #ffffff;
-  --light-muted: #475569;
-  --light-faint: #64748b;
-  --light-hover: #eff3f8;
+  --light-muted: #525252;
+  --light-faint: #737373;
+  --light-hover: #f5f5f5;
 }
 
 @theme inline {
@@ -48,13 +48,13 @@ select {
 
 /* Theme background surfaces (defined per theme below via [data-theme]) */
 .theme-overlay {
-  background: rgba(15, 23, 42, 0.45);
+  background: rgba(0, 0, 0, 0.45);
   -webkit-backdrop-filter: blur(2px);
   backdrop-filter: blur(2px);
 }
 
 .theme-main {
-  background: rgba(2, 6, 23, 0.4);
+  background: rgba(0, 0, 0, 0.4);
 }
 
 /* ======================= DARK THEME (default) ======================= */
@@ -62,9 +62,9 @@ select {
   input,
   select,
   textarea {
-    background-color: #0f172a;
-    color: #e2e8f0;
-    border-color: #334155;
+    background-color: #0a0a0a;
+    color: #ffffff;
+    border-color: #262626;
   }
 
   .text-gray-800,
@@ -114,86 +114,117 @@ select {
   }
 
   .bg-white {
-    background-color: rgba(15, 23, 42, 0.5) !important;
+    background-color: rgba(10, 10, 10, 0.5) !important;
     backdrop-filter: blur(12px) !important;
     -webkit-backdrop-filter: blur(12px) !important;
-    border: 1px solid rgba(255, 255, 255, 0.05) !important;
+    border: 1px solid rgba(255, 255, 255, 0.06) !important;
   }
 
   .bg-gray-50 {
-    background-color: rgba(15, 23, 42, 0.3) !important;
+    background-color: rgba(10, 10, 10, 0.3) !important;
     backdrop-filter: blur(8px) !important;
     -webkit-backdrop-filter: blur(8px) !important;
   }
 
   .bg-gray-100 {
-    background-color: rgba(30, 41, 59, 0.3) !important;
+    background-color: rgba(20, 20, 20, 0.3) !important;
     backdrop-filter: blur(8px) !important;
     -webkit-backdrop-filter: blur(8px) !important;
   }
 
   .bg-green-50 {
-    background-color: rgba(9, 47, 28, 0.4) !important;
+    background-color: rgba(20, 30, 20, 0.4) !important;
     backdrop-filter: blur(6px) !important;
   }
 
   .bg-red-50 {
-    background-color: rgba(51, 19, 27, 0.4) !important;
+    background-color: rgba(30, 15, 18, 0.4) !important;
     backdrop-filter: blur(6px) !important;
   }
 
   .bg-red-100 {
-    background-color: rgba(75, 29, 42, 0.4) !important;
+    background-color: rgba(40, 15, 20, 0.4) !important;
     backdrop-filter: blur(6px) !important;
   }
 
   .bg-green-100 {
-    background-color: rgba(17, 50, 32, 0.4) !important;
-    backdrop-filter: blur(6px) !important;
+    background-color: #0f2a1a !important;
   }
 
   .bg-blue-100 {
-    background-color: rgba(15, 23, 42, 0.3) !important;
+    background-color: rgba(10, 15, 30, 0.3) !important;
     backdrop-filter: blur(6px) !important;
   }
 
   .bg-yellow-100 {
-    background-color: rgba(59, 53, 31, 0.4) !important;
+    background-color: rgba(30, 28, 15, 0.4) !important;
     backdrop-filter: blur(6px) !important;
   }
 
   .bg-orange-100 {
-    background-color: rgba(75, 45, 21, 0.4) !important;
+    background-color: rgba(35, 22, 10, 0.4) !important;
     backdrop-filter: blur(6px) !important;
   }
 
   .bg-orange-50 {
-    background-color: rgba(61, 31, 15, 0.4) !important;
+    background-color: rgba(30, 18, 8, 0.4) !important;
     backdrop-filter: blur(6px) !important;
   }
 
   .bg-black\/50 {
-    background-color: rgba(15, 23, 42, 0.55) !important;
+    background-color: rgba(0, 0, 0, 0.55) !important;
     backdrop-filter: blur(10px) !important;
     -webkit-backdrop-filter: blur(10px) !important;
   }
 
   /* App-shell / navbar surfaces */
+  .bg-slate-950,
+  .bg-slate-950\/95,
+  .bg-slate-950\/90,
+  .bg-slate-950\/85,
+  .bg-slate-950\/80,
+  .bg-slate-950\/75,
+  .bg-slate-950\/70,
+  .bg-slate-950\/65,
+  .bg-slate-950\/60,
+  .bg-slate-950\/55,
+  .bg-slate-950\/50,
+  .bg-slate-950\/40,
+  .bg-slate-950\/35,
+  .bg-slate-950\/30,
+  .bg-slate-950\/20,
+  .bg-slate-950\/10 {
+    background-color: #000000 !important;
+  }
+  .bg-slate-900,
+  .bg-slate-900\/80,
+  .bg-slate-900\/50 {
+    background-color: #0a0a0a !important;
+  }
+  .bg-slate-800,
+  .bg-slate-800\/90,
+  .bg-slate-800\/80,
+  .bg-slate-800\/50 {
+    background-color: #141414 !important;
+  }
+  .bg-slate-700 {
+    background-color: #1f1f1f !important;
+  }
   .bg-gray-200 {
-    background-color: #1e293b !important;
+    background-color: #141414 !important;
   }
   .bg-gray-300 {
-    background-color: #334155 !important;
+    background-color: #262626 !important;
   }
   .hover\:bg-gray-50:hover,
   .hover\:bg-gray-100:hover {
-    background-color: rgba(30, 41, 59, 0.5) !important;
+    background-color: rgba(20, 20, 20, 0.5) !important;
   }
   .bg-sky-100 {
-    background-color: rgba(8, 47, 73, 0.4) !important;
+    background-color: rgba(10, 25, 40, 0.4) !important;
   }
   .bg-amber-100 {
-    background-color: rgba(69, 56, 22, 0.4) !important;
+    background-color: rgba(35, 28, 10, 0.4) !important;
   }
   .text-sky-800 {
     color: var(--accent) !important;
@@ -213,22 +244,31 @@ select {
   .text-gray-500 {
     color: var(--muted) !important;
   }
+
+  /* Borders */
+  .border-slate-700,
+  .border-slate-800,
+  .border-slate-800\/50,
+  .border-slate-800\/80,
+  .border-slate-700\/50 {
+    border-color: var(--border) !important;
+  }
 }
 
 /* ======================= LIGHT THEME ======================= */
 [data-theme='light'] {
-  --background: #eef2f7;
-  --foreground: #0f172a;
+  --background: #ffffff;
+  --foreground: #000000;
   --panel: #ffffff;
-  --panel-alt: #f1f5f9;
-  --border: #cbd5e1;
+  --panel-alt: #f5f5f5;
+  --border: #e5e5e5;
   --accent: #0284c7;
   --accent-strong: #ea580c;
   --success: #16a34a;
   --warning: #b45309;
   --danger: #dc2626;
-  --muted: #475569;
-  --muted-strong: #334155;
+  --muted: #525252;
+  --muted-strong: #171717;
 
   body {
     background: var(--background);
@@ -239,16 +279,16 @@ select {
   select,
   textarea {
     background-color: #ffffff;
-    color: #0f172a;
-    border-color: #cbd5e1;
+    color: #000000;
+    border-color: #e5e5e5;
   }
 
   .theme-overlay {
-    background: linear-gradient(rgba(241, 245, 249, 0.82), rgba(226, 232, 240, 0.88));
+    background: rgba(255, 255, 255, 0.85);
   }
 
   .theme-main {
-    background: rgba(255, 255, 255, 0.35);
+    background: rgba(255, 255, 255, 0.5);
   }
 
   /* Primary/app text */
@@ -423,27 +463,27 @@ select {
 
   /* Generic white/gray surfaces */
   .bg-white {
-    background-color: rgba(255, 255, 255, 0.7) !important;
+    background-color: rgba(255, 255, 255, 0.9) !important;
     backdrop-filter: blur(12px) !important;
     -webkit-backdrop-filter: blur(12px) !important;
-    border: 1px solid rgba(15, 23, 42, 0.06) !important;
+    border: 1px solid rgba(0, 0, 0, 0.06) !important;
   }
   .bg-gray-50 {
-    background-color: #f8fafc !important;
+    background-color: #f9fafb !important;
   }
   .bg-gray-100 {
-    background-color: #f1f5f9 !important;
+    background-color: #f3f4f6 !important;
   }
   .bg-gray-200 {
-    background-color: #e2e8f0 !important;
+    background-color: #e5e5e5 !important;
   }
   .bg-gray-300 {
-    background-color: #cbd5e1 !important;
+    background-color: #d4d4d4 !important;
   }
   .bg-black\/50,
   .bg-black\/60,
   .bg-black\/75 {
-    background-color: rgba(15, 23, 42, 0.5) !important;
+    background-color: rgba(0, 0, 0, 0.5) !important;
   }
 
   /* Row hover, backgrounds */
@@ -455,10 +495,10 @@ select {
     background-color: var(--light-panel-alt) !important;
   }
   .hover\:bg-gray-50:hover {
-    background-color: #f8fafc !important;
+    background-color: #f9fafb !important;
   }
   .hover\:bg-gray-100:hover {
-    background-color: #f1f5f9 !important;
+    background-color: #f3f4f6 !important;
   }
 
   /* App-shell accent pills */
@@ -490,29 +530,29 @@ select {
   /* Soft status backgrounds (badges, alerts) */
   .bg-green-50,
   .bg-green-100 {
-    background-color: #dcfce7 !important;
+    background-color: #f0fdf4 !important;
   }
   .bg-red-50,
   .bg-red-100 {
-    background-color: #fee2e2 !important;
+    background-color: #fef2f2 !important;
   }
   .bg-blue-100 {
-    background-color: #dbeafe !important;
+    background-color: #eff6ff !important;
   }
   .bg-yellow-100 {
-    background-color: #fef9c3 !important;
+    background-color: #fefce8 !important;
   }
   .bg-orange-100 {
-    background-color: #ffedd5 !important;
+    background-color: #fff7ed !important;
   }
   .bg-orange-50 {
-    background-color: #fff7ed !important;
+    background-color: #fffbeb !important;
   }
 
   /* Full-viewport backdrops */
   .bg-black\/75,
   .bg-black\/60 {
-    background-color: rgba(15, 23, 42, 0.45) !important;
+    background-color: rgba(0, 0, 0, 0.45) !important;
   }
 
   ::selection {
@@ -521,5 +561,5 @@ select {
 }
 
 ::selection {
-  background: rgba(56, 189, 248, 0.3);
+  background: rgba(56, 189, 248, 0.25);
 }

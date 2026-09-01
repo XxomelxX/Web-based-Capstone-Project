@@ -61,7 +61,7 @@ export function TopNavbar() {
   };
 
   return (
-    <nav className="hidden md:flex items-center justify-between px-6 lg:px-8 py-3 border-b shadow-sm sticky top-0 z-40">
+    <nav className="hidden md:flex items-center justify-between px-6 lg:px-8 py-3 border-b shadow-sm sticky top-0 z-40 bg-green-100">
       <div className="flex items-center gap-3">
         <div className="w-9 h-9 flex items-center justify-center overflow-hidden rounded-full bg-black shrink-0">
           <Image
