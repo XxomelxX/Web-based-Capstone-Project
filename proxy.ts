@@ -1,5 +1,6 @@
 import { withAuth } from 'next-auth/middleware';
 import { NextResponse } from 'next/server';
+import type { NextFetchEvent, NextRequest } from 'next/server';
 
 const ADMIN_ONLY_PATHS = [
   '/products',
@@ -11,7 +12,7 @@ const ADMIN_ONLY_PATHS = [
   '/item-log',
 ];
 
-export default withAuth(
+const authMiddleware = withAuth(
   function middleware(req) {
     const token = req.nextauth.token;
     const path = req.nextUrl.pathname;
@@ -29,6 +30,11 @@ export default withAuth(
     },
   }
 );
+
+export function proxy(request: NextRequest, event: NextFetchEvent) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (authMiddleware as any)(request, event);
+}
 
 export const config = {
   matcher: [
