@@ -136,7 +136,7 @@ export default function CategoriesClient() {
         <button
           onClick={openAdd}
           disabled={isOffline}
-          className="bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-md px-4 py-2 text-sm font-medium transition"
+          className="bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-md px-4 py-2 text-sm font-medium transition cursor-pointer"
         >
           + Add Category
         </button>
@@ -172,7 +172,7 @@ export default function CategoriesClient() {
                         <button
                           onClick={() => openEdit(c)}
                           disabled={isOffline}
-                          className="text-slate-400 hover:text-cyan-400 disabled:opacity-40 transition"
+                          className="text-slate-400 hover:text-cyan-400 disabled:opacity-40 transition cursor-pointer"
                           title={isOffline ? 'This action requires an internet connection' : 'Edit category'}
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -204,7 +204,7 @@ export default function CategoriesClient() {
                     <button
                       onClick={() => openEdit(c)}
                       disabled={isOffline}
-                      className="text-xs text-emerald-400 font-medium hover:underline disabled:opacity-40"
+                      className="text-xs text-emerald-400 font-medium hover:underline disabled:opacity-40 cursor-pointer"
                     >
                       ↩ Unarchive (Edit)
                     </button>
@@ -221,7 +221,7 @@ export default function CategoriesClient() {
           <form onSubmit={handleSubmit} className="bg-slate-900 border border-slate-700 rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
               <h3 className="font-bold text-lg text-white">{editingCategory ? 'Edit Category' : 'New Category'}</h3>
-              <button type="button" onClick={() => setShowModal(false)} className="text-slate-400 hover:text-white">×</button>
+              <button type="button" onClick={() => setShowModal(false)} className="text-slate-400 hover:text-white cursor-pointer">×</button>
             </div>
             {isOffline && (
               <p className="text-xs text-amber-400 bg-amber-950/40 p-2 rounded border border-amber-800/40">
@@ -249,8 +249,8 @@ export default function CategoriesClient() {
               </label>
             )}
             <div className="flex gap-2 justify-end pt-2">
-              <button type="button" onClick={() => setShowModal(false)} className="border border-slate-700 rounded-xl px-4 py-2 text-sm text-slate-300 hover:bg-slate-800">Cancel</button>
-              <button type="submit" disabled={isOffline} className="bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold">
+              <button type="button" onClick={() => setShowModal(false)} className="border border-slate-700 rounded-xl px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 cursor-pointer">Cancel</button>
+              <button type="submit" disabled={isOffline} className="bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold cursor-pointer">
                 {editingCategory ? 'Save Changes' : 'Add'}
               </button>
             </div>

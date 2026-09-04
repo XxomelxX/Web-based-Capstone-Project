@@ -23,6 +23,22 @@ export async function POST(request: Request) {
     });
 
     if (!user) {
+      // Code issued to an email with no account: consume it (single-use)
+      // and explain that there is nothing to reset.
+      const stray = await prisma.passwordResetCode.findFirst({
+        where: {
+          email: email.trim().toLowerCase(),
+          code,
+          expiresAt: { gt: new Date() },
+        },
+      });
+      if (stray) {
+        await prisma.passwordResetCode.delete({ where: { id: stray.id } });
+        return NextResponse.json(
+          { error: 'No account found for this email. Please register first.' },
+          { status: 400 }
+        );
+      }
       return NextResponse.json({ error: 'Invalid or expired code.' }, { status: 400 });
     }
 

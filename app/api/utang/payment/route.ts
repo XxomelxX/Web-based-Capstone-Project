@@ -22,11 +22,9 @@ export async function POST(request: Request) {
   }
 
   try {
-    // Look up the customer outside the transaction to avoid mode:'insensitive' issues
-    const allCustomers = await prisma.customer.findMany();
-    const customer = allCustomers.find(
-      (c) => c.name.trim().toLowerCase() === customerName.trim().toLowerCase()
-    );
+    const customer = await prisma.customer.findFirst({
+      where: { name: { equals: customerName.trim(), mode: 'insensitive' } },
+    });
     if (!customer) {
       return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
     }

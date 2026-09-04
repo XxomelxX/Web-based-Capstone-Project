@@ -133,7 +133,7 @@ export default function DashboardClient() {
           <button
             type="button"
             onClick={() => loadReports(range)}
-            className="mt-4 inline-flex items-center rounded-3xl bg-rose-500 px-4 py-2 text-sm font-medium text-white hover:bg-rose-400"
+            className="mt-4 inline-flex items-center rounded-3xl bg-rose-500 px-4 py-2 text-sm font-medium text-white hover:bg-rose-400 cursor-pointer"
           >
             Retry
           </button>
@@ -198,7 +198,7 @@ export default function DashboardClient() {
                   <div key={stock.name} className="grid grid-cols-[1fr_auto_auto] gap-4 rounded-3xl border border-slate-800/80 bg-slate-900/80 px-4 py-4 text-sm text-slate-200">
                     <span className="font-medium text-slate-100">{stock.name}</span>
                     <span className="text-slate-400">{stock.stock}</span>
-                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${stock.status === 'Critical' ? 'bg-rose-500/15 text-rose-300' : 'bg-slate-700/80 text-slate-300'}`}>
+                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${stock.status === 'Critical' ? 'bg-rose-500/15 text-rose-300' : 'bg-white text-slate-700'}`}>
                       {stock.status}
                     </span>
                   </div>

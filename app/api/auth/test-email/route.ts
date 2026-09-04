@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     console.log('[test-email] Sending test email via Resend to:', email);
 
     const { data, error } = await resend.emails.send({
-      from: 'J & J Merchandise Store <onboarding@resend.dev>',
+      from: process.env.RESEND_FROM_EMAIL || 'J & J Merchandise Store <noreply@jjmerchandisestore.shop>',
       to: email,
       subject: 'Test Email — Password Reset System',
       html: `

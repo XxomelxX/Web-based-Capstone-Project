@@ -65,16 +65,16 @@ async function main() {
 
     await prisma.product.createMany({
       data: [
-        { name: 'Coca-Cola 500ml', categoryId: byName('Beverages'), price: 25, cost: 18, stock: 47, unit: 'ml', packSize: '500ml', barcode: '4801234567890' },
-        { name: 'Nescafe 3in1 Original', categoryId: byName('Beverages'), price: 10, cost: 7, stock: 200, unit: 'g', packSize: '20g' },
-        { name: 'Bear Brand Milk 33g', categoryId: byName('Dairy'), price: 18, cost: 13, stock: 65, unit: 'g', packSize: '33g' },
-        { name: 'Safeguard Soap 130g', categoryId: byName('Personal Care'), price: 45, cost: 32, stock: 5, unit: 'g', packSize: '130g' },
-        { name: 'Tide Powder 70g', categoryId: byName('Household'), price: 22, cost: 16, stock: 8, unit: 'g', packSize: '70g' },
-        { name: 'Rebisco Crackers', categoryId: byName('Snacks'), price: 8, cost: 5, stock: 95 },
-        { name: '555 Sardines Hot Chili', categoryId: byName('Canned Goods'), price: 26, cost: 19, stock: 100 },
-        { name: 'Lucky Me Pancit Canton', categoryId: byName('Noodles'), price: 15, cost: 10, stock: 120 },
-        { name: 'Skyflakes Crackers', categoryId: byName('Snacks'), price: 12, cost: 8, stock: 80 },
-        { name: 'Datu Puti Vinegar', categoryId: byName('Canned Goods'), price: 40, cost: 28, stock: 30 },
+        { name: 'Coca-Cola 500ml', categoryId: byName('Beverages'), price: 25, cost: 18, stock: 47, unit: 'ml', packSize: '500ml', barcode: '4801234567890', vatType: 'regular', expiryDate: new Date('2026-12-15') },
+        { name: 'Nescafe 3in1 Original', categoryId: byName('Beverages'), price: 10, cost: 7, stock: 200, unit: 'g', packSize: '20g', vatType: 'regular', expiryDate: new Date('2027-03-20') },
+        { name: 'Bear Brand Milk 33g', categoryId: byName('Dairy'), price: 18, cost: 13, stock: 65, unit: 'g', packSize: '33g', vatType: 'regular', expiryDate: new Date('2026-09-25') },
+        { name: 'Safeguard Soap 130g', categoryId: byName('Personal Care'), price: 45, cost: 32, stock: 5, unit: 'g', packSize: '130g', vatType: 'regular' },
+        { name: 'Tide Powder 70g', categoryId: byName('Household'), price: 22, cost: 16, stock: 8, unit: 'g', packSize: '70g', vatType: 'regular' },
+        { name: 'Rebisco Crackers', categoryId: byName('Snacks'), price: 8, cost: 5, stock: 95, vatType: 'regular', expiryDate: new Date('2026-11-10') },
+        { name: '555 Sardines Hot Chili', categoryId: byName('Canned Goods'), price: 26, cost: 19, stock: 100, vatType: 'regular', expiryDate: new Date('2028-06-01') },
+        { name: 'Lucky Me Pancit Canton', categoryId: byName('Noodles'), price: 15, cost: 10, stock: 120, vatType: 'regular', expiryDate: new Date('2027-08-15') },
+        { name: 'Skyflakes Crackers', categoryId: byName('Snacks'), price: 12, cost: 8, stock: 80, vatType: 'regular', expiryDate: new Date('2026-10-20') },
+        { name: 'Datu Puti Vinegar', categoryId: byName('Canned Goods'), price: 40, cost: 28, stock: 30, vatType: 'regular' },
       ],
     });
     console.log('Seeded categories and products.');

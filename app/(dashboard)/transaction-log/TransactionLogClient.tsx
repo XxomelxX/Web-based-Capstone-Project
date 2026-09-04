@@ -81,10 +81,10 @@ export default function TransactionLogClient() {
           <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="border rounded-md px-2 py-1 text-sm" />
         </div>
         <div className="flex gap-1">
-          <button onClick={() => applyPreset('today')} className="text-xs px-3 py-1 rounded-full border hover:bg-gray-50">Today</button>
-          <button onClick={() => applyPreset('week')} className="text-xs px-3 py-1 rounded-full border hover:bg-gray-50">This Week</button>
-          <button onClick={() => applyPreset('month')} className="text-xs px-3 py-1 rounded-full border hover:bg-gray-50">This Month</button>
-          <button onClick={() => { setDateFrom(''); setDateTo(''); }} className="text-xs px-3 py-1 rounded-full border hover:bg-gray-50 text-gray-400">Clear</button>
+          <button onClick={() => applyPreset('today')} className="text-xs px-3 py-1 rounded-full border hover:bg-gray-50 cursor-pointer">Today</button>
+          <button onClick={() => applyPreset('week')} className="text-xs px-3 py-1 rounded-full border hover:bg-gray-50 cursor-pointer">This Week</button>
+          <button onClick={() => applyPreset('month')} className="text-xs px-3 py-1 rounded-full border hover:bg-gray-50 cursor-pointer">This Month</button>
+          <button onClick={() => { setDateFrom(''); setDateTo(''); }} className="text-xs px-3 py-1 rounded-full border hover:bg-gray-50 text-gray-400 cursor-pointer">Clear</button>
         </div>
       </div>
 

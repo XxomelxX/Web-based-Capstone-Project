@@ -1,8 +1,13 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 import { broadcastRealtime } from '@/lib/realtime';
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+
   const { id: idParam } = await params;
   const id = Number(idParam);
   const data = await request.json();
@@ -24,4 +29,66 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   broadcastRealtime('customers', { action: 'updated', customer });
 
   return NextResponse.json(customer);
+}
+
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+
+  const { id: idParam } = await params;
+  const id = Number(idParam);
+  const { adminUsername, adminPassword } = await request.json();
+
+  if (!adminUsername || !adminPassword) {
+    return NextResponse.json({ error: 'Admin credentials are required to delete a customer.' }, { status: 403 });
+  }
+
+  const adminUser = await prisma.user.findUnique({
+    where: { username: adminUsername },
+  });
+
+  if (!adminUser || adminUser.status !== 'active' || adminUser.role !== 'admin') {
+    return NextResponse.json({ error: 'Invalid admin credentials.' }, { status: 403 });
+  }
+
+  const compare = (await import('bcryptjs')).compare;
+  const isValid = await compare(adminPassword, adminUser.passwordHash);
+  if (!isValid) {
+    return NextResponse.json({ error: 'Invalid admin password.' }, { status: 403 });
+  }
+
+  const customer = await prisma.customer.findUnique({
+    where: { id },
+    include: { utangEntries: { where: { status: { in: ['unpaid', 'partial'] } } } },
+  });
+
+  if (!customer) {
+    return NextResponse.json({ error: 'Customer not found.' }, { status: 404 });
+  }
+
+  if (customer.utangEntries.length > 0) {
+    return NextResponse.json({ error: 'Cannot delete customer with outstanding utang. Collect all payments first.' }, { status: 400 });
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const entryIds = (await tx.utangEntry.findMany({
+      where: { customerId: id },
+      select: { id: true },
+    })).map((e) => e.id);
+
+    if (entryIds.length > 0) {
+      await tx.paymentAllocation.deleteMany({
+        where: { utangEntryId: { in: entryIds } },
+      });
+    }
+    await tx.utangEntryItem.deleteMany({
+      where: { utangEntry: { customerId: id } },
+    });
+    await tx.utangEntry.deleteMany({ where: { customerId: id } });
+    await tx.customer.delete({ where: { id } });
+  });
+
+  broadcastRealtime('customers', { action: 'deleted', customerId: id });
+
+  return NextResponse.json({ success: true });
 }

@@ -164,7 +164,7 @@ export default function UsersClient() {
         <button
           onClick={openAdd}
           disabled={isOffline}
-          className="bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold transition"
+          className="bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold transition cursor-pointer"
         >
           + Add User
         </button>
@@ -201,8 +201,8 @@ export default function UsersClient() {
                   </span>
                 </td>
                 <td className="p-3 space-x-2">
-                  <button onClick={() => openEdit(u)} disabled={isOffline} className="text-xs text-cyan-400 hover:underline disabled:opacity-40">Edit</button>
-                  <button onClick={() => openDelete(u)} disabled={isOffline} className="text-xs text-rose-400 hover:underline disabled:opacity-40">Delete</button>
+                  <button onClick={() => openEdit(u)} disabled={isOffline} className="text-xs text-cyan-400 hover:underline disabled:opacity-40 cursor-pointer">Edit</button>
+                  <button onClick={() => openDelete(u)} disabled={isOffline} className="text-xs text-rose-400 hover:underline disabled:opacity-40 cursor-pointer">Delete</button>
                 </td>
               </tr>
             ))}
@@ -216,7 +216,7 @@ export default function UsersClient() {
           <form onSubmit={handleAdd} className="bg-slate-900 border border-slate-700 rounded-xl shadow-xl max-w-md w-full p-6 space-y-4 text-slate-200">
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
               <h3 className="font-bold text-lg text-white">Add New User</h3>
-              <button type="button" onClick={() => setShowModal(false)} className="text-slate-400 hover:text-white">✕</button>
+              <button type="button" onClick={() => setShowModal(false)} className="text-slate-400 hover:text-white cursor-pointer">✕</button>
             </div>
             {error && <p className="text-sm text-rose-400">{error}</p>}
             <div>
@@ -243,8 +243,8 @@ export default function UsersClient() {
               </select>
             </div>
             <div className="flex gap-2 justify-end pt-2">
-              <button type="button" onClick={() => setShowModal(false)} className="border border-slate-700 rounded-xl px-4 py-2 text-sm text-slate-300 hover:bg-slate-800">Cancel</button>
-              <button type="submit" disabled={isOffline} className="bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold">Create Account</button>
+              <button type="button" onClick={() => setShowModal(false)} className="border border-slate-700 rounded-xl px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 cursor-pointer">Cancel</button>
+              <button type="submit" disabled={isOffline} className="bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold cursor-pointer">Create Account</button>
             </div>
           </form>
         </div>
@@ -256,7 +256,7 @@ export default function UsersClient() {
           <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-xl max-w-md w-full p-6 space-y-4 text-slate-200">
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
               <h3 className="font-bold text-lg text-white">Edit User: @{editTarget.username}</h3>
-              <button onClick={() => setEditTarget(null)} className="text-slate-400 hover:text-white">✕</button>
+              <button onClick={() => setEditTarget(null)} className="text-slate-400 hover:text-white cursor-pointer">✕</button>
             </div>
             {editError && <p className="text-sm text-rose-400">{editError}</p>}
             <div>
@@ -268,8 +268,8 @@ export default function UsersClient() {
               <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-cyan-500 mt-1" />
             </div>
             <div className="flex gap-2 justify-end pt-2">
-              <button onClick={() => setEditTarget(null)} className="border border-slate-700 rounded-xl px-4 py-2 text-sm text-slate-300 hover:bg-slate-800">Cancel</button>
-              <button onClick={handleEdit} disabled={isOffline} className="bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold">Save Changes</button>
+              <button onClick={() => setEditTarget(null)} className="border border-slate-700 rounded-xl px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 cursor-pointer">Cancel</button>
+              <button onClick={handleEdit} disabled={isOffline} className="bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold cursor-pointer">Save Changes</button>
             </div>
           </div>
         </div>
@@ -281,16 +281,16 @@ export default function UsersClient() {
           <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-xl max-w-md w-full p-6 space-y-4 text-slate-200">
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
               <h3 className="font-bold text-lg text-white">Delete User: {deleteTarget.fullName}</h3>
-              <button onClick={() => setDeleteTarget(null)} className="text-slate-400 hover:text-white">✕</button>
+              <button onClick={() => setDeleteTarget(null)} className="text-slate-400 hover:text-white cursor-pointer">✕</button>
             </div>
             {deleteError && <p className="text-sm text-rose-400">{deleteError}</p>}
             <p className="text-sm text-slate-300">Are you sure you want to delete user <strong>@{deleteTarget.username}</strong>?</p>
             <div className="flex gap-2 justify-end pt-2">
-              <button onClick={() => setDeleteTarget(null)} className="border border-slate-700 rounded-xl px-4 py-2 text-sm text-slate-300 hover:bg-slate-800">Cancel</button>
+              <button onClick={() => setDeleteTarget(null)} className="border border-slate-700 rounded-xl px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 cursor-pointer">Cancel</button>
               {canDeactivate ? (
-                <button onClick={handleDeactivate} disabled={isOffline} className="bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold">Deactivate User</button>
+                <button onClick={handleDeactivate} disabled={isOffline} className="bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold cursor-pointer">Deactivate User</button>
               ) : (
-                <button onClick={handleDelete} disabled={isOffline} className="bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold">Delete Account</button>
+                <button onClick={handleDelete} disabled={isOffline} className="bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold cursor-pointer">Delete Account</button>
               )}
             </div>
           </div>

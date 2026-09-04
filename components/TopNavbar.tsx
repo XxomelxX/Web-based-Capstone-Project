@@ -80,20 +80,20 @@ export function TopNavbar() {
           <Link
             key={link.href}
             href={link.href}
-            className={pathname === link.href ? 'text-green-700' : 'hover:text-green-700 text-gray-600'}
+            className={pathname === link.href ? 'text-green-700 cursor-pointer' : 'hover:text-green-700 text-gray-600 cursor-pointer'}
           >
             {link.label}
           </Link>
         ))}
 
-        <div className="relative" onMouseEnter={() => setMoreOpen(true)} onMouseLeave={() => setMoreOpen(false)}>
-          <button className="flex items-center gap-1 hover:text-green-700 text-gray-600">
+        <div className="relative" onClick={() => setMoreOpen(!moreOpen)}>
+          <button className="flex items-center gap-1 cursor-pointer hover:text-green-700 text-gray-600 transition-colors">
             More <ChevronDown size={16} />
           </button>
           {moreOpen && (
-            <div className="absolute right-0 top-full mt-2 shadow-lg rounded-md py-2 w-48 z-50">
+            <div className="absolute right-0 top-full mt-2 shadow-lg rounded-md py-2 w-48 z-50 opacity-100 pointer-events-auto transition-opacity duration-200">
               {moreLinks.map((link) => (
-                <Link key={link.href} href={link.href} className="block px-4 py-2 text-sm hover:bg-gray-50">
+                <Link key={link.href} href={link.href} className="block px-4 py-2 text-sm hover:bg-gray-50 cursor-pointer">
                   {link.label}
                 </Link>
               ))}
@@ -108,7 +108,7 @@ export function TopNavbar() {
         <button
           type="button"
           onClick={toggleTheme}
-          className="rounded-lg border p-2 hover:bg-gray-100 transition"
+          className="rounded-lg border p-2 hover:bg-gray-100 transition cursor-pointer"
           aria-label="Toggle light/dark mode"
         >
           {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
@@ -117,7 +117,7 @@ export function TopNavbar() {
         <div className="relative">
           <button
             onClick={() => setMenuOpen((o) => !o)}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 cursor-pointer"
             aria-label="User menu"
           >
             <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-700">
@@ -137,7 +137,7 @@ export function TopNavbar() {
               <div className="px-4 py-1 text-xs text-gray-500">{user?.username}</div>
               <button
                 onClick={handleLogout}
-                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 cursor-pointer"
               >
                 <LogOut size={14} /> Logout
               </button>

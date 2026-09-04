@@ -25,7 +25,6 @@ export default function SettingsClient() {
     settings: refresh,
   });
 
-  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     refresh();
     function handleOnlineChange() {
@@ -72,7 +71,7 @@ export default function SettingsClient() {
     <div className="space-y-4 max-w-2xl">
       {isOffline && (
         <div className="p-3 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-semibold">
-          ⚠️ Changing system settings is disabled while offline. (Category 3 System Conflict Risk)
+           Changing system settings is disabled while offline. (Category 3 System Conflict Risk)
         </div>
       )}
 
@@ -84,17 +83,11 @@ export default function SettingsClient() {
       {error && <p className="text-sm text-rose-400 bg-rose-950/40 border border-rose-800/50 rounded-md px-3 py-2">{error}</p>}
 
       <div className="bg-slate-950/80 border border-slate-800 rounded-xl shadow p-6 space-y-4 text-slate-200">
-        <h2 className="font-semibold flex items-center gap-2 text-white">🏪 Store Information</h2>
+        <h2 className="font-semibold flex items-center gap-2 text-white"> Store Information</h2>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="text-sm font-medium text-slate-300">Store name</label>
-            <input disabled={!isAdmin || isOffline} value={settings.storeName} onChange={(e) => setSettings({ ...settings, storeName: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-cyan-500 mt-1 disabled:opacity-50" />
-          </div>
-          <div>
-            <label className="text-sm font-medium text-slate-300">Currency</label>
-            <input disabled={!isAdmin || isOffline} value={settings.currency} onChange={(e) => setSettings({ ...settings, currency: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-cyan-500 mt-1 disabled:opacity-50" />
-          </div>
+        <div>
+          <label className="text-sm font-medium text-slate-300">Store name</label>
+          <input disabled={!isAdmin || isOffline} value={settings.storeName} onChange={(e) => setSettings({ ...settings, storeName: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-cyan-500 mt-1 disabled:opacity-50" />
         </div>
 
         <div>
@@ -108,7 +101,7 @@ export default function SettingsClient() {
         </div>
 
         <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4">
-          <h3 className="font-semibold flex items-center gap-2 mb-2 text-white">👤 Account</h3>
+          <h3 className="font-semibold flex items-center gap-2 mb-2 text-white">Account</h3>
           <p className="text-xs text-slate-400">Signed in as</p>
           <p className="font-medium text-slate-100">{user?.name ?? 'Store User'}</p>
           <p className="text-xs text-slate-400 mt-2">Role</p>
@@ -117,9 +110,9 @@ export default function SettingsClient() {
 
         {isAdmin && (
           <div className="flex justify-end gap-2 pt-2">
-            {saved && <span className="text-sm text-emerald-400 self-center font-semibold">Saved ✓</span>}
-            <button type="button" onClick={refresh} className="border border-slate-700 rounded-xl px-4 py-2 text-sm text-slate-300 hover:bg-slate-800">Reset</button>
-            <button onClick={handleSave} disabled={isOffline} className="bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold transition">Save Changes</button>
+            {saved && <span className="text-sm text-emerald-400 self-center font-semibold">Saved</span>}
+            <button type="button" onClick={refresh} className="border border-slate-700 rounded-xl px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 cursor-pointer">Reset</button>
+            <button onClick={handleSave} disabled={isOffline} className="bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold transition cursor-pointer">Save Changes</button>
           </div>
         )}
       </div>

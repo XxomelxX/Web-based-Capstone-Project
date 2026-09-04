@@ -43,7 +43,7 @@ export function BottomTabBar() {
           const Icon = tab.icon;
           const active = pathname === tab.href;
           return (
-            <Link key={tab.href} href={tab.href} className="flex flex-col items-center gap-0.5 px-3">
+            <Link key={tab.href} href={tab.href} className="flex flex-col items-center gap-0.5 px-3 cursor-pointer">
               <Icon size={22} className={active ? 'text-green-700' : 'text-gray-400'} />
               <span className={`text-[10px] font-medium ${active ? 'text-green-700' : 'text-gray-400'}`}>
                 {tab.label}
@@ -51,7 +51,7 @@ export function BottomTabBar() {
             </Link>
           );
         })}
-        <button onClick={() => setMoreOpen(true)} className="flex flex-col items-center gap-0.5 px-3">
+        <button onClick={() => setMoreOpen(!moreOpen)} className="flex flex-col items-center gap-0.5 px-3 cursor-pointer">
           <Menu size={22} className="text-gray-400" />
           <span className="text-[10px] font-medium text-gray-400">More</span>
         </button>
@@ -70,7 +70,7 @@ export function BottomTabBar() {
                 key={link.href}
                 href={link.href}
                 onClick={() => setMoreOpen(false)}
-                className="block px-4 py-3 text-sm font-medium border-b last:border-0"
+                className="block px-4 py-3 text-sm font-medium border-b last:border-0 cursor-pointer"
               >
                 {link.label}
               </Link>

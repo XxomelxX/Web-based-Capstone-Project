@@ -22,6 +22,28 @@ const GOODS_BADGE: Record<string, string> = {
   durable: 'bg-blue-100 text-blue-700',
 };
 
+const VAT_BADGE: Record<string, string> = {
+  exempt: 'bg-slate-100 text-slate-600',
+  regular: 'bg-emerald-100 text-emerald-700',
+  'zero-rated': 'bg-amber-100 text-amber-700',
+};
+
+const VAT_LABEL: Record<string, string> = {
+  exempt: 'VAT Exempt',
+  regular: 'Regular VAT (12%)',
+  'zero-rated': 'Zero-Rated',
+};
+
+function getExpiryBadge(expiryDate?: string | Date | null) {
+  if (!expiryDate) return null;
+  const now = new Date();
+  const exp = new Date(expiryDate);
+  const daysLeft = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  if (daysLeft < 0) return { label: 'Expired', className: 'bg-rose-100 text-rose-700' };
+  if (daysLeft <= 30) return { label: `${daysLeft}d left`, className: 'bg-amber-100 text-amber-700' };
+  return { label: exp.toLocaleDateString(), className: 'bg-slate-100 text-slate-600' };
+}
+
 export default function ProductsClient() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -34,6 +56,8 @@ export default function ProductsClient() {
     price: '',
     stock: '',
     goodsType: 'non-perishable',
+    vatType: 'exempt',
+    expiryDate: '',
   });
   const [error, setError] = useState('');
   const [isCached, setIsCached] = useState(false);
@@ -114,7 +138,7 @@ export default function ProductsClient() {
   function openAdd() {
     if (!checkOnlineOrSetError()) return;
     setEditingProduct(null);
-    setForm({ name: '', categoryId: '', price: '', stock: '', goodsType: 'non-perishable' });
+    setForm({ name: '', categoryId: '', price: '', stock: '', goodsType: 'non-perishable', vatType: 'exempt', expiryDate: '' });
     setError('');
     setShowModal(true);
   }
@@ -128,6 +152,8 @@ export default function ProductsClient() {
       price: String(p.price),
       stock: String(p.stock),
       goodsType: p.goodsType || 'non-perishable',
+      vatType: p.vatType || 'exempt',
+      expiryDate: p.expiryDate ? new Date(p.expiryDate).toISOString().split('T')[0] : '',
     });
     setError('');
     setShowModal(true);
@@ -145,6 +171,8 @@ export default function ProductsClient() {
           price: Number(form.price),
           stock: Number(form.stock),
           goodsType: form.goodsType,
+          vatType: form.vatType,
+          expiryDate: form.expiryDate || null,
         });
       } else {
         await addProduct({
@@ -153,6 +181,8 @@ export default function ProductsClient() {
           price: Number(form.price),
           stock: Number(form.stock),
           goodsType: form.goodsType,
+          vatType: form.vatType,
+          expiryDate: form.expiryDate || null,
         });
       }
       setShowModal(false);
@@ -197,7 +227,7 @@ export default function ProductsClient() {
         <button
           onClick={openAdd}
           disabled={isOffline}
-          className="bg-green-700 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-md px-4 py-2 text-sm font-medium transition"
+          className="bg-green-700 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-md px-4 py-2 text-sm font-medium transition cursor-pointer"
         >
           + Add Product
         </button>
@@ -206,13 +236,13 @@ export default function ProductsClient() {
       <div className="flex gap-1 bg-slate-900 rounded-lg p-1 w-fit border border-slate-800">
         <button
           onClick={() => setTab('active')}
-          className={`px-4 py-1.5 rounded-md text-sm font-medium transition ${tab === 'active' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+          className={`px-4 py-1.5 rounded-md text-sm font-medium transition cursor-pointer ${tab === 'active' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
         >
           Active
         </button>
         <button
           onClick={() => setTab('archived')}
-          className={`px-4 py-1.5 rounded-md text-sm font-medium transition ${tab === 'archived' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+          className={`px-4 py-1.5 rounded-md text-sm font-medium transition cursor-pointer ${tab === 'archived' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
         >
           Archived
         </button>
@@ -229,13 +259,15 @@ export default function ProductsClient() {
               <th className="p-3">Price</th>
               <th className="p-3">Stock</th>
               <th className="p-3">Goods Type</th>
+              <th className="p-3">VAT</th>
+              <th className="p-3">Expiry</th>
               <th className="p-3">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800 text-slate-200">
             {products.length === 0 ? (
               <tr>
-                <td colSpan={6} className="p-6 text-center text-slate-500">
+                <td colSpan={8} className="p-6 text-center text-slate-500">
                   {tab === 'active' ? 'No active products.' : 'No archived products.'}
                 </td>
               </tr>
@@ -254,13 +286,28 @@ export default function ProductsClient() {
                     </span>
                   </td>
                   <td className="p-3">
+                    <span className={`text-xs px-2 py-1 rounded-full capitalize ${VAT_BADGE[p.vatType] ?? 'bg-slate-800 text-slate-300'}`}>
+                      {VAT_LABEL[p.vatType] ?? p.vatType}
+                    </span>
+                  </td>
+                  <td className="p-3">
+                    {(() => {
+                      const badge = getExpiryBadge(p.expiryDate);
+                      return badge ? (
+                        <span className={`text-xs px-2 py-1 rounded-full ${badge.className}`}>{badge.label}</span>
+                      ) : (
+                        <span className="text-xs text-slate-500">—</span>
+                      );
+                    })()}
+                  </td>
+                  <td className="p-3">
                     <div className="flex items-center gap-2">
                       {tab === 'active' ? (
                         <>
                           <button
                             onClick={() => openEdit(p)}
                             disabled={isOffline}
-                            className="text-slate-400 hover:text-cyan-400 disabled:opacity-40 transition"
+                            className="text-slate-400 hover:text-cyan-400 disabled:opacity-40 transition cursor-pointer"
                             title={isOffline ? 'This action requires an internet connection' : 'Edit product'}
                           >
                             <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -270,7 +317,7 @@ export default function ProductsClient() {
                           <button
                             onClick={() => handleArchive(p.id)}
                             disabled={isOffline}
-                            className="text-slate-400 hover:text-amber-400 disabled:opacity-40 transition"
+                            className="text-slate-400 hover:text-amber-400 disabled:opacity-40 transition cursor-pointer"
                             title={isOffline ? 'This action requires an internet connection' : 'Archive product'}
                           >
                             <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -282,7 +329,7 @@ export default function ProductsClient() {
                         <button
                           onClick={() => handleUnarchive(p.id)}
                           disabled={isOffline}
-                          className="text-xs text-emerald-400 font-medium hover:underline disabled:opacity-40"
+                          className="text-xs text-emerald-400 font-medium hover:underline disabled:opacity-40 cursor-pointer"
                           title={isOffline ? 'This action requires an internet connection' : 'Unarchive product'}
                         >
                           Unarchive
@@ -374,18 +421,41 @@ export default function ProductsClient() {
                 </select>
               </div>
 
+              <div>
+                <label className="block font-medium text-slate-300 mb-1">VAT Type</label>
+                <select
+                  value={form.vatType}
+                  onChange={(e) => setForm({ ...form, vatType: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-cyan-500"
+                >
+                  <option value="exempt">VAT Exempt (0%)</option>
+                  <option value="regular">Regular VAT (12%)</option>
+                  <option value="zero-rated">Zero-Rated (0%)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-medium text-slate-300 mb-1">Expiry Date <span className="text-slate-500 font-normal">(optional)</span></label>
+                <input
+                  type="date"
+                  value={form.expiryDate}
+                  onChange={(e) => setForm({ ...form, expiryDate: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-cyan-500"
+                />
+              </div>
+
               <div className="flex justify-end gap-2 pt-3">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="px-4 py-2 border border-slate-700 text-slate-300 hover:bg-slate-800 rounded-xl font-medium"
+                  className="px-4 py-2 border border-slate-700 text-slate-300 hover:bg-slate-800 rounded-xl font-medium cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isOffline}
-                  className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded-xl font-semibold"
+                  className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded-xl font-semibold cursor-pointer"
                 >
                   Save Product
                 </button>

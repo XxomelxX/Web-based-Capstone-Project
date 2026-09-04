@@ -13,6 +13,8 @@ export interface Product {
   barcode?: string | null;
   archived: boolean;
   goodsType: string; // 'perishable' | 'non-perishable' | 'durable'
+  vatType: string; // 'exempt' | 'regular' | 'zero-rated'
+  expiryDate?: string | Date | null;
   _hasHistory?: boolean;
 }
 

@@ -37,7 +37,7 @@ export function CachedDataBanner({
           <button
             type="button"
             onClick={onRefresh}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 transition text-[11px] font-semibold shrink-0"
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 transition text-[11px] font-semibold shrink-0 cursor-pointer"
           >
             <RefreshCw size={12} />
             <span>Refresh</span>

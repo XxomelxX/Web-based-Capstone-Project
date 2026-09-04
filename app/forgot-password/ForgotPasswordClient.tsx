@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
+import { Mail, Lock, ArrowLeft, KeyRound } from 'lucide-react';
 
 type Step = 'email' | 'code';
 
@@ -14,14 +14,12 @@ export default function ForgotPasswordClient() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [devCode, setDevCode] = useState('');
   const [loading, setLoading] = useState(false);
 
   async function handleRequestCode(e: React.FormEvent) {
     e.preventDefault();
     setError('');
     setSuccess('');
-    setDevCode('');
 
     if (!email.trim()) {
       setError('Please enter your email address.');
@@ -43,9 +41,6 @@ export default function ForgotPasswordClient() {
       }
 
       setSuccess(data.message || 'A code has been sent to your email.');
-      if (data.devCode) {
-        setDevCode(data.devCode);
-      }
       setStep('code');
     } catch {
       setError('Unable to connect. Please try again.');
@@ -105,128 +100,148 @@ export default function ForgotPasswordClient() {
   }
 
   return (
-    <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-slate-950/60 p-8 shadow-2xl shadow-black/40 backdrop-blur-xl">
-      <div className="mb-6 text-center">
-        <div className="mx-auto mb-4 flex h-24 w-36 items-center justify-center overflow-hidden rounded-2xl">
-          <Image
-            src="/1130f5ee-b20d-41b4-89c5-23c877b4d396.jpg"
-            alt="Sari-Sari POS"
-            width={144}
-            height={96}
-            className="object-contain"
-          />
-        </div>
-        <h1 className="text-2xl font-bold text-slate-100">
-          {step === 'email' ? 'Forgot Password?' : 'Enter Reset Code'}
-        </h1>
-        <p className="mt-2 text-sm text-slate-400">
-          {step === 'email'
-            ? 'Enter your email to receive a reset code.'
-            : `We sent a 6-digit code to ${email}`}
-        </p>
-      </div>
+    <div className="w-full max-w-sm">
+      {/* Heading */}
+      <h2
+        className="text-4xl font-bold text-[#1a3a2a] text-center mb-2 tracking-widest"
+        style={{ fontFamily: "'Playfair Display', serif" }}
+      >
+        {step === 'email' ? 'FORGOT PASSWORD' : 'RESET PASSWORD'}
+      </h2>
+      <p className="text-sm text-gray-500 text-center mb-8">
+        {step === 'email'
+          ? 'Enter your email to receive a reset code.'
+          : `We sent a 6-digit code to ${email}`}
+      </p>
 
+      {/* Error */}
       {error && (
-        <div className="mb-4 rounded-xl border border-rose-500/30 bg-rose-500/5 px-4 py-3 text-sm text-rose-300">
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
           {error}
         </div>
       )}
 
+      {/* Success */}
       {success && (
-        <div className="mb-4 rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-300">
+        <div className="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-600">
           {success}
         </div>
       )}
 
-      {devCode && (
-        <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm">
-          <p className="font-semibold text-amber-300 mb-1">Development Mode</p>
-          <p className="text-amber-200">If email was not received, use this code:</p>
-          <p className="mt-2 text-center text-2xl font-bold tracking-[0.3em] text-amber-100">{devCode}</p>
-        </div>
-      )}
-
       {step === 'email' ? (
-        <form onSubmit={handleRequestCode} className="space-y-4">
+        <form onSubmit={handleRequestCode} className="space-y-5">
           <div>
-            <label className="block text-sm font-medium text-slate-300">Email Address</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="your@email.com"
-              required
-              className="mt-2 w-full rounded-3xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20"
-            />
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Email Address
+            </label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
+                <Mail className="h-5 w-5 text-[#1a3a2a]/60" />
+              </div>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder=""
+                required
+                className="block w-full rounded-full bg-[#6b9e8e]/40 border-none py-3 pl-12 pr-4 text-sm text-gray-800 placeholder-gray-400 outline-none transition focus:ring-2 focus:ring-[#1a3a2a]/30"
+              />
+            </div>
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-3xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:opacity-60"
+            className="w-full rounded-full bg-[#6b9e8e] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#5a8a7a] disabled:opacity-60"
           >
             {loading ? 'Sending...' : 'Send Reset Code'}
           </button>
         </form>
       ) : (
-        <form onSubmit={handleResetPassword} className="space-y-4">
+        <form onSubmit={handleResetPassword} className="space-y-5">
           <div>
-            <label className="block text-sm font-medium text-slate-300">6-Digit Code</label>
-            <input
-              type="text"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              placeholder="000000"
-              maxLength={6}
-              required
-              className="mt-2 w-full rounded-3xl border border-slate-700 bg-slate-900 px-4 py-3 text-center text-lg tracking-[0.3em] text-slate-100 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20"
-            />
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              6-Digit Code
+            </label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
+                <KeyRound className="h-5 w-5 text-[#1a3a2a]/60" />
+              </div>
+              <input
+                type="text"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                placeholder="000000"
+                maxLength={6}
+                required
+                className="block w-full rounded-full bg-[#6b9e8e]/40 border-none py-3 pl-12 pr-4 text-center text-lg tracking-[0.3em] text-gray-800 placeholder-gray-400 outline-none transition focus:ring-2 focus:ring-[#1a3a2a]/30"
+              />
+            </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-300">New Password</label>
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="Enter new password"
-              required
-              className="mt-2 w-full rounded-3xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20"
-            />
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              New Password
+            </label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
+                <Lock className="h-5 w-5 text-[#1a3a2a]/60" />
+              </div>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder=""
+                required
+                className="block w-full rounded-full bg-[#6b9e8e]/40 border-none py-3 pl-12 pr-4 text-sm text-gray-800 placeholder-gray-400 outline-none transition focus:ring-2 focus:ring-[#1a3a2a]/30"
+              />
+            </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-300">Confirm Password</label>
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Confirm new password"
-              required
-              className="mt-2 w-full rounded-3xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20"
-            />
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Confirm Password
+            </label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
+                <Lock className="h-5 w-5 text-[#1a3a2a]/60" />
+              </div>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder=""
+                required
+                className="block w-full rounded-full bg-[#6b9e8e]/40 border-none py-3 pl-12 pr-4 text-sm text-gray-800 placeholder-gray-400 outline-none transition focus:ring-2 focus:ring-[#1a3a2a]/30"
+              />
+            </div>
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-3xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:opacity-60"
+            className="w-full rounded-full bg-[#6b9e8e] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#5a8a7a] disabled:opacity-60"
           >
             {loading ? 'Resetting...' : 'Reset Password'}
           </button>
 
           <button
             type="button"
-            onClick={() => { setStep('email'); setCode(''); setNewPassword(''); setConfirmPassword(''); setError(''); setSuccess(''); setDevCode(''); }}
-            className="w-full rounded-3xl border border-slate-700 px-4 py-3 text-sm text-slate-300 transition hover:bg-slate-800"
+            onClick={() => { setStep('email'); setCode(''); setNewPassword(''); setConfirmPassword(''); setError(''); setSuccess(''); }}
+            className="w-full rounded-full border border-[#6b9e8e]/40 bg-white px-4 py-3 text-sm font-medium text-[#1a3a2a] transition hover:bg-[#6b9e8e]/10"
           >
             Back to Email
           </button>
         </form>
       )}
 
+      {/* Back to login */}
       <div className="mt-6 text-center">
-        <Link href="/login" className="text-xs text-slate-400 hover:text-cyan-400 transition">
+        <Link
+          href="/login"
+          className="inline-flex items-center gap-2 text-sm text-[#1a3a2a] hover:underline transition"
+        >
+          <ArrowLeft className="h-4 w-4" />
           Back to Login
         </Link>
       </div>

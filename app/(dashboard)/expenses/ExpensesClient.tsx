@@ -119,7 +119,7 @@ export default function ExpensesClient() {
         <button
           onClick={openAddModal}
           disabled={isOffline}
-          className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold transition"
+          className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold transition cursor-pointer"
         >
           + Add Expense
         </button>
@@ -138,7 +138,7 @@ export default function ExpensesClient() {
           <button
             key={f.key}
             onClick={() => setDateFilter(f.key)}
-            className={`px-4 py-1.5 rounded-md text-sm font-medium transition ${dateFilter === f.key ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition cursor-pointer ${dateFilter === f.key ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
           >
             {f.label}
           </button>
@@ -173,7 +173,7 @@ export default function ExpensesClient() {
           <form onSubmit={handleAdd} className="bg-slate-900 border border-slate-700 rounded-xl shadow-xl max-w-md w-full p-6 space-y-4 text-slate-200">
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
               <h3 className="font-bold text-lg text-white">Add Expense</h3>
-              <button type="button" onClick={() => setShowModal(false)} className="text-slate-400 hover:text-white">✕</button>
+              <button type="button" onClick={() => setShowModal(false)} className="text-slate-400 hover:text-white cursor-pointer">✕</button>
             </div>
             {isOffline && (
               <p className="text-xs text-amber-400 bg-amber-950/40 p-2 rounded border border-amber-800/40">
@@ -198,8 +198,8 @@ export default function ExpensesClient() {
               <input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-cyan-500 mt-1" />
             </div>
             <div className="flex gap-2 justify-end pt-2">
-              <button type="button" onClick={() => setShowModal(false)} className="border border-slate-700 rounded-xl px-4 py-2 text-sm text-slate-300 hover:bg-slate-800">Cancel</button>
-              <button type="submit" disabled={isOffline} className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold">Add Expense</button>
+              <button type="button" onClick={() => setShowModal(false)} className="border border-slate-700 rounded-xl px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 cursor-pointer">Cancel</button>
+              <button type="submit" disabled={isOffline} className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold cursor-pointer">Add Expense</button>
             </div>
           </form>
         </div>

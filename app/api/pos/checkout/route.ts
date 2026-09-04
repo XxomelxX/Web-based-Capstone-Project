@@ -10,8 +10,6 @@ interface CartItem {
   unitPrice: number;
 }
 
-// POST /api/pos/checkout
-// body: { items: CartItem[], customerId?: number, paymentMethod: 'cash' | 'gcash', tendered: number }
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user) {
@@ -34,8 +32,6 @@ export async function POST(request: Request) {
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      // Lock-step stock validation: re-fetch current stock inside the transaction
-      // so two simultaneous sales can't both succeed on insufficient stock.
       for (const item of items) {
         const product = await tx.product.findUnique({ where: { id: item.productId } });
         if (!product) throw new Error(`Product #${item.productId} not found`);
@@ -44,11 +40,23 @@ export async function POST(request: Request) {
         }
       }
 
+      const settings = await tx.settings.findFirst();
+      const taxRate = settings?.taxRate ?? 12;
+
       const subtotal = items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
-      const vat = 0;
+
+      let vat = 0;
+      for (const item of items) {
+        const product = await tx.product.findUnique({ where: { id: item.productId } });
+        if (product?.vatType === 'regular') {
+          const lineTotal = item.quantity * item.unitPrice;
+          vat += lineTotal * (taxRate / (100 + taxRate));
+        }
+      }
+      vat = Number(vat.toFixed(2));
+
       const total = Number(subtotal.toFixed(2));
 
-      // For GCash payments, default tendered to exact total if not specified
       if (paymentMethod === 'gcash' && (tendered < total || tendered === 0)) {
         tendered = total;
       }

@@ -25,6 +25,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       ...(data.barcode !== undefined && { barcode: data.barcode }),
       ...(data.archived !== undefined && { archived: Boolean(data.archived) }),
       ...(data.goodsType !== undefined && { goodsType: data.goodsType }),
+      ...(data.vatType !== undefined && { vatType: data.vatType }),
+      ...(data.expiryDate !== undefined && { expiryDate: data.expiryDate ? new Date(data.expiryDate) : null }),
     },
   });
 
@@ -32,7 +34,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   return NextResponse.json(product);
 }
 
-// DELETE /api/products/:id  — only allowed if the product has zero linked history
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const guard = await requireRole(['admin']);
   if (guard) return guard;
@@ -40,7 +41,6 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   const { id: idParam } = await params;
   const id = Number(idParam);
 
-  // Check for linked records
   const [txItems, utangItems, stockBatches, itemLogs] = await Promise.all([
     prisma.transactionItem.count({ where: { productId: id } }),
     prisma.utangEntryItem.count({ where: { productId: id } }),

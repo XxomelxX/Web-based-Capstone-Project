@@ -163,12 +163,12 @@ export default function OrdersClient() {
                   </span>
                 </td>
                 <td className="p-3 space-x-2">
-                  <button onClick={() => setViewing(o)} className="text-xs text-cyan-400 hover:underline">View</button>
+                  <button onClick={() => setViewing(o)} className="text-xs text-cyan-400 hover:underline cursor-pointer">View</button>
                   {o.status === 'complete' && (
                     <button
                       onClick={() => openVoidModal(o)}
                       disabled={isOffline}
-                      className="text-xs text-rose-400 hover:underline disabled:opacity-40"
+                      className="text-xs text-rose-400 hover:underline disabled:opacity-40 cursor-pointer"
                       title={isOffline ? 'This action requires an internet connection' : 'Void order'}
                     >
                       Void
@@ -184,7 +184,7 @@ export default function OrdersClient() {
       {viewing && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-xl max-w-sm w-full p-6 space-y-2 text-slate-200">
-            <div className="flex justify-between items-center"><h3 className="font-bold text-white">Order #{viewing.id}</h3><button onClick={() => setViewing(null)} className="text-slate-400 hover:text-white">✕</button></div>
+            <div className="flex justify-between items-center"><h3 className="font-bold text-white">Order #{viewing.id}</h3><button onClick={() => setViewing(null)} className="text-slate-400 hover:text-white cursor-pointer">✕</button></div>
             <p className="text-xs text-slate-400">{new Date(viewing.createdAt).toLocaleString()} · Cashier: {viewing.cashier?.fullName}</p>
             <div className="border-t border-slate-800 pt-2 space-y-1 text-sm">
               {viewing.items.map((i) => (
@@ -203,7 +203,7 @@ export default function OrdersClient() {
       {voiding && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <form onSubmit={handleVoid} className="bg-slate-900 border border-slate-700 rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-3"><h3 className="font-bold text-white">Void Order #{voiding.id}</h3><button type="button" onClick={() => setVoiding(null)} className="text-slate-400 hover:text-white">✕</button></div>
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3"><h3 className="font-bold text-white">Void Order #{voiding.id}</h3><button type="button" onClick={() => setVoiding(null)} className="text-slate-400 hover:text-white cursor-pointer">✕</button></div>
             <p className="text-xs text-slate-400">Total: ₱{voiding.total.toFixed(2)} · This will restore stock for all items.</p>
             {isOffline && (
               <p className="text-xs text-amber-400 bg-amber-950/40 p-2 rounded border border-amber-800/40">
@@ -248,8 +248,8 @@ export default function OrdersClient() {
             )}
 
             <div className="flex gap-2 justify-end pt-2">
-              <button type="button" onClick={() => setVoiding(null)} className="border border-slate-700 rounded-xl px-4 py-2 text-sm text-slate-300 hover:bg-slate-800">Cancel</button>
-              <button type="submit" disabled={isOffline} className="bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold">Void Order</button>
+              <button type="button" onClick={() => setVoiding(null)} className="border border-slate-700 rounded-xl px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 cursor-pointer">Cancel</button>
+              <button type="submit" disabled={isOffline} className="bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold cursor-pointer">Void Order</button>
             </div>
           </form>
         </div>

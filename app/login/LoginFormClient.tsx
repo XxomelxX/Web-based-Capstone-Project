@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
 import { useState } from 'react';
-import Image from 'next/image';
 import { getSession, signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import { User, Lock, Eye, EyeOff } from 'lucide-react';
 import bcrypt from 'bcryptjs';
 import { db } from '@/lib/offline';
 
@@ -29,6 +29,8 @@ export default function LoginFormClient() {
   const router = useRouter();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -40,7 +42,6 @@ export default function LoginFormClient() {
 
     const reallyOnline = await checkRealConnectivity();
 
-    // --- 1. OFFLINE LOGIN FLOW ---
     if (!reallyOnline) {
       try {
         const cached = await db.cachedCredentials.get(cleanUsername);
@@ -60,7 +61,6 @@ export default function LoginFormClient() {
           return;
         }
 
-        // Store offline session locally — preserves exact cached role ('admin' or 'cashier')
         sessionStorage.setItem(
           'offlineSession',
           JSON.stringify({
@@ -82,7 +82,6 @@ export default function LoginFormClient() {
       }
     }
 
-    // --- 2. ONLINE LOGIN FLOW ---
     try {
       const result = await signIn('credentials', {
         username: cleanUsername,
@@ -99,7 +98,6 @@ export default function LoginFormClient() {
         return;
       }
 
-      // On successful online login, clear old offline session and cache fresh credentials
       sessionStorage.removeItem('offlineSession');
       try {
         const session = await getSession();
@@ -131,64 +129,95 @@ export default function LoginFormClient() {
   }
 
   return (
-    <div className="w-full max-w-sm rounded-[2rem] border border-white/10 bg-slate-950/60 p-8 shadow-2xl shadow-black/40 backdrop-blur-xl">
-      <div className="mb-8 text-center">
-        <div className="mx-auto mb-6 flex h-44 w-72 items-center justify-center overflow-hidden rounded-2xl">
-          <Image
-            src="/1130f5ee-b20d-41b4-89c5-23c877b4d396.jpg"
-            alt="Sari-Sari POS"
-            width={288}
-            height={176}
-            className="object-contain"
-          />
-        </div>
-        <h2 className="text-3xl font-bold text-slate-100">Welcome Back</h2>
-        <p className="mt-2 text-sm text-slate-400">Sign in to your store dashboard.</p>
-      </div>
+    <div className="w-full max-w-sm">
+      {/* Heading */}
+      <h2
+        className="text-4xl font-bold text-[#1a3a2a] text-center mb-8 tracking-widest"
+        style={{ fontFamily: "'Playfair Display', serif" }}
+      >
+        LOGIN
+      </h2>
 
+      {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-5">
+        {/* Username */}
         <div>
-          <label className="block text-sm font-medium text-slate-300">Username</label>
-          <input
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="Enter your username"
-            required
-            className="mt-2 w-full rounded-3xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20"
-          />
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Username
+          </label>
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
+              <User className="h-5 w-5 text-[#1a3a2a]/60" />
+            </div>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder=""
+              required
+              className="block w-full rounded-full bg-[#6b9e8e]/40 border-none py-3 pl-12 pr-4 text-sm text-gray-800 placeholder-gray-400 outline-none transition focus:ring-2 focus:ring-[#1a3a2a]/30"
+            />
+          </div>
         </div>
 
+        {/* Password */}
         <div>
-          <label className="block text-sm font-medium text-slate-300">Password</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Enter your password"
-            required
-            className="mt-2 w-full rounded-3xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20"
-          />
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Password
+          </label>
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
+              <Lock className="h-5 w-5 text-[#1a3a2a]/60" />
+            </div>
+            <input
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder=""
+              required
+              className="block w-full rounded-full bg-[#6b9e8e]/40 border-none py-3 pl-12 pr-12 text-sm text-gray-800 placeholder-gray-400 outline-none transition focus:ring-2 focus:ring-[#1a3a2a]/30"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute inset-y-0 right-0 flex items-center pr-4 text-[#1a3a2a]/50 hover:text-[#1a3a2a] transition"
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
         </div>
 
+        {/* Error */}
         {error && (
-          <div className="rounded-3xl border border-rose-500/30 bg-rose-500/5 px-4 py-3 text-sm text-rose-300">
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
             {error}
           </div>
         )}
 
+        {/* Submit */}
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded-3xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:opacity-60"
+          className="w-full rounded-full bg-[#6b9e8e] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#5a8a7a] disabled:opacity-60 mt-4"
         >
-          {loading ? 'Signing in...' : 'Sign in'}
+          {loading ? 'Signing in...' : 'LOGIN'}
         </button>
       </form>
 
-      <div className="text-center mt-4">
+      {/* Remember me + Forgot password */}
+      <div className="flex items-center justify-between mt-5">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={rememberMe}
+            onChange={(e) => setRememberMe(e.target.checked)}
+            className="h-4 w-4 rounded border-gray-300 text-[#1a3a2a] focus:ring-[#1a3a2a] cursor-pointer"
+          />
+          <span className="text-sm text-gray-600">Remember me</span>
+        </label>
         <a
           href="/forgot-password"
-          className="text-xs text-slate-400 hover:text-cyan-400 transition"
+          className="text-sm text-[#1a3a2a] hover:underline transition"
         >
           Forgot Password?
         </a>

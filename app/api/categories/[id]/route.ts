@@ -4,7 +4,6 @@ import { prisma } from '@/lib/prisma';
 import { requireRole } from '@/lib/require-role';
 import { broadcastRealtime } from '@/lib/realtime';
 
-// PATCH /api/categories/:id — edit name, description, archived
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const guard = await requireRole(['admin']);
   if (guard) return guard;
@@ -26,7 +25,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   return NextResponse.json(category);
 }
 
-// DELETE /api/categories/:id — only if zero products are linked
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const guard = await requireRole(['admin']);
   if (guard) return guard;

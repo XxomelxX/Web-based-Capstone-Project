@@ -5,8 +5,15 @@ import { authOptions } from '@/lib/auth';
 import { broadcastRealtime } from '@/lib/realtime';
 
 export async function GET() {
+  const session = await getServerSession(authOptions);
+  if (!session?.user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+
   const entries = await prisma.utangEntry.findMany({
-    include: { customer: true, items: { include: { product: true } } },
+    include: {
+      customer: true,
+      items: { include: { product: true } },
+      paymentAllocations: { include: { payment: true }, orderBy: { createdAt: 'desc' } },
+    },
     orderBy: { createdAt: 'desc' },
   });
   return NextResponse.json(entries);

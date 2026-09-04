@@ -13,6 +13,16 @@ interface CartLine {
   quantity: number;
 }
 
+function getExpiryBadge(expiryDate?: string | Date | null) {
+  if (!expiryDate) return null;
+  const now = new Date();
+  const exp = new Date(expiryDate);
+  const daysLeft = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  if (daysLeft < 0) return { label: 'Expired', className: 'bg-rose-100 text-rose-700' };
+  if (daysLeft <= 30) return { label: `${daysLeft}d left`, className: 'bg-amber-100 text-amber-700' };
+  return null;
+}
+
 interface StoreSettings {
   storeName: string;
   address?: string;
@@ -29,6 +39,7 @@ export default function POSClient() {
   const [error, setError] = useState('');
   const [processing, setProcessing] = useState(false);
   const [settings, setSettings] = useState<StoreSettings>({ storeName: 'Store' });
+  const [showSyncModal, setShowSyncModal] = useState(false);
 
   // Shift & Cash Drawer State
   const [activeShift, setActiveShift] = useState<ShiftDetails | null>(null);
@@ -208,7 +219,7 @@ export default function POSClient() {
                 setShiftError('');
                 setShowOpenShiftModal(true);
               }}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-semibold transition shadow-lg shadow-emerald-950/30"
+              className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-semibold transition shadow-lg shadow-emerald-950/30 cursor-pointer"
             >
               + Open Cash Drawer Shift
             </button>
@@ -219,9 +230,9 @@ export default function POSClient() {
                 setCloseCashInput('');
                 setShowEndShiftModal(true);
               }}
-              className="bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 rounded-lg text-sm font-semibold transition shadow-lg shadow-rose-950/30 flex items-center gap-1.5"
+              className="bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 rounded-lg text-sm font-semibold transition shadow-lg shadow-rose-950/30 cursor-pointer flex items-center gap-1.5"
             >
-              🔒 End Shift (Z-Read)
+               End Shift
             </button>
           )}
         </div>
@@ -238,22 +249,30 @@ export default function POSClient() {
           />
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {filtered.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => addToCart(p)}
-                disabled={p.stock <= 0}
-                className="bg-white rounded-lg shadow p-4 text-left hover:shadow-md transition disabled:opacity-40"
-              >
-                <div className="font-medium text-sm">{p.name}</div>
-                <div className="flex justify-between items-center mt-2">
-                  <span className="text-green-700 font-bold">₱{p.price}</span>
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${p.stock < 20 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>
-                    {p.stock} stk
-                  </span>
-                </div>
-              </button>
-            ))}
+            {filtered.map((p) => {
+              const expBadge = getExpiryBadge(p.expiryDate);
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => addToCart(p)}
+                  disabled={p.stock <= 0}
+                  className={`bg-white rounded-lg shadow p-4 text-left hover:shadow-md transition cursor-pointer disabled:opacity-40 ${expBadge ? 'border-l-4 border-l-amber-400' : ''}`}
+                >
+                  <div className="font-medium text-sm">{p.name}</div>
+                  {expBadge && (
+                    <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded-full mt-1 font-medium ${expBadge.className}`}>
+                      {expBadge.label}
+                    </span>
+                  )}
+                  <div className="flex justify-between items-center mt-2">
+                    <span className="text-green-700 font-bold">₱{p.price}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${p.stock < 20 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>
+                      {p.stock} stk
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -277,14 +296,14 @@ export default function POSClient() {
                     <button
                       type="button"
                       onClick={() => changeCartQuantity(l.product.id, -1)}
-                      className="w-7 h-7 rounded-md border text-sm"
+                      className="w-7 h-7 rounded-md border text-sm cursor-pointer"
                     >
                       -
                     </button>
                     <button
                       type="button"
                       onClick={() => changeCartQuantity(l.product.id, 1)}
-                      className="w-7 h-7 rounded-md border text-sm"
+                      className="w-7 h-7 rounded-md border text-sm cursor-pointer"
                     >
                       +
                     </button>
@@ -304,8 +323,8 @@ export default function POSClient() {
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={() => setPaymentMethod('cash')}
-                className={`border rounded-md py-2 text-sm ${paymentMethod === 'cash' ? 'bg-green-700 text-white' : ''}`}
-              >
+className={`border rounded-md py-2 text-sm ${paymentMethod === 'cash' ? 'bg-green-700 text-white' : ''} cursor-pointer`}
+                >
                 Cash
               </button>
               <button
@@ -313,8 +332,8 @@ export default function POSClient() {
                   setPaymentMethod('gcash');
                   setTendered(total);
                 }}
-                className={`border rounded-md py-2 text-sm ${paymentMethod === 'gcash' ? 'bg-green-700 text-white' : ''}`}
-              >
+className={`border rounded-md py-2 text-sm ${paymentMethod === 'gcash' ? 'bg-green-700 text-white' : ''} cursor-pointer`}
+                >
                 GCash
               </button>
             </div>
@@ -335,7 +354,11 @@ export default function POSClient() {
 
           <div className="flex justify-between text-sm">
             <span>Change</span>
-            <span className="font-semibold">₱{paymentMethod === 'cash' && change > 0 ? change.toFixed(2) : '0.00'}</span>
+            <span className="font-semibold">
+              {paymentMethod === 'cash' && change > 0
+                ? `₱${change.toFixed(2)}`
+                : '₱0.00'}
+            </span>
           </div>
 
           {error && <p className="text-sm text-red-600 font-medium bg-red-50 p-2 rounded border border-red-200">{error}</p>}
@@ -343,7 +366,7 @@ export default function POSClient() {
           <button
             onClick={handleCompleteSale}
             disabled={cart.length === 0 || (paymentMethod === 'cash' && tendered < total) || processing || !activeShift}
-            className="w-full bg-green-700 hover:bg-green-600 text-white rounded-md py-3 font-medium disabled:opacity-40 transition"
+            className="w-full bg-green-700 hover:bg-green-600 text-white rounded-md py-3 font-medium disabled:opacity-40 transition cursor-pointer"
           >
             {processing ? 'Processing...' : !activeShift ? 'Open Shift to Complete Sale' : '✓ Complete Sale'}
           </button>
@@ -366,7 +389,7 @@ export default function POSClient() {
             <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
               <div className="flex justify-between items-center border-b border-slate-800 pb-3">
                 <h3 className="font-bold text-lg text-slate-100 flex items-center gap-2">
-                  <span>💼</span> Open Cash Drawer Shift
+                  <span></span> Open Cash Drawer Shift
                 </h3>
                 <button
                   onClick={() => setShowOpenShiftModal(false)}
@@ -443,7 +466,7 @@ export default function POSClient() {
             <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
               <div className="flex justify-between items-center border-b border-slate-800 pb-3">
                 <h3 className="font-bold text-lg text-slate-100 flex items-center gap-2">
-                  <span>🔒</span> End Shift & Z-Read Reconciliation
+                  <span></span> End Shift
                 </h3>
                 <button onClick={() => setShowEndShiftModal(false)} className="text-slate-400 hover:text-slate-200">✕</button>
               </div>
@@ -544,7 +567,6 @@ export default function POSClient() {
           </div>
         )}
 
-        {/* Z-Read Shift Summary Receipt Modal */}
         {zReadReceipt && (
           <ZReadModal
             summary={zReadReceipt}
@@ -585,7 +607,10 @@ function ReceiptModal({
         <div className="flex justify-between"><span className="text-slate-400">Receipt #</span><span className="font-bold text-slate-100">{receipt.id}</span></div>
         <div className="flex justify-between"><span className="text-slate-400">Date</span><span>{new Date(receipt.createdAt).toLocaleString()}</span></div>
         <div className="flex justify-between"><span className="text-slate-400">Cashier</span><span>{cashierName}</span></div>
-        <div className="flex justify-between"><span className="text-slate-400">Payment</span><span className="capitalize font-bold text-cyan-400">{receipt.paymentMethod}</span></div>
+        {receipt.customer && (
+          <div className="flex justify-between"><span className="text-slate-400">Customer</span><span className="font-bold text-amber-400">{receipt.customer.name}</span></div>
+        )}
+        <div className="flex justify-between"><span className="text-slate-400">Payment</span><span className={`capitalize font-bold ${receipt.paymentMethod === 'credit' ? 'text-amber-400' : 'text-cyan-400'}`}>{receipt.paymentMethod === 'credit' ? 'Credit / Utang' : receipt.paymentMethod}</span></div>
         <hr className="border-dashed border-slate-800 my-1" />
         <div className="flex justify-between"><span className="text-slate-400">Subtotal</span><span>₱{receipt.subtotal.toFixed(2)}</span></div>
         <div className="flex justify-between"><span className="text-slate-400">VAT</span><span>₱{receipt.vat.toFixed(2)}</span></div>
@@ -603,18 +628,11 @@ function ReceiptModal({
           Thank you for your purchase!
         </div>
 
-        <div className="pt-3 flex gap-2 font-sans print:hidden">
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl py-2.5 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-950/40"
-          >
-            🖨️ Print Receipt
-          </button>
+        <div className="pt-3 flex justify-center font-sans print:hidden">
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl py-2.5 text-xs font-bold transition"
+            className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl py-2.5 px-8 text-xs font-bold transition"
           >
             Close
           </button>
@@ -642,7 +660,7 @@ function ZReadModal({
       <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-3 text-gray-900">
         <div className="text-center border-b pb-3">
           <h3 className="font-bold text-lg">{storeName}</h3>
-          <p className="text-xs font-semibold text-gray-500 tracking-wide uppercase">Z-READ SHIFT REPORT</p>
+          <p className="text-xs font-semibold text-gray-500 tracking-wide uppercase">SHIFT REPORT</p>
         </div>
 
         <div className="text-sm space-y-1">
@@ -676,7 +694,6 @@ function ZReadModal({
         </div>
 
         <div className="flex gap-2 pt-2">
-          <button className="flex-1 border rounded-md py-2 text-sm">🖨 Print Z-Read</button>
           <button onClick={onClose} className="flex-1 bg-green-700 text-white rounded-md py-2 text-sm">Done</button>
         </div>
       </div>

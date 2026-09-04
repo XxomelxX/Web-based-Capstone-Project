@@ -10,6 +10,7 @@ import {
   saveUsers,
   cachedGet,
 } from '@/lib/api/offline';
+import { saveUtangEntries } from '@/lib/offline';
 import { queueAddUtang, queueUtangPayment } from '@/lib/offlineQueue';
 import { updateCachedProductStock } from '@/lib/offline';
 
@@ -74,6 +75,12 @@ export async function getCustomers<T = Record<string, unknown>>(): Promise<T[]> 
   return res.json() as Promise<T[]>;
 }
 
+export async function getCustomersLight(): Promise<Array<{ id: number; name: string }>> {
+  const res = await fetch('/api/customers?light=true');
+  if (!res.ok) throw new Error('Failed to load customers');
+  return res.json();
+}
+
 export async function addCustomer(data: {
   name: string;
   phone?: string;
@@ -112,6 +119,20 @@ export async function updateCustomer(id: number, data: {
   return res.json();
 }
 
+export async function deleteCustomer(id: number, adminUsername: string, adminPassword: string) {
+  checkOnlineOrThrow();
+  const res = await fetch(`/api/customers/${id}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ adminUsername, adminPassword }),
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to delete customer');
+  }
+  return res.json();
+}
+
 // Void Order (Category 3 - Blocked offline)
 export async function voidTransaction(id: number, reason: string, adminUsername?: string, adminPassword?: string) {
   checkOnlineOrThrow();
@@ -130,6 +151,16 @@ export async function voidTransaction(id: number, reason: string, adminUsername?
 // Utang / Credit (Category 1 Full Offline Queue for Add & Pay)
 export async function getUtangEntries<T = Record<string, unknown>>(): Promise<T[]> {
   return getUtangEntriesOffline<T>();
+}
+
+// Direct fetch — bypasses cachedGet, always hits API, then updates cache.
+// Use after mutations (addUtang / recordPayment) to guarantee fresh data.
+export async function refetchUtangEntries<T = Record<string, unknown>>(): Promise<T[]> {
+  const res = await fetch('/api/utang');
+  if (!res.ok) throw new Error('Failed to load utang entries');
+  const data = (await res.json()) as T[];
+  await saveUtangEntries(data as Record<string, unknown>[]);
+  return data;
 }
 
 export async function addUtang(data: {

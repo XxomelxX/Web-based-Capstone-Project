@@ -24,6 +24,16 @@ model User {
   shifts       Shift[]
 }
 
+model PasswordResetCode {
+  id        Int      @id @default(autoincrement())
+  email     String
+  code      String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([email, code])
+}
+
 model Category {
   id          Int       @id @default(autoincrement())
   name        String
@@ -45,6 +55,8 @@ model Product {
   barcode    String?
   archived   Boolean  @default(false)
   goodsType  String   @default("non-perishable") // "perishable" | "non-perishable" | "durable"
+  vatType    String   @default("exempt") // "exempt" | "regular" | "zero-rated"
+  expiryDate DateTime?
 
   transactionItems TransactionItem[]
   stockBatches     StockBatch[]

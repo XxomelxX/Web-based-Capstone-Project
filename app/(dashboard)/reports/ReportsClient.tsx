@@ -136,7 +136,7 @@ export default function ReportsClient() {
           <button
             type="button"
             onClick={() => loadReports(range)}
-            className="mt-4 inline-flex items-center rounded-3xl bg-rose-500 px-4 py-2 text-sm font-medium text-white hover:bg-rose-400"
+            className="mt-4 inline-flex items-center rounded-3xl bg-rose-500 px-4 py-2 text-sm font-medium text-white hover:bg-rose-400 cursor-pointer"
           >
             Retry
           </button>
@@ -201,7 +201,7 @@ export default function ReportsClient() {
                   <div key={stock.name} className="grid grid-cols-[1fr_auto_auto] gap-4 rounded-3xl border border-slate-800/80 bg-slate-900/80 px-4 py-4 text-sm text-slate-200">
                     <span className="font-medium text-slate-100">{stock.name}</span>
                     <span className="text-slate-400">{stock.stock}</span>
-                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${stock.status === 'Critical' ? 'bg-rose-500/15 text-rose-300' : 'bg-slate-700/80 text-slate-300'}`}>
+                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${stock.status === 'Critical' ? 'bg-rose-500/15 text-rose-300' : 'bg-white text-slate-700'}`}>
                       {stock.status}
                     </span>
                   </div>
@@ -215,7 +215,7 @@ export default function ReportsClient() {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-                  <span>📡</span> Live Register Spot-Check (X-Read Monitoring)
+                  <span></span> Live Register Spot-Check 
                 </h2>
                 <p className="text-sm text-slate-500">Monitor active cashier open shifts and live cash drawer balances in real time without closing register shifts.</p>
               </div>
@@ -227,12 +227,11 @@ export default function ReportsClient() {
             <ActiveSpotCheckSection />
           </div>
 
-          {/* Shift & Cash Drawer Audit Log (Z-Read History) */}
           <div className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-6 shadow-[0_24px_80px_-46px_rgba(0,0,0,0.85)] space-y-4">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-                  <span>💼</span> Shift &amp; Cash Drawer Audit Log (Z-Read History)
+                  <span></span> Shift &amp; Cash Drawer Audit Log 
                 </h2>
                 <p className="text-sm text-slate-500">Track cashier register opening floats, cash sales, end-of-shift reconciliation, and cash overage/shortage variance.</p>
               </div>
@@ -453,7 +452,7 @@ function ShiftHistoryTable() {
                         </span>
                       ) : s.verificationStatus === 'flagged' ? (
                         <span className="text-xs font-bold text-rose-400 bg-rose-500/10 border border-rose-500/30 px-2 py-1 rounded-md">
-                          ⚠️ Flagged
+                          Flagged
                         </span>
                       ) : (
                         <button
@@ -461,7 +460,7 @@ function ShiftHistoryTable() {
                             setAuditError('');
                             setVerifyingShift(s);
                           }}
-                          className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-semibold px-2.5 py-1 rounded-md transition"
+                          className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-semibold px-2.5 py-1 rounded-md transition cursor-pointer"
                         >
                           Sign-off / Audit
                         </button>
@@ -483,9 +482,9 @@ function ShiftHistoryTable() {
           <form onSubmit={handleVerifySubmit} className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
               <h3 className="font-bold text-lg text-slate-100 flex items-center gap-2">
-                <span>🛡️</span> Auditor Shift Sign-off
+                <span></span> Auditor Shift Sign-off
               </h3>
-              <button type="button" onClick={() => setVerifyingShift(null)} className="text-slate-400 hover:text-slate-200">✕</button>
+              <button type="button" onClick={() => setVerifyingShift(null)} className="text-slate-400 hover:text-slate-200 cursor-pointer">✕</button>
             </div>
             {auditError && <p className="text-sm text-rose-400">{auditError}</p>}
 
@@ -503,7 +502,7 @@ function ShiftHistoryTable() {
                 <button
                   type="button"
                   onClick={() => setVerifyStatus('verified')}
-                  className={`py-2 rounded-xl text-xs font-bold border transition ${
+                  className={`py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${
                     verifyStatus === 'verified' ? 'bg-emerald-600 text-white border-emerald-500' : 'bg-slate-950 text-slate-400 border-slate-800'
                   }`}
                 >
@@ -512,11 +511,11 @@ function ShiftHistoryTable() {
                 <button
                   type="button"
                   onClick={() => setVerifyStatus('flagged')}
-                  className={`py-2 rounded-xl text-xs font-bold border transition ${
+                  className={`py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${
                     verifyStatus === 'flagged' ? 'bg-rose-600 text-white border-rose-500' : 'bg-slate-950 text-slate-400 border-slate-800'
                   }`}
                 >
-                  ⚠️ Flag (Discrepancy)
+                   Flag (Discrepancy)
                 </button>
               </div>
             </div>
@@ -536,14 +535,14 @@ function ShiftHistoryTable() {
               <button
                 type="button"
                 onClick={() => setVerifyingShift(null)}
-                className="flex-1 border border-slate-700 rounded-xl py-2 text-xs font-semibold text-slate-300 hover:bg-slate-800"
+                className="flex-1 border border-slate-700 rounded-xl py-2 text-xs font-semibold text-slate-300 hover:bg-slate-800 cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={submittingAudit}
-                className="flex-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl py-2 text-xs font-semibold transition"
+                className="flex-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl py-2 text-xs font-semibold transition cursor-pointer"
               >
                 {submittingAudit ? 'Submitting...' : 'Submit Sign-off'}
               </button>

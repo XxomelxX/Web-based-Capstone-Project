@@ -50,6 +50,8 @@ export async function POST(request: Request) {
       unit: data.unit ?? null,
       barcode: data.barcode ?? null,
       goodsType: data.goodsType ?? 'non-perishable',
+      vatType: data.vatType ?? 'exempt',
+      expiryDate: data.expiryDate ? new Date(data.expiryDate) : null,
     },
   });
 
