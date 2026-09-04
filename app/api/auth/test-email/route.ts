@@ -3,7 +3,6 @@ import { Resend } from 'resend';
 
 export async function POST(request: Request) {
   try {
-    const resend = new Resend(process.env.RESEND_API_KEY);
     const { email } = await request.json();
 
     if (!email) {
@@ -12,6 +11,7 @@ export async function POST(request: Request) {
 
     console.log('[test-email] Sending test email via Resend to:', email);
 
+    const resend = new Resend(process.env.RESEND_API_KEY);
     const { data, error } = await resend.emails.send({
       from: process.env.RESEND_FROM_EMAIL || 'J & J Merchandise Store <noreply@jjmerchandisestore.shop>',
       to: email,

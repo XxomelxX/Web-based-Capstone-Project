@@ -7,7 +7,6 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function POST(request: Request) {
   try {
-    const resend = new Resend(process.env.RESEND_API_KEY);
     const { email } = await request.json();
 
     if (!email || typeof email !== 'string' || !EMAIL_RE.test(email.trim())) {
@@ -59,6 +58,7 @@ export async function POST(request: Request) {
 
     console.log('[forgot-password] Code generated, sending email via Resend...');
 
+    const resend = new Resend(process.env.RESEND_API_KEY);
     const { data, error } = await resend.emails.send({
       from: process.env.RESEND_FROM_EMAIL || 'J & J Merchandise Store <noreply@jjmerchandisestore.shop>',
       to: normalizedEmail,
