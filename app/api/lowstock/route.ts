@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireSession } from '@/lib/require-session';
 
 export async function GET() {
+  const guard = await requireSession();
+  if (guard) return guard;
+
   const settings = await prisma.settings.findFirst();
   const threshold = settings?.lowStockThreshold ?? 20;
 

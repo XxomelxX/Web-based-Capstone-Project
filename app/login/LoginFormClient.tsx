@@ -98,10 +98,16 @@ export default function LoginFormClient() {
         return;
       }
 
-      sessionStorage.removeItem('offlineSession');
       try {
         const session = await getSession();
         if (session?.user) {
+          sessionStorage.setItem('offlineSession', JSON.stringify({
+            id: Number(session.user.id || 0),
+            name: session.user.name || username,
+            username: cleanUsername,
+            role: (session.user.role as 'admin' | 'cashier') || 'cashier',
+          }));
+
           const localHash = await bcrypt.hash(password, 10);
           await db.cachedCredentials.put({
             username: cleanUsername,
@@ -132,7 +138,7 @@ export default function LoginFormClient() {
     <div className="w-full max-w-sm">
       {/* Heading */}
       <h2
-        className="text-4xl font-bold text-[#1a3a2a] text-center mb-8 tracking-widest"
+        className="text-4xl font-bold text-gray-800 text-center mb-8 tracking-widest"
         style={{ fontFamily: "'Playfair Display', serif" }}
       >
         LOGIN
@@ -147,7 +153,7 @@ export default function LoginFormClient() {
           </label>
           <div className="relative">
             <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
-              <User className="h-5 w-5 text-[#1a3a2a]/60" />
+              <User className="h-5 w-5 text-gray-600" />
             </div>
             <input
               type="text"
@@ -155,7 +161,7 @@ export default function LoginFormClient() {
               onChange={(e) => setUsername(e.target.value)}
               placeholder=""
               required
-              className="block w-full rounded-full bg-[#6b9e8e]/40 border-none py-3 pl-12 pr-4 text-sm text-gray-800 placeholder-gray-400 outline-none transition focus:ring-2 focus:ring-[#1a3a2a]/30"
+              className="block w-full rounded-full bg-gray-100 border border-gray-300 py-3 pl-12 pr-4 text-sm text-gray-800 placeholder-gray-400 outline-none transition focus:ring-2 focus:ring-[#d97706]/30"
             />
           </div>
         </div>
@@ -167,7 +173,7 @@ export default function LoginFormClient() {
           </label>
           <div className="relative">
             <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
-              <Lock className="h-5 w-5 text-[#1a3a2a]/60" />
+              <Lock className="h-5 w-5 text-gray-600" />
             </div>
             <input
               type={showPassword ? 'text' : 'password'}
@@ -175,12 +181,12 @@ export default function LoginFormClient() {
               onChange={(e) => setPassword(e.target.value)}
               placeholder=""
               required
-              className="block w-full rounded-full bg-[#6b9e8e]/40 border-none py-3 pl-12 pr-12 text-sm text-gray-800 placeholder-gray-400 outline-none transition focus:ring-2 focus:ring-[#1a3a2a]/30"
+              className="block w-full rounded-full bg-gray-100 border border-gray-300 py-3 pl-12 pr-12 text-sm text-gray-800 placeholder-gray-400 outline-none transition focus:ring-2 focus:ring-[#d97706]/30"
             />
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute inset-y-0 right-0 flex items-center pr-4 text-[#1a3a2a]/50 hover:text-[#1a3a2a] transition"
+              className="absolute inset-y-0 right-0 flex items-center pr-4 text-gray-500 hover:text-gray-800 transition"
             >
               {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
@@ -198,7 +204,7 @@ export default function LoginFormClient() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded-full bg-[#6b9e8e] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#5a8a7a] disabled:opacity-60 mt-4"
+          className="w-full rounded-full bg-[#f59e0b] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#d97706] disabled:opacity-60 mt-4"
         >
           {loading ? 'Signing in...' : 'LOGIN'}
         </button>
@@ -211,13 +217,13 @@ export default function LoginFormClient() {
             type="checkbox"
             checked={rememberMe}
             onChange={(e) => setRememberMe(e.target.checked)}
-            className="h-4 w-4 rounded border-gray-300 text-[#1a3a2a] focus:ring-[#1a3a2a] cursor-pointer"
+            className="h-4 w-4 rounded border-gray-300 text-[#15803d] focus:ring-[#15803d] cursor-pointer"
           />
           <span className="text-sm text-gray-600">Remember me</span>
         </label>
         <a
           href="/forgot-password"
-          className="text-sm text-[#1a3a2a] hover:underline transition"
+          className="text-sm text-[#15803d] hover:underline transition"
         >
           Forgot Password?
         </a>

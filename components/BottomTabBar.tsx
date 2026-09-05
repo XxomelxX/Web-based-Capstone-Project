@@ -38,22 +38,22 @@ export function BottomTabBar() {
 
   return (
     <>
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 border-t shadow-lg z-40 flex items-center justify-around py-2">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 border-t z-40 flex items-center justify-around py-2 bg-slate-950 border-slate-800">
         {TABS.map((tab) => {
           const Icon = tab.icon;
           const active = pathname === tab.href;
           return (
-            <Link key={tab.href} href={tab.href} className="flex flex-col items-center gap-0.5 px-3 cursor-pointer">
-              <Icon size={22} className={active ? 'text-green-700' : 'text-gray-400'} />
-              <span className={`text-[10px] font-medium ${active ? 'text-green-700' : 'text-gray-400'}`}>
+            <Link key={tab.href} href={tab.href} className={`nav-link nav-link-tab flex flex-col items-center gap-0.5 px-3 py-1 rounded ${active ? 'active' : 'text-gray-400'}`}>
+              <Icon size={22} className={active ? 'text-[#f59e0b]' : 'text-[#86b89a]'} />
+              <span className={`text-[10px] font-medium ${active ? 'text-[#f59e0b]' : 'text-[#86b89a]'}`}>
                 {tab.label}
               </span>
             </Link>
           );
         })}
         <button onClick={() => setMoreOpen(!moreOpen)} className="flex flex-col items-center gap-0.5 px-3 cursor-pointer">
-          <Menu size={22} className="text-gray-400" />
-          <span className="text-[10px] font-medium text-gray-400">More</span>
+          <Menu size={22} className="text-[#86b89a]" />
+          <span className="text-[10px] font-medium text-[#86b89a]">More</span>
         </button>
       </nav>
 
@@ -61,7 +61,7 @@ export function BottomTabBar() {
         <div className="md:hidden fixed inset-0 z-50" onClick={() => setMoreOpen(false)}>
           <div className="absolute inset-0 bg-black/50" />
           <div
-            className="absolute bottom-0 left-0 right-0 rounded-t-2xl p-4 max-h-[70vh] overflow-y-auto"
+            className="absolute bottom-0 left-0 right-0 rounded-t-2xl p-4 max-h-[70vh] overflow-y-auto bg-slate-900 border-t border-slate-800"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-4" />
@@ -70,7 +70,7 @@ export function BottomTabBar() {
                 key={link.href}
                 href={link.href}
                 onClick={() => setMoreOpen(false)}
-                className="block px-4 py-3 text-sm font-medium border-b last:border-0 cursor-pointer"
+                className="block px-4 py-3 text-sm font-medium border-b border-slate-800 last:border-0 text-green-100 hover:bg-slate-800 cursor-pointer"
               >
                 {link.label}
               </Link>

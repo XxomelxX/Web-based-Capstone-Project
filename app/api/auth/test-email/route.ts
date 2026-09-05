@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { Resend } from 'resend';
+import { requireRole } from '@/lib/require-role';
 
 export async function POST(request: Request) {
+  const guard = await requireRole(['admin']);
+  if (guard) return guard;
+
   try {
     const { email } = await request.json();
 

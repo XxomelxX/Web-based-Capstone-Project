@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { getTransactions } from '@/lib/api/inventory';
 import { useRealtime } from '@/lib/use-realtime';
+import { exportToExcel } from '@/lib/exportExcel';
+import { Download } from 'lucide-react';
 
 interface Transaction {
   id: number; createdAt: string; cashier: { fullName: string };
@@ -33,7 +35,7 @@ export default function TransactionLogClient() {
   const [dateTo, setDateTo] = useState('');
 
   function refresh() {
-    getTransactions<Transaction>().then(setTransactions);
+    getTransactions<Transaction>().then(setTransactions).catch(() => {});
   }
 
   useRealtime({
@@ -64,6 +66,28 @@ export default function TransactionLogClient() {
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
 
+  function handleExport() {
+    exportToExcel('Transaction Log', [{
+      name: 'Transactions',
+      columns: [
+        { header: 'Order#', key: 'id', width: 10 },
+        { header: 'Date/Time', key: 'date', width: 22 },
+        { header: 'Cashier', key: 'cashier', width: 20 },
+        { header: 'Payment Method', key: 'paymentMethod', width: 16 },
+        { header: 'Total', key: 'total', width: 12 },
+        { header: 'Status', key: 'status', width: 12 },
+      ],
+      data: sorted.map((t) => ({
+        id: `#${t.id}`,
+        date: new Date(t.createdAt).toLocaleString(),
+        cashier: t.cashier?.fullName || '',
+        paymentMethod: t.paymentMethod,
+        total: t.total,
+        status: t.status,
+      })),
+    }]);
+  }
+
   return (
     <div className="space-y-4">
       <div>
@@ -86,6 +110,9 @@ export default function TransactionLogClient() {
           <button onClick={() => applyPreset('month')} className="text-xs px-3 py-1 rounded-full border hover:bg-gray-50 cursor-pointer">This Month</button>
           <button onClick={() => { setDateFrom(''); setDateTo(''); }} className="text-xs px-3 py-1 rounded-full border hover:bg-gray-50 text-gray-400 cursor-pointer">Clear</button>
         </div>
+        <button onClick={handleExport} className="flex items-center gap-1.5 text-xs px-3 py-1 rounded-full border border-emerald-600 text-emerald-700 hover:bg-emerald-50 cursor-pointer ml-auto">
+          <Download size={14} /> Export Excel
+        </button>
       </div>
 
       <div className="bg-white rounded-xl shadow overflow-hidden overflow-x-auto">

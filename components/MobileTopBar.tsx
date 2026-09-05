@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { signOut } from 'next-auth/react';
 import { Sun, Moon, LogOut } from 'lucide-react';
+import Image from 'next/image';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import { useTheme } from '@/lib/useTheme';
 import { OfflineStatusPill } from '@/components/OfflineStatusPill';
@@ -20,14 +21,24 @@ export function MobileTopBar() {
   };
 
   return (
-    <div className="md:hidden sticky top-0 z-30 border-b flex items-center justify-between px-4 py-3 bg-green-100">
-      <span className="font-bold text-sm text-green-700">J &amp; J Merchandise Store</span>
+    <div className="md:hidden sticky top-0 z-30 border-b flex items-center justify-between px-4 py-3 bg-[#15803d]">
+      <div className="flex items-center gap-2">
+        <Image
+          src="/images/81e09f4c-f773-4009-b7d5-6ef3babd8388-removebg-preview.png"
+          alt="J & J Merchandise Store logo"
+          width={40}
+          height={40}
+          className="h-10 w-10 object-contain shrink-0"
+          style={{ mixBlendMode: 'screen' }}
+        />
+        <span className="font-bold text-sm text-white">J &amp; J Merchandise Store</span>
+      </div>
       <div className="flex items-center gap-2">
         <OfflineStatusPill onClick={() => setShowSyncModal(true)} />
         <button
           type="button"
           onClick={toggleTheme}
-          className="rounded-lg border p-2"
+          className="rounded-lg border border-slate-700 p-2 text-green-100"
           aria-label="Toggle light/dark mode"
         >
           {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}

@@ -20,8 +20,11 @@ export function useRealtime(handlers: RealtimeHandlers) {
     if (!('EventSource' in window)) return;
 
     const source = new EventSource('/api/realtime');
+    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+    let reconnectDelay = 1000;
 
     const handleEvent = (event: MessageEvent, channel: RealtimeChannel) => {
+      reconnectDelay = 1000;
       const currentHandler = handlersRef.current[channel];
       if (!currentHandler) return;
       try {
@@ -51,14 +54,26 @@ export function useRealtime(handlers: RealtimeHandlers) {
     }
 
     source.addEventListener('keep-alive', () => {
-      // keep the connection alive
+      reconnectDelay = 1000;
     });
 
     source.onerror = () => {
       source.close();
+      reconnectTimeout = setTimeout(() => {
+        reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+        source.close();
+        const newSource = new EventSource('/api/realtime');
+        for (const eventName of eventNames) {
+          newSource.addEventListener(eventName, (event) => handleEvent(event as MessageEvent, eventName));
+        }
+        newSource.addEventListener('keep-alive', () => {
+          reconnectDelay = 1000;
+        });
+      }, reconnectDelay);
     };
 
     return () => {
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
       source.close();
     };
   }, []);

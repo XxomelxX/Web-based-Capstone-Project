@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireRole } from '@/lib/require-role';
+import { requireSession } from '@/lib/require-session';
 import { broadcastRealtime } from '@/lib/realtime';
 
 export async function GET() {
+  const guard = await requireSession();
+  if (guard) return guard;
+
   let settings = await prisma.settings.findFirst();
   if (!settings) {
     settings = await prisma.settings.create({ data: {} });

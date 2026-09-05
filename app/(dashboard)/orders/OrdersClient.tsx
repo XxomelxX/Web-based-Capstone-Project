@@ -7,6 +7,8 @@ import { getCategory2Cache, saveCategory2Cache } from '@/lib/localStorageCache';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
 import { RECONNECT_EVENT_NAME } from '@/lib/useOfflineSync';
 import { useCurrentUser } from '@/lib/useCurrentUser';
+import { exportToExcel } from '@/lib/exportExcel';
+import { Download } from 'lucide-react';
 
 interface OrderItem { productId: number; quantity: number; unitPrice: number; lineTotal: number; product: { name: string } }
 interface Order {
@@ -82,6 +84,32 @@ export default function OrdersClient() {
   const totalRevenue = completeOrders.reduce((s, o) => s + o.total, 0);
   const totalItems = completeOrders.reduce((s, o) => s + o.items.reduce((si, i) => si + i.quantity, 0), 0);
 
+  function handleExport() {
+    exportToExcel('Orders', [{
+      name: 'Orders',
+      columns: [
+        { header: 'Order#', key: 'id', width: 10 },
+        { header: 'Date', key: 'date', width: 22 },
+        { header: 'Cashier', key: 'cashier', width: 20 },
+        { header: 'Payment', key: 'paymentMethod', width: 14 },
+        { header: 'Items', key: 'items', width: 8 },
+        { header: 'Total', key: 'total', width: 12 },
+        { header: 'Status', key: 'status', width: 12 },
+        { header: 'Void Reason', key: 'voidReason', width: 24 },
+      ],
+      data: sortedOrders.map((o) => ({
+        id: `#${o.id}`,
+        date: new Date(o.createdAt).toLocaleString(),
+        cashier: o.cashier?.fullName || '',
+        paymentMethod: o.paymentMethod,
+        items: o.items.reduce((s, i) => s + i.quantity, 0),
+        total: o.total,
+        status: o.status,
+        voidReason: o.voidReason || '',
+      })),
+    }]);
+  }
+
   function openVoidModal(o: Order) {
     if (typeof window !== 'undefined' && !navigator.onLine) {
       setError('This action requires an internet connection');
@@ -122,8 +150,15 @@ export default function OrdersClient() {
       />
 
       <div>
-        <h1 className="text-2xl font-bold text-white">Orders</h1>
-        <p className="text-sm text-slate-400">All sales transactions</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-white">Orders</h1>
+            <p className="text-sm text-slate-400">All sales transactions</p>
+          </div>
+          <button onClick={handleExport} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 cursor-pointer">
+            <Download size={14} /> Export Excel
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">

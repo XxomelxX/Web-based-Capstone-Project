@@ -61,18 +61,17 @@ export function TopNavbar() {
   };
 
   return (
-    <nav className="hidden md:flex items-center justify-between px-6 lg:px-8 py-3 border-b shadow-sm sticky top-0 z-40 bg-green-100">
+    <nav className="hidden md:flex items-center justify-between px-6 lg:px-8 py-3 border-b shadow-sm sticky top-0 z-40 bg-[#15803d]">
       <div className="flex items-center gap-3">
-        <div className="w-9 h-9 flex items-center justify-center overflow-hidden rounded-full bg-black shrink-0">
-          <Image
-            src="/1130f5ee-b20d-41b4-89c5-23c877b4d396.jpg"
-            alt="Sari-Sari POS logo"
-            width={36}
-            height={36}
-            className="object-contain"
-          />
-        </div>
-        <span className="font-bold text-lg">J &amp; J Merchandise Store</span>
+        <Image
+          src="/images/81e09f4c-f773-4009-b7d5-6ef3babd8388-removebg-preview.png"
+          alt="J & J Merchandise Store logo"
+          width={48}
+          height={48}
+          className="h-12 w-12 object-contain shrink-0"
+          style={{ mixBlendMode: 'screen' }}
+        />
+        <span className="font-bold text-lg text-white">J &amp; J Merchandise Store</span>
       </div>
 
       <div className="flex items-center gap-6 text-sm font-semibold">
@@ -80,20 +79,23 @@ export function TopNavbar() {
           <Link
             key={link.href}
             href={link.href}
-            className={pathname === link.href ? 'text-green-700 cursor-pointer' : 'hover:text-green-700 text-gray-600 cursor-pointer'}
+            className={`nav-link px-2 py-1 rounded ${pathname === link.href ? 'active text-white' : 'text-green-100'}`}
           >
             {link.label}
           </Link>
         ))}
 
-        <div className="relative" onClick={() => setMoreOpen(!moreOpen)}>
-          <button className="flex items-center gap-1 cursor-pointer hover:text-green-700 text-gray-600 transition-colors">
+        <div className="relative">
+          <button
+            onClick={() => setMoreOpen(!moreOpen)}
+            className={`nav-link flex items-center gap-1 px-2 py-1 rounded cursor-pointer ${moreOpen ? 'active text-white' : 'text-green-100'}`}
+          >
             More <ChevronDown size={16} />
           </button>
           {moreOpen && (
-            <div className="absolute right-0 top-full mt-2 shadow-lg rounded-md py-2 w-48 z-50 opacity-100 pointer-events-auto transition-opacity duration-200">
+            <div className="absolute right-0 top-full mt-2 shadow-lg rounded-md py-2 w-48 z-50 opacity-100 pointer-events-auto transition-opacity duration-200 bg-slate-900 border border-slate-800">
               {moreLinks.map((link) => (
-                <Link key={link.href} href={link.href} className="block px-4 py-2 text-sm hover:bg-gray-50 cursor-pointer">
+                <Link key={link.href} href={link.href} className="block px-4 py-2 text-sm hover:bg-slate-800 text-slate-100 cursor-pointer">
                   {link.label}
                 </Link>
               ))}
@@ -108,7 +110,7 @@ export function TopNavbar() {
         <button
           type="button"
           onClick={toggleTheme}
-          className="rounded-lg border p-2 hover:bg-gray-100 transition cursor-pointer"
+          className="rounded-lg border border-slate-700 p-2 hover:bg-slate-800 transition cursor-pointer text-green-100"
           aria-label="Toggle light/dark mode"
         >
           {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
@@ -120,7 +122,7 @@ export function TopNavbar() {
             className="flex items-center gap-2 cursor-pointer"
             aria-label="User menu"
           >
-            <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-700">
+            <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold text-white">
               {user?.name?.[0] ?? '?'}
             </div>
             <span
@@ -132,12 +134,12 @@ export function TopNavbar() {
             </span>
           </button>
           {menuOpen && (
-            <div className="absolute right-0 top-full mt-2 shadow-lg rounded-md py-2 w-52 z-50">
-              <div className="px-4 py-2 text-sm font-semibold border-b">{user?.name ?? 'Store User'}</div>
-              <div className="px-4 py-1 text-xs text-gray-500">{user?.username}</div>
+            <div className="absolute right-0 top-full mt-2 shadow-lg rounded-md py-2 w-52 z-50 bg-slate-900 border border-slate-800">
+              <div className="px-4 py-2 text-sm font-semibold border-b border-slate-800 text-white">{user?.name ?? 'Store User'}</div>
+              <div className="px-4 py-1 text-xs text-slate-400">{user?.username}</div>
               <button
                 onClick={handleLogout}
-                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 cursor-pointer"
+                className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-500/10 flex items-center gap-2 cursor-pointer"
               >
                 <LogOut size={14} /> Logout
               </button>

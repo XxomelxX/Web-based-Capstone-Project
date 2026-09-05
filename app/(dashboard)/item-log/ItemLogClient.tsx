@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { getItemLog } from '@/lib/api/inventory';
 import { useRealtime } from '@/lib/use-realtime';
+import { exportToExcel } from '@/lib/exportExcel';
+import { Download } from 'lucide-react';
 
 interface ItemLogEntry {
   id: number; createdAt: string; action: string; quantity: number;
@@ -40,7 +42,7 @@ export default function ItemLogClient() {
   const [dateTo, setDateTo] = useState('');
 
   function refresh() {
-    getItemLog<ItemLogEntry>().then(setLogs);
+    getItemLog<ItemLogEntry>().then(setLogs).catch(() => {});
   }
 
   useRealtime({
@@ -73,6 +75,26 @@ export default function ItemLogClient() {
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
 
+  function handleExport() {
+    exportToExcel('Item Log', [{
+      name: 'Item Log',
+      columns: [
+        { header: 'Date', key: 'date', width: 22 },
+        { header: 'Product', key: 'product', width: 28 },
+        { header: 'Action', key: 'action', width: 14 },
+        { header: 'Quantity', key: 'quantity', width: 10 },
+        { header: 'Performed By', key: 'user', width: 20 },
+      ],
+      data: sorted.map((l) => ({
+        date: new Date(l.createdAt).toLocaleString(),
+        product: l.product?.name || '',
+        action: l.action,
+        quantity: l.quantity,
+        user: l.user?.fullName || '',
+      })),
+    }]);
+  }
+
   return (
     <div className="space-y-4">
       <div>
@@ -95,6 +117,9 @@ export default function ItemLogClient() {
           <button onClick={() => applyPreset('month')} className="text-xs px-3 py-1 rounded-full border hover:bg-gray-50 cursor-pointer">This Month</button>
           <button onClick={() => { setDateFrom(''); setDateTo(''); }} className="text-xs px-3 py-1 rounded-full border hover:bg-gray-50 text-gray-400 cursor-pointer">Clear</button>
         </div>
+        <button onClick={handleExport} className="flex items-center gap-1.5 text-xs px-3 py-1 rounded-full border border-emerald-600 text-emerald-700 hover:bg-emerald-50 cursor-pointer ml-auto">
+          <Download size={14} /> Export Excel
+        </button>
       </div>
 
       <div className="bg-white rounded-xl shadow overflow-hidden overflow-x-auto">

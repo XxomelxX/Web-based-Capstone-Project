@@ -7,6 +7,13 @@ import { useRealtime } from '@/lib/use-realtime';
 import { getCategory2Cache, saveCategory2Cache } from '@/lib/localStorageCache';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
 import { RECONNECT_EVENT_NAME } from '@/lib/useOfflineSync';
+import dynamic from 'next/dynamic';
+
+const RevenueChart = dynamic(() => import('@/components/charts/RevenueChart'), { ssr: false });
+const PaymentMethodChart = dynamic(() => import('@/components/charts/PaymentMethodChart'), { ssr: false });
+const CategorySalesChart = dynamic(() => import('@/components/charts/CategorySalesChart'), { ssr: false });
+const ExpenseChart = dynamic(() => import('@/components/charts/ExpenseChart'), { ssr: false });
+const TopProductsChart = dynamic(() => import('@/components/charts/TopProductsChart'), { ssr: false });
 
 interface ReportData {
   totalRevenue: number;
@@ -14,6 +21,14 @@ interface ReportData {
   totalItemsSold: number;
   topSelling: Array<{ name: string; unitsSold: number; revenue: number }>;
   stockLevels: Array<{ name: string; stock: number; status: string }>;
+}
+
+interface ChartData {
+  revenueOverTime: Array<{ date: string; revenue: number; transactions: number }>;
+  paymentMethods: Array<{ method: string; count: number; total: number }>;
+  salesByCategory: Array<{ category: string; revenue: number; items: number }>;
+  expenseByType: Array<{ type: string; amount: number }>;
+  topProducts: Array<{ name: string; revenue: number; unitsSold: number }>;
 }
 
 export default function DashboardClient() {
@@ -25,6 +40,7 @@ export default function DashboardClient() {
   const [isCached, setIsCached] = useState(false);
   const [cachedTime, setCachedTime] = useState<string | null>(null);
   const [isOffline, setIsOffline] = useState(false);
+  const [chartData, setChartData] = useState<ChartData | null>(null);
 
   const loadReports = useCallback(async (selectedRange: 'week' | 'month' | 'all') => {
     setLoading(true);
@@ -66,9 +82,22 @@ export default function DashboardClient() {
     }
   }, []);
 
+  const loadChartData = useCallback(async (selectedRange: 'week' | 'month' | 'all') => {
+    if (typeof window !== 'undefined' && !navigator.onLine) return;
+    try {
+      const res = await fetch(`/api/reports/chart-data?range=${selectedRange}`);
+      if (res.ok) {
+        const data = await res.json();
+        setChartData(data);
+      }
+    } catch {
+      // Silently fail — charts are non-critical
+    }
+  }, []);
+
   useRealtime({
-    transactions: () => void loadReports(range),
-    expenses: () => void loadReports(range),
+    transactions: () => { void loadReports(range); void loadChartData(range); },
+    expenses: () => { void loadReports(range); void loadChartData(range); },
     restock: () => void loadReports(range),
     products: () => void loadReports(range),
     utang: () => void loadReports(range),
@@ -77,14 +106,16 @@ export default function DashboardClient() {
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     void loadReports(range);
+    void loadChartData(range);
 
     function handleReconnect() {
       void loadReports(range);
+      void loadChartData(range);
     }
 
     window.addEventListener(RECONNECT_EVENT_NAME, handleReconnect);
     return () => window.removeEventListener(RECONNECT_EVENT_NAME, handleReconnect);
-  }, [range, loadReports]);
+  }, [range, loadReports, loadChartData]);
 
   const lowStockCount = data?.stockLevels.filter((s) => s.status === 'Critical').length ?? 0;
 
@@ -108,12 +139,12 @@ export default function DashboardClient() {
             </p>
           </div>
 
-          <div className="inline-flex items-center gap-3 rounded-3xl border border-yellow-500 bg-yellow-400 px-4 py-3 text-sm text-gray-900 shadow-lg shadow-black/10">
+          <div className="inline-flex items-center gap-3 rounded-3xl border border-[#f59e0b] bg-[#f59e0b] px-4 py-3 text-sm text-gray-900 shadow-lg shadow-black/10">
             <span className="text-gray-700">Report range</span>
             <select
               value={range}
               onChange={(e) => setRange(e.target.value as 'week' | 'month' | 'all')}
-              className="rounded-2xl border border-yellow-500 bg-yellow-300 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-yellow-600"
+              className="rounded-2xl border border-[#d97706] bg-[#f59e0b] px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-[#d97706]"
             >
               <option value="week">This Week</option>
               <option value="month">This Month</option>
@@ -146,10 +177,71 @@ export default function DashboardClient() {
         <>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <DashboardStatCard label="Revenue" value={`₱${data.totalRevenue.toFixed(2)}`} accent="text-emerald-300" />
-            <DashboardStatCard label="Transactions" value={String(data.totalTransactions)} accent="text-cyan-300" />
-            <DashboardStatCard label="Items Sold" value={String(data.totalItemsSold)} accent="text-violet-300" />
+            <DashboardStatCard label="Transactions" value={String(data.totalTransactions)} accent="text-[#f59e0b]" />
+            <DashboardStatCard label="Items Sold" value={String(data.totalItemsSold)} accent="text-emerald-400" />
             <DashboardStatCard label="Low Stock Alerts" value={String(lowStockCount)} accent={lowStockCount > 0 ? 'text-rose-400' : 'text-slate-300'} />
           </div>
+
+          {chartData && (
+            <>
+              <div className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-6 shadow-[0_24px_80px_-46px_rgba(0,0,0,0.85)]">
+                <div className="mb-5 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold text-white">Revenue Over Time</h2>
+                    <p className="text-sm text-slate-500">Daily revenue trend for the selected period.</p>
+                  </div>
+                  <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs uppercase tracking-[0.2em] text-emerald-200">
+                    Trend
+                  </span>
+                </div>
+                <RevenueChart data={chartData.revenueOverTime} range={range} />
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-2">
+                <div className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-6 shadow-[0_24px_80px_-46px_rgba(0,0,0,0.85)]">
+                  <div className="mb-5 flex items-center justify-between">
+                    <div>
+                      <h2 className="text-lg font-semibold text-white">Payment Methods</h2>
+                      <p className="text-sm text-slate-500">Cash vs GCash transaction split.</p>
+                    </div>
+                  </div>
+                  <PaymentMethodChart data={chartData.paymentMethods} />
+                </div>
+
+                <div className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-6 shadow-[0_24px_80px_-46px_rgba(0,0,0,0.85)]">
+                  <div className="mb-5 flex items-center justify-between">
+                    <div>
+                      <h2 className="text-lg font-semibold text-white">Sales by Category</h2>
+                      <p className="text-sm text-slate-500">Revenue contribution per product category.</p>
+                    </div>
+                  </div>
+                  <CategorySalesChart data={chartData.salesByCategory} />
+                </div>
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-2">
+                <div className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-6 shadow-[0_24px_80px_-46px_rgba(0,0,0,0.85)]">
+                  <div className="mb-5 flex items-center justify-between">
+                    <div>
+                      <h2 className="text-lg font-semibold text-white">Expense Breakdown</h2>
+                      <p className="text-sm text-slate-500">Operating expenses by type.</p>
+                    </div>
+                  </div>
+                  <ExpenseChart data={chartData.expenseByType} />
+                </div>
+
+                <div className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-6 shadow-[0_24px_80px_-46px_rgba(0,0,0,0.85)]">
+                  <div className="mb-5 flex items-center justify-between">
+                    <div>
+                      <h2 className="text-lg font-semibold text-white">Top Products</h2>
+                      <p className="text-sm text-slate-500">Highest revenue products.</p>
+                    </div>
+                  </div>
+                  <TopProductsChart data={chartData.topProducts} />
+                </div>
+              </div>
+            </>
+          )}
 
           <div className="grid gap-4 xl:grid-cols-2">
             <div className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-6 shadow-[0_24px_80px_-46px_rgba(0,0,0,0.85)]">

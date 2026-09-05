@@ -32,8 +32,12 @@ export async function POST(request: Request) {
 
   try {
     const result = await prisma.$transaction(async (tx) => {
+      const productIds = items.map((i) => i.productId);
+      const allProducts = await tx.product.findMany({ where: { id: { in: productIds } } });
+      const productMap = new Map(allProducts.map((p) => [p.id, p]));
+
       for (const item of items) {
-        const product = await tx.product.findUnique({ where: { id: item.productId } });
+        const product = productMap.get(item.productId);
         if (!product) throw new Error(`Product #${item.productId} not found`);
         if (product.stock < item.quantity) {
           throw new Error(`Insufficient stock for ${product.name} (available: ${product.stock}, required: ${item.quantity})`);
@@ -47,7 +51,7 @@ export async function POST(request: Request) {
 
       let vat = 0;
       for (const item of items) {
-        const product = await tx.product.findUnique({ where: { id: item.productId } });
+        const product = productMap.get(item.productId);
         if (product?.vatType === 'regular') {
           const lineTotal = item.quantity * item.unitPrice;
           vat += lineTotal * (taxRate / (100 + taxRate));

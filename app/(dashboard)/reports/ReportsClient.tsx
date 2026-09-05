@@ -7,6 +7,8 @@ import { ShiftDetails } from '@/lib/api/shift';
 import { getCategory2Cache, saveCategory2Cache } from '@/lib/localStorageCache';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
 import { RECONNECT_EVENT_NAME } from '@/lib/useOfflineSync';
+import { exportToExcel } from '@/lib/exportExcel';
+import { Download } from 'lucide-react';
 
 interface ShiftHistoryItem extends ShiftDetails {
   verificationStatus?: 'verified' | 'flagged' | null;
@@ -91,6 +93,41 @@ export default function ReportsClient() {
 
   const lowStockCount = data?.stockLevels.filter((s) => s.status === 'Critical').length ?? 0;
 
+  function handleExport() {
+    if (!data) return;
+    const sheets = [
+      {
+        name: 'Top Selling Products',
+        columns: [
+          { header: 'Rank', key: 'rank', width: 8 },
+          { header: 'Product', key: 'name', width: 30 },
+          { header: 'Units Sold', key: 'unitsSold', width: 14 },
+          { header: 'Revenue', key: 'revenue', width: 14 },
+        ],
+        data: data.topSelling.map((p, i) => ({
+          rank: i + 1,
+          name: p.name,
+          unitsSold: p.unitsSold,
+          revenue: p.revenue,
+        })),
+      },
+      {
+        name: 'Stock Levels',
+        columns: [
+          { header: 'Product', key: 'name', width: 30 },
+          { header: 'Stock', key: 'stock', width: 10 },
+          { header: 'Status', key: 'status', width: 12 },
+        ],
+        data: data.stockLevels.map((s) => ({
+          name: s.name,
+          stock: s.stock,
+          status: s.status,
+        })),
+      },
+    ];
+    exportToExcel(`Reports_${range}`, sheets);
+  }
+
   return (
     <div className="space-y-6">
       <CachedDataBanner
@@ -111,17 +148,22 @@ export default function ReportsClient() {
             </p>
           </div>
 
-          <div className="inline-flex items-center gap-3 rounded-3xl border border-yellow-500 bg-yellow-400 px-4 py-3 text-sm text-gray-900 shadow-lg shadow-black/10">
-            <span className="text-gray-700">Report range</span>
-            <select
-              value={range}
-              onChange={(e) => setRange(e.target.value as 'week' | 'month' | 'all')}
-              className="rounded-2xl border border-yellow-500 bg-yellow-300 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-yellow-600"
-            >
-              <option value="week">This Week</option>
-              <option value="month">This Month</option>
-              <option value="all">All Time</option>
-            </select>
+          <div className="inline-flex items-center gap-3">
+            <div className="inline-flex items-center gap-3 rounded-3xl border border-yellow-500 bg-yellow-400 px-4 py-3 text-sm text-gray-900 shadow-lg shadow-black/10">
+              <span className="text-gray-700">Report range</span>
+              <select
+                value={range}
+                onChange={(e) => setRange(e.target.value as 'week' | 'month' | 'all')}
+                className="rounded-2xl border border-yellow-500 bg-yellow-300 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-yellow-600"
+              >
+                <option value="week">This Week</option>
+                <option value="month">This Month</option>
+                <option value="all">All Time</option>
+              </select>
+            </div>
+            <button onClick={handleExport} disabled={!data} className="flex items-center gap-1.5 rounded-3xl border border-emerald-500 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300 hover:bg-emerald-500/20 transition cursor-pointer disabled:opacity-40">
+              <Download size={16} /> Export
+            </button>
           </div>
         </div>
       </section>
@@ -490,9 +532,9 @@ function ShiftHistoryTable() {
 
             <div className="text-xs text-slate-300 space-y-1 bg-slate-950 p-3 rounded-xl border border-slate-800">
               <div><strong className="text-slate-400">Cashier:</strong> {verifyingShift.cashier?.fullName}</div>
-              <div><strong className="text-slate-400">Opening Float:</strong> ₱{verifyingShift.openingFloat?.toFixed(2)}</div>
-              <div><strong className="text-slate-400">Expected Cash:</strong> ₱{verifyingShift.expectedCash?.toFixed(2)}</div>
-              <div><strong className="text-slate-400">Counted Cash:</strong> ₱{verifyingShift.closingCash?.toFixed(2)}</div>
+              <div><strong className="text-slate-400">Opening Float:</strong> ₱{(verifyingShift.openingFloat ?? 0).toFixed(2)}</div>
+              <div><strong className="text-slate-400">Expected Cash:</strong> ₱{(verifyingShift.expectedCash ?? 0).toFixed(2)}</div>
+              <div><strong className="text-slate-400">Counted Cash:</strong> {verifyingShift.closingCash !== null ? `₱${verifyingShift.closingCash.toFixed(2)}` : '—'}</div>
               <div><strong className="text-slate-400">Variance:</strong> {verifyingShift.overageShortage === null ? '—' : verifyingShift.overageShortage >= 0 ? `+₱${verifyingShift.overageShortage.toFixed(2)}` : `-₱${Math.abs(verifyingShift.overageShortage).toFixed(2)}`}</div>
             </div>
 

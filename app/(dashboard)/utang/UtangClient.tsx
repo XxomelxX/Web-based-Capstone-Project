@@ -7,6 +7,8 @@ import { useRealtime } from '@/lib/use-realtime';
 import { getCategory2Cache, saveCategory2Cache } from '@/lib/localStorageCache';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
 import { RECONNECT_EVENT_NAME } from '@/lib/useOfflineSync';
+import { exportToExcel } from '@/lib/exportExcel';
+import { Download } from 'lucide-react';
 
 interface UtangItemLine { productId: number; quantity: number; unitPrice: number }
 interface UtangEntry {
@@ -120,6 +122,53 @@ export default function UtangClient() {
   );
   const totalOutstanding = Array.from(customerMap.values()).reduce((s, c) => s + c.balance, 0);
   const customersWithUtang = Array.from(customerMap.values()).filter((c) => c.balance > 0).length;
+
+  function handleExport() {
+    const balanceData = Array.from(customerMap.entries()).map(([name, c]) => ({
+      customer: name,
+      balance: c.balance,
+      status: c.balance === 0 ? 'Paid' : 'Unpaid',
+      entries: c.entries.length,
+    }));
+
+    const activityData = entries.map((e) => ({
+      date: new Date(e.createdAt).toLocaleDateString(),
+      customer: e.customer?.name || 'Unknown',
+      items: e.items?.map((i) => `${i.product?.name || 'Item'} x${i.quantity}`).join(', ') || '',
+      note: e.note || '',
+      amount: e.totalAmount,
+      lastPayment: e.paymentAllocations && e.paymentAllocations.length > 0
+        ? new Date(e.paymentAllocations[0].payment.createdAt).toLocaleDateString()
+        : '',
+      status: e.status === 'paid' ? 'Paid' : e.status === 'partial' ? 'Partial' : 'Unpaid',
+    }));
+
+    exportToExcel('Utang_Credit', [
+      {
+        name: 'Customer Balances',
+        columns: [
+          { header: 'Customer', key: 'customer', width: 24 },
+          { header: 'Balance', key: 'balance', width: 14 },
+          { header: 'Status', key: 'status', width: 10 },
+          { header: 'Entries', key: 'entries', width: 10 },
+        ],
+        data: balanceData,
+      },
+      {
+        name: 'Recent Activity',
+        columns: [
+          { header: 'Date', key: 'date', width: 14 },
+          { header: 'Customer', key: 'customer', width: 24 },
+          { header: 'Items', key: 'items', width: 36 },
+          { header: 'Note', key: 'note', width: 20 },
+          { header: 'Amount', key: 'amount', width: 12 },
+          { header: 'Last Payment', key: 'lastPayment', width: 14 },
+          { header: 'Status', key: 'status', width: 10 },
+        ],
+        data: activityData,
+      },
+    ]);
+  }
 
   function updateLine(i: number, field: keyof UtangItemLine, value: number) {
     setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, [field]: value } : l)));
@@ -288,6 +337,9 @@ export default function UtangClient() {
           <p className="text-sm text-slate-400">Track customer credit balances and payments.</p>
         </div>
         <div className="flex gap-2">
+          <button onClick={handleExport} className="flex items-center gap-1.5 border border-slate-700 hover:bg-slate-800 text-slate-200 rounded-xl px-4 py-2 text-sm font-semibold transition cursor-pointer">
+            <Download size={14} /> Export
+          </button>
           <button onClick={() => { setShowPayment(true); setError(''); }} className="border border-slate-700 hover:bg-slate-800 text-slate-200 rounded-xl px-4 py-2 text-sm font-semibold transition cursor-pointer">
             Record Payment
           </button>

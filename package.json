@@ -21,7 +21,9 @@
     "prisma": "6.19.3",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "resend": "^6.25.0"
+    "recharts": "^3.10.1",
+    "resend": "^6.25.0",
+    "xlsx": "^0.18.5"
   },
   "prisma": {
     "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"
@@ -35,6 +37,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
     "tailwindcss": "^4",
+    "to-ico": "^1.1.5",
     "ts-node": "^10.9.2",
     "typescript": "^5"
   }

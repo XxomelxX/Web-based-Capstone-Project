@@ -103,7 +103,7 @@ export default function ForgotPasswordClient() {
     <div className="w-full max-w-sm">
       {/* Heading */}
       <h2
-        className="text-4xl font-bold text-[#1a3a2a] text-center mb-2 tracking-widest"
+        className="text-4xl font-bold text-gray-800 text-center mb-2 tracking-widest"
         style={{ fontFamily: "'Playfair Display', serif" }}
       >
         {step === 'email' ? 'FORGOT PASSWORD' : 'RESET PASSWORD'}
@@ -136,7 +136,7 @@ export default function ForgotPasswordClient() {
             </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
-                <Mail className="h-5 w-5 text-[#1a3a2a]/60" />
+                <Mail className="h-5 w-5 text-gray-600" />
               </div>
               <input
                 type="email"
@@ -165,7 +165,7 @@ export default function ForgotPasswordClient() {
             </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
-                <KeyRound className="h-5 w-5 text-[#1a3a2a]/60" />
+                <KeyRound className="h-5 w-5 text-gray-600" />
               </div>
               <input
                 type="text"
@@ -174,7 +174,7 @@ export default function ForgotPasswordClient() {
                 placeholder="000000"
                 maxLength={6}
                 required
-                className="block w-full rounded-full bg-[#6b9e8e]/40 border-none py-3 pl-12 pr-4 text-center text-lg tracking-[0.3em] text-gray-800 placeholder-gray-400 outline-none transition focus:ring-2 focus:ring-[#1a3a2a]/30"
+                className="block w-full rounded-full bg-gray-100 border border-gray-300 py-3 pl-12 pr-4 text-center text-lg tracking-[0.3em] text-gray-800 placeholder-gray-400 outline-none transition focus:ring-2 focus:ring-[#d97706]/30"
               />
             </div>
           </div>
@@ -185,7 +185,7 @@ export default function ForgotPasswordClient() {
             </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
-                <Lock className="h-5 w-5 text-[#1a3a2a]/60" />
+                <Lock className="h-5 w-5 text-gray-600" />
               </div>
               <input
                 type="password"
@@ -193,7 +193,7 @@ export default function ForgotPasswordClient() {
                 onChange={(e) => setNewPassword(e.target.value)}
                 placeholder=""
                 required
-                className="block w-full rounded-full bg-[#6b9e8e]/40 border-none py-3 pl-12 pr-4 text-sm text-gray-800 placeholder-gray-400 outline-none transition focus:ring-2 focus:ring-[#1a3a2a]/30"
+                className="block w-full rounded-full bg-gray-100 border border-gray-300 py-3 pl-12 pr-4 text-sm text-gray-800 placeholder-gray-400 outline-none transition focus:ring-2 focus:ring-[#d97706]/30"
               />
             </div>
           </div>
@@ -204,7 +204,7 @@ export default function ForgotPasswordClient() {
             </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
-                <Lock className="h-5 w-5 text-[#1a3a2a]/60" />
+                <Lock className="h-5 w-5 text-gray-600" />
               </div>
               <input
                 type="password"
@@ -212,7 +212,7 @@ export default function ForgotPasswordClient() {
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder=""
                 required
-                className="block w-full rounded-full bg-[#6b9e8e]/40 border-none py-3 pl-12 pr-4 text-sm text-gray-800 placeholder-gray-400 outline-none transition focus:ring-2 focus:ring-[#1a3a2a]/30"
+                className="block w-full rounded-full bg-gray-100 border border-gray-300 py-3 pl-12 pr-4 text-sm text-gray-800 placeholder-gray-400 outline-none transition focus:ring-2 focus:ring-[#d97706]/30"
               />
             </div>
           </div>
@@ -220,7 +220,7 @@ export default function ForgotPasswordClient() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-full bg-[#6b9e8e] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#5a8a7a] disabled:opacity-60"
+            className="w-full rounded-full bg-[#f59e0b] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#d97706] disabled:opacity-60"
           >
             {loading ? 'Resetting...' : 'Reset Password'}
           </button>
@@ -228,7 +228,7 @@ export default function ForgotPasswordClient() {
           <button
             type="button"
             onClick={() => { setStep('email'); setCode(''); setNewPassword(''); setConfirmPassword(''); setError(''); setSuccess(''); }}
-            className="w-full rounded-full border border-[#6b9e8e]/40 bg-white px-4 py-3 text-sm font-medium text-[#1a3a2a] transition hover:bg-[#6b9e8e]/10"
+            className="w-full rounded-full border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
           >
             Back to Email
           </button>
@@ -239,7 +239,7 @@ export default function ForgotPasswordClient() {
       <div className="mt-6 text-center">
         <Link
           href="/login"
-          className="inline-flex items-center gap-2 text-sm text-[#1a3a2a] hover:underline transition"
+          className="inline-flex items-center gap-2 text-sm text-gray-800 hover:underline transition"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to Login

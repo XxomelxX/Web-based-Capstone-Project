@@ -17,26 +17,38 @@ export async function GET() {
 
 // POST /api/users — Admin only. This is the ONLY way Cashier accounts get created (no public signup).
 export async function POST(request: Request) {
-  const guard = await requireRole(['admin']);
-  if (guard) return guard;
+  try {
+    const guard = await requireRole(['admin']);
+    if (guard) return guard;
 
-  const { fullName, username, email, password, role } = await request.json();
+    const { fullName, username, email, password, role } = await request.json();
 
-  if (!fullName || !username || !email || !password || !role) {
-    return NextResponse.json({ error: 'All fields are required' }, { status: 400 });
+    if (!fullName || !username || !email || !password || !role) {
+      return NextResponse.json({ error: 'All fields are required' }, { status: 400 });
+    }
+
+    if (!['admin', 'cashier'].includes(role)) {
+      return NextResponse.json({ error: 'Role must be admin or cashier' }, { status: 400 });
+    }
+
+    if (typeof password !== 'string' || password.length < 6) {
+      return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 });
+    }
+
+    const existing = await prisma.user.findUnique({ where: { username } });
+    if (existing) {
+      return NextResponse.json({ error: 'Username already taken' }, { status: 409 });
+    }
+
+    const passwordHash = await hash(password, 10);
+    const user = await prisma.user.create({
+      data: { fullName, username, email, passwordHash, role, status: 'active' },
+      select: { id: true, fullName: true, username: true, email: true, role: true, status: true },
+    });
+
+    broadcastRealtime('users', { action: 'created', user });
+    return NextResponse.json(user, { status: 201 });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Server error' }, { status: 500 });
   }
-
-  const existing = await prisma.user.findUnique({ where: { username } });
-  if (existing) {
-    return NextResponse.json({ error: 'Username already taken' }, { status: 409 });
-  }
-
-  const passwordHash = await hash(password, 10);
-  const user = await prisma.user.create({
-    data: { fullName, username, email, passwordHash, role, status: 'active' },
-    select: { id: true, fullName: true, username: true, email: true, role: true, status: true },
-  });
-
-  broadcastRealtime('users', { action: 'created', user });
-  return NextResponse.json(user, { status: 201 });
 }

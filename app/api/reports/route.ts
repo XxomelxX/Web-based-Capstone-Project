@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireSession } from '@/lib/require-session';
 
 // GET /api/reports?range=week|month|all
 export async function GET(request: Request) {
+  const guard = await requireSession();
+  if (guard) return guard;
+
   const { searchParams } = new URL(request.url);
   const range = searchParams.get('range') ?? 'all';
 
