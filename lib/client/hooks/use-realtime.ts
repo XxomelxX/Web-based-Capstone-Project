@@ -1,7 +1,7 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useRef } from 'react';
-import type { RealtimeChannel } from '@/lib/realtime';
+import type { RealtimeChannel } from '@/lib/server/realtime';
 
 export type RealtimeHandlers = Partial<Record<RealtimeChannel, (payload: unknown) => void>>;
 

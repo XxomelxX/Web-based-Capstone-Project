@@ -1,9 +1,9 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { requireRole } from '@/lib/require-role';
+﻿import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/server/prisma';
+import { requireRole } from '@/lib/server/require-role';
 import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
-import { broadcastRealtime } from '@/lib/realtime';
+import { authOptions } from '@/lib/server/auth';
+import { broadcastRealtime } from '@/lib/server/realtime';
 
 // POST /api/restock  body: { productId, quantity, supplier?, costPerUnit? }
 // Both admin and cashier may restock products. Cashiers may only add stock; they cannot deduct stock here.

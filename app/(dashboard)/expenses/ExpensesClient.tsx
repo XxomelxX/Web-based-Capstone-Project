@@ -1,10 +1,9 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { getExpenses, addExpense } from '@/lib/api/inventory';
-import { useRealtime } from '@/lib/use-realtime';
-import { exportToExcel } from '@/lib/exportExcel';
-import { Download } from 'lucide-react';
+import { getExpenses, addExpense } from '@/lib/client/api/inventory';
+import { useRealtime } from '@/lib/client/hooks/use-realtime';
+
 
 interface Expense { id: number; type: string; amount: number; period: string; note?: string; createdAt: string }
 
@@ -98,26 +97,6 @@ export default function ExpensesClient() {
   const totalThisYear = expenses.filter((e) => e.createdAt.startsWith(new Date().getFullYear().toString()))
     .reduce((s, e) => s + e.amount, 0);
 
-  function handleExport() {
-    exportToExcel('Expenses', [{
-      name: 'Expenses',
-      columns: [
-        { header: 'Type', key: 'type', width: 20 },
-        { header: 'Amount', key: 'amount', width: 14 },
-        { header: 'Period', key: 'period', width: 16 },
-        { header: 'Notes', key: 'note', width: 28 },
-        { header: 'Date Added', key: 'date', width: 16 },
-      ],
-      data: filtered.map((e) => ({
-        type: e.type,
-        amount: e.amount,
-        period: e.period,
-        note: e.note || '',
-        date: new Date(e.createdAt).toLocaleDateString(),
-      })),
-    }]);
-  }
-
   const FILTERS: { key: DateFilter; label: string }[] = [
     { key: 'all', label: 'All' },
     { key: 'week', label: 'This Week' },
@@ -139,9 +118,6 @@ export default function ExpensesClient() {
           <p className="text-sm text-slate-400">Track your store&apos;s overhead and recurring costs</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={handleExport} className="flex items-center gap-1.5 border border-slate-700 hover:bg-slate-800 text-slate-200 rounded-xl px-4 py-2 text-sm font-semibold transition cursor-pointer">
-            <Download size={14} /> Export
-          </button>
           <button
             onClick={openAddModal}
             disabled={isOffline}

@@ -1,9 +1,9 @@
-'use client';
+﻿'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LayoutDashboard, ShoppingCart, ClipboardList, Wallet, Menu } from 'lucide-react';
 import { useState } from 'react';
-import { useCurrentUser } from '@/lib/useCurrentUser';
+import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
 
 const TABS = [
   { href: '/dashboard', label: 'Home', icon: LayoutDashboard },
@@ -33,7 +33,6 @@ export function BottomTabBar() {
         ]
       : [
           { href: '/lowstock', label: 'Low Stock' },
-          { href: '/settings', label: 'Settings' },
         ];
 
   return (
@@ -70,7 +69,7 @@ export function BottomTabBar() {
                 key={link.href}
                 href={link.href}
                 onClick={() => setMoreOpen(false)}
-                className="block px-4 py-3 text-sm font-medium border-b border-slate-800 last:border-0 text-green-100 hover:bg-slate-800 cursor-pointer"
+                className="block px-4 py-3 text-sm font-medium border-b border-slate-800 last:border-0 text-white hover:bg-slate-800 cursor-pointer"
               >
                 {link.label}
               </Link>

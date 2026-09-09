@@ -1,4 +1,4 @@
-import { getProductsOffline } from '@/lib/api/offline';
+﻿import { getProductsOffline } from '@/lib/client/api/offline';
 
 export interface Product {
   id: number;

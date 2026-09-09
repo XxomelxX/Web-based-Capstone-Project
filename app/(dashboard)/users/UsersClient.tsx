@@ -1,9 +1,9 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { getUsers, addUser, updateUser, deleteUser, deactivateUser } from '@/lib/api/inventory';
-import { useRealtime } from '@/lib/use-realtime';
-import { useCurrentUser } from '@/lib/useCurrentUser';
+import { getUsers, addUser, updateUser, deleteUser, deactivateUser } from '@/lib/client/api/inventory';
+import { useRealtime } from '@/lib/client/hooks/use-realtime';
+import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
 
 interface User { id: number; fullName: string; username: string; email: string; role: string; status: string; createdAt: string }
 

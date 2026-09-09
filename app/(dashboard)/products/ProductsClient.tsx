@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState, useCallback } from 'react';
 import {
@@ -9,12 +9,13 @@ import {
   archiveProduct,
   unarchiveProduct,
   Product,
-} from '@/lib/api/products';
-import { getCategories, Category } from '@/lib/api/categories';
-import { useRealtime } from '@/lib/use-realtime';
-import { getCategory2Cache, saveCategory2Cache } from '@/lib/localStorageCache';
+} from '@/lib/client/api/products';
+import { getCategories, Category } from '@/lib/client/api/categories';
+import { useRealtime } from '@/lib/client/hooks/use-realtime';
+import { getCategory2Cache, saveCategory2Cache } from '@/lib/client/localStorageCache';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
-import { RECONNECT_EVENT_NAME } from '@/lib/useOfflineSync';
+import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
+import { formatDate } from '@/lib/client/timeUtils';
 
 const GOODS_BADGE: Record<string, string> = {
   perishable: 'bg-orange-100 text-orange-700',
@@ -41,7 +42,7 @@ function getExpiryBadge(expiryDate?: string | Date | null) {
   const daysLeft = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
   if (daysLeft < 0) return { label: 'Expired', className: 'bg-rose-100 text-rose-700' };
   if (daysLeft <= 30) return { label: `${daysLeft}d left`, className: 'bg-amber-100 text-amber-700' };
-  return { label: exp.toLocaleDateString(), className: 'bg-slate-100 text-slate-600' };
+  return { label: formatDate(exp), className: 'bg-slate-100 text-slate-600' };
 }
 
 export default function ProductsClient() {
@@ -61,7 +62,6 @@ export default function ProductsClient() {
   });
   const [error, setError] = useState('');
   const [isCached, setIsCached] = useState(false);
-  const [cachedTime, setCachedTime] = useState<string | null>(null);
   const [isOffline, setIsOffline] = useState(false);
 
   const refresh = useCallback(() => {
@@ -73,7 +73,6 @@ export default function ProductsClient() {
       if (cachedProds.data) {
         setProducts(cachedProds.data);
         setIsCached(true);
-        setCachedTime(cachedProds.formattedTime || cachedProds.cachedAt);
       }
       const cachedCats = getCategory2Cache<Category[]>('categories');
       if (cachedCats.data) {
@@ -86,14 +85,12 @@ export default function ProductsClient() {
           setProducts(prods);
           saveCategory2Cache(`products_${tab}`, prods);
           setIsCached(false);
-          setCachedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }));
         })
         .catch(() => {
           const cachedProds = getCategory2Cache<Product[]>(`products_${tab}`);
           if (cachedProds.data) {
             setProducts(cachedProds.data);
             setIsCached(true);
-            setCachedTime(cachedProds.formattedTime || cachedProds.cachedAt);
           }
         });
 
@@ -215,8 +212,6 @@ export default function ProductsClient() {
   return (
     <div className="space-y-4">
       <CachedDataBanner
-        cachedAt={cachedTime}
-        formattedTime={cachedTime}
         isOffline={isOffline}
         isCached={isCached}
         onRefresh={refresh}

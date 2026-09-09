@@ -1,14 +1,12 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { getTransactions, voidTransaction } from '@/lib/api/inventory';
-import { useRealtime } from '@/lib/use-realtime';
-import { getCategory2Cache, saveCategory2Cache } from '@/lib/localStorageCache';
+import { getTransactions, voidTransaction } from '@/lib/client/api/inventory';
+import { useRealtime } from '@/lib/client/hooks/use-realtime';
+import { getCategory2Cache, saveCategory2Cache } from '@/lib/client/localStorageCache';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
-import { RECONNECT_EVENT_NAME } from '@/lib/useOfflineSync';
-import { useCurrentUser } from '@/lib/useCurrentUser';
-import { exportToExcel } from '@/lib/exportExcel';
-import { Download } from 'lucide-react';
+import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
+import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
 
 interface OrderItem { productId: number; quantity: number; unitPrice: number; lineTotal: number; product: { name: string } }
 interface Order {
@@ -26,7 +24,6 @@ export default function OrdersClient() {
   const [adminPassword, setAdminPassword] = useState('');
   const [error, setError] = useState('');
   const [isCached, setIsCached] = useState(false);
-  const [cachedTime, setCachedTime] = useState<string | null>(null);
   const [isOffline, setIsOffline] = useState(false);
 
   const refresh = useCallback(() => {
@@ -38,7 +35,6 @@ export default function OrdersClient() {
       if (cached.data) {
         setOrders(cached.data);
         setIsCached(true);
-        setCachedTime(cached.formattedTime || cached.cachedAt);
       }
     } else {
       getTransactions<Order>()
@@ -46,14 +42,12 @@ export default function OrdersClient() {
           setOrders(txs);
           saveCategory2Cache('transactions', txs);
           setIsCached(false);
-          setCachedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }));
         })
         .catch(() => {
           const cached = getCategory2Cache<Order[]>('transactions');
           if (cached.data) {
             setOrders(cached.data);
             setIsCached(true);
-            setCachedTime(cached.formattedTime || cached.cachedAt);
           }
         });
     }
@@ -83,32 +77,6 @@ export default function OrdersClient() {
   const completeOrders = sortedOrders.filter((o) => o.status === 'complete');
   const totalRevenue = completeOrders.reduce((s, o) => s + o.total, 0);
   const totalItems = completeOrders.reduce((s, o) => s + o.items.reduce((si, i) => si + i.quantity, 0), 0);
-
-  function handleExport() {
-    exportToExcel('Orders', [{
-      name: 'Orders',
-      columns: [
-        { header: 'Order#', key: 'id', width: 10 },
-        { header: 'Date', key: 'date', width: 22 },
-        { header: 'Cashier', key: 'cashier', width: 20 },
-        { header: 'Payment', key: 'paymentMethod', width: 14 },
-        { header: 'Items', key: 'items', width: 8 },
-        { header: 'Total', key: 'total', width: 12 },
-        { header: 'Status', key: 'status', width: 12 },
-        { header: 'Void Reason', key: 'voidReason', width: 24 },
-      ],
-      data: sortedOrders.map((o) => ({
-        id: `#${o.id}`,
-        date: new Date(o.createdAt).toLocaleString(),
-        cashier: o.cashier?.fullName || '',
-        paymentMethod: o.paymentMethod,
-        items: o.items.reduce((s, i) => s + i.quantity, 0),
-        total: o.total,
-        status: o.status,
-        voidReason: o.voidReason || '',
-      })),
-    }]);
-  }
 
   function openVoidModal(o: Order) {
     if (typeof window !== 'undefined' && !navigator.onLine) {
@@ -142,8 +110,6 @@ export default function OrdersClient() {
   return (
     <div className="space-y-4">
       <CachedDataBanner
-        cachedAt={cachedTime}
-        formattedTime={cachedTime}
         isOffline={isOffline}
         isCached={isCached}
         onRefresh={refresh}
@@ -155,9 +121,6 @@ export default function OrdersClient() {
             <h1 className="text-2xl font-bold text-white">Orders</h1>
             <p className="text-sm text-slate-400">All sales transactions</p>
           </div>
-          <button onClick={handleExport} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 cursor-pointer">
-            <Download size={14} /> Export Excel
-          </button>
         </div>
       </div>
 
@@ -249,7 +212,7 @@ export default function OrdersClient() {
 
             <div>
               <label className="text-sm font-medium text-slate-300">Reason for Void</label>
-              <input required value={reason} onChange={(e) => setReason(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-cyan-500 mt-1" placeholder="e.g. Wrong item scanned" />
+              <input required value={reason} onChange={(e) => setReason(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-cyan-500 mt-1" placeholder="e.g. Wrong item" />
             </div>
 
             {user?.role === 'cashier' && (

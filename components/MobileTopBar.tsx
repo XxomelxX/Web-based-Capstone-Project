@@ -1,10 +1,10 @@
-'use client';
+﻿'use client';
 import { useState } from 'react';
 import { signOut } from 'next-auth/react';
 import { Sun, Moon, LogOut } from 'lucide-react';
 import Image from 'next/image';
-import { useCurrentUser } from '@/lib/useCurrentUser';
-import { useTheme } from '@/lib/useTheme';
+import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
+import { useTheme } from '@/lib/client/hooks/useTheme';
 import { OfflineStatusPill } from '@/components/OfflineStatusPill';
 import { OfflineSyncModal } from '@/components/OfflineSyncModal';
 
@@ -14,6 +14,8 @@ export function MobileTopBar() {
   const [showSyncModal, setShowSyncModal] = useState(false);
 
   const handleLogout = () => {
+    const confirmed = window.confirm('Are you sure you want to log out?');
+    if (!confirmed) return;
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem('offlineSession');
     }
@@ -45,10 +47,10 @@ export function MobileTopBar() {
         </button>
         <button
           onClick={handleLogout}
-          className="flex items-center gap-1 text-xs text-red-600 font-medium"
+          className="flex items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-red-400 hover:bg-red-500/20 cursor-pointer"
           aria-label="Logout"
         >
-          <LogOut size={14} />
+          <LogOut size={22} />
         </button>
       </div>
 

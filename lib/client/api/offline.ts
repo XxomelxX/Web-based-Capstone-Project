@@ -1,4 +1,4 @@
-import {
+﻿import {
   getCachedProducts,
   saveProducts,
   getCachedCategories,
@@ -18,10 +18,10 @@ import {
   updateCachedProductStock,
   queueOrFetch,
   isOnline,
-} from '@/lib/offline';
-import { queueSale } from '@/lib/offlineQueue';
+} from '@/lib/client/offline';
+import { queueSale } from '@/lib/client/offlineQueue';
 
-export { getCachedUsers, saveUsers, queueOrFetch } from '@/lib/offline';
+export { getCachedUsers, saveUsers, queueOrFetch } from '@/lib/client/offline';
 
 export interface CheckoutResult {
   id: number;
@@ -170,7 +170,7 @@ export async function getUtangEntriesOffline<T = Record<string, unknown>>(): Pro
   );
 }
 
-export async function getReportsOffline<T = Record<string, unknown>>(range: 'week' | 'month' | 'all' = 'all'): Promise<T> {
+export async function getReportsOffline<T = Record<string, unknown>>(range: 'today' | 'week' | 'month' | 'year' | 'all' = 'all'): Promise<T> {
   return cachedGet(
     () => getCachedReport<T>(range),
     async () => {

@@ -1,5 +1,5 @@
-import { NextResponse } from 'next/server';
-import { addRealtimeClient, removeRealtimeClient } from '@/lib/realtime';
+﻿import { NextResponse } from 'next/server';
+import { addRealtimeClient, removeRealtimeClient } from '@/lib/server/realtime';
 
 export const runtime = 'edge';
 

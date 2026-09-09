@@ -1,9 +1,10 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
-import { useOfflineSync } from '@/lib/useOfflineSync';
-import { getAllQueuedCategory1Actions } from '@/lib/offlineQueue';
-import type { QueuedCategory1Action } from '@/lib/offlineQueue';
+import { useOfflineSync } from '@/lib/client/hooks/useOfflineSync';
+import { formatTime } from '@/lib/client/timeUtils';
+import { getAllQueuedCategory1Actions } from '@/lib/client/offlineQueue';
+import type { QueuedCategory1Action } from '@/lib/client/offlineQueue';
 
 export function OfflineSyncModal({ onClose }: { onClose: () => void }) {
   const { online, queuedCount, failedCount, syncing, syncQueue } = useOfflineSync();

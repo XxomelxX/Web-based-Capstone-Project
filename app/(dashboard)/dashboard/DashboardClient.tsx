@@ -1,12 +1,12 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useCurrentUser } from '@/lib/useCurrentUser';
-import { getReports } from '@/lib/api/inventory';
-import { useRealtime } from '@/lib/use-realtime';
-import { getCategory2Cache, saveCategory2Cache } from '@/lib/localStorageCache';
+import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
+import { getReports } from '@/lib/client/api/inventory';
+import { useRealtime } from '@/lib/client/hooks/use-realtime';
+import { getCategory2Cache, saveCategory2Cache } from '@/lib/client/localStorageCache';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
-import { RECONNECT_EVENT_NAME } from '@/lib/useOfflineSync';
+import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
 import dynamic from 'next/dynamic';
 
 const RevenueChart = dynamic(() => import('@/components/charts/RevenueChart'), { ssr: false });
@@ -33,16 +33,15 @@ interface ChartData {
 
 export default function DashboardClient() {
   const { user } = useCurrentUser();
-  const [range, setRange] = useState<'week' | 'month' | 'all'>('all');
+  const [range, setRange] = useState<'today' | 'week' | 'month' | 'year' | 'all'>('all');
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [isCached, setIsCached] = useState(false);
-  const [cachedTime, setCachedTime] = useState<string | null>(null);
   const [isOffline, setIsOffline] = useState(false);
   const [chartData, setChartData] = useState<ChartData | null>(null);
 
-  const loadReports = useCallback(async (selectedRange: 'week' | 'month' | 'all') => {
+  const loadReports = useCallback(async (selectedRange: 'today' | 'week' | 'month' | 'year' | 'all') => {
     setLoading(true);
     setError('');
     const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
@@ -54,7 +53,6 @@ export default function DashboardClient() {
         if (cached.data) {
           setData(cached.data);
           setIsCached(true);
-          setCachedTime(cached.formattedTime || cached.cachedAt);
         } else {
           throw new Error('Offline and no cached snapshot available');
         }
@@ -63,7 +61,6 @@ export default function DashboardClient() {
         setData(reportData);
         saveCategory2Cache(`dashboard_${selectedRange}`, reportData);
         setIsCached(false);
-        setCachedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }));
       }
     } catch (err) {
       console.error('Failed to fetch reports:', err);
@@ -72,7 +69,6 @@ export default function DashboardClient() {
       if (cached.data) {
         setData(cached.data);
         setIsCached(true);
-        setCachedTime(cached.formattedTime || cached.cachedAt);
       } else {
         setError(err instanceof Error ? err.message : 'Unable to load reports');
         setData(null);
@@ -82,7 +78,7 @@ export default function DashboardClient() {
     }
   }, []);
 
-  const loadChartData = useCallback(async (selectedRange: 'week' | 'month' | 'all') => {
+  const loadChartData = useCallback(async (selectedRange: 'today' | 'week' | 'month' | 'year' | 'all') => {
     if (typeof window !== 'undefined' && !navigator.onLine) return;
     try {
       const res = await fetch(`/api/reports/chart-data?range=${selectedRange}`);
@@ -122,8 +118,6 @@ export default function DashboardClient() {
   return (
     <div className="space-y-6">
       <CachedDataBanner
-        cachedAt={cachedTime}
-        formattedTime={cachedTime}
         isOffline={isOffline}
         isCached={isCached}
         onRefresh={() => loadReports(range)}
@@ -143,11 +137,13 @@ export default function DashboardClient() {
             <span className="text-gray-700">Report range</span>
             <select
               value={range}
-              onChange={(e) => setRange(e.target.value as 'week' | 'month' | 'all')}
+              onChange={(e) => setRange(e.target.value as 'today' | 'week' | 'month' | 'year' | 'all')}
               className="rounded-2xl border border-[#d97706] bg-[#f59e0b] px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-[#d97706]"
             >
+              <option value="today">Today</option>
               <option value="week">This Week</option>
               <option value="month">This Month</option>
+              <option value="year">This Year</option>
               <option value="all">All Time</option>
             </select>
           </div>

@@ -1,12 +1,12 @@
-'use client';
+﻿'use client';
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
 import { ChevronDown, LogOut, Sun, Moon } from 'lucide-react';
 import Image from 'next/image';
-import { useCurrentUser } from '@/lib/useCurrentUser';
-import { useTheme } from '@/lib/useTheme';
+import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
+import { useTheme } from '@/lib/client/hooks/useTheme';
 import { OfflineStatusPill } from '@/components/OfflineStatusPill';
 import { OfflineSyncModal } from '@/components/OfflineSyncModal';
 
@@ -38,7 +38,6 @@ const CASHIER_LINKS = [
 
 const CASHIER_MORE = [
   { href: '/lowstock', label: 'Low Stock' },
-  { href: '/settings', label: 'Settings' },
 ];
 
 export function TopNavbar() {

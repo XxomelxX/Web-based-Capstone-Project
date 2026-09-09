@@ -1,8 +1,8 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { requireRole } from '@/lib/require-role';
+﻿import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/server/prisma';
+import { requireRole } from '@/lib/server/require-role';
 import { hash } from 'bcryptjs';
-import { broadcastRealtime } from '@/lib/realtime';
+import { broadcastRealtime } from '@/lib/server/realtime';
 
 export async function GET() {
   const guard = await requireRole(['admin']);

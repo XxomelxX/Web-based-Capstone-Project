@@ -1,9 +1,9 @@
-'use client';
+﻿'use client';
 
 import { SessionProvider } from 'next-auth/react';
 import { useEffect } from 'react';
-import { installOfflineSync, unregisterServiceWorker } from '@/lib/offline';
-import { initTheme } from '@/lib/useTheme';
+import { installOfflineSync, unregisterServiceWorker } from '@/lib/client/offline';
+import { initTheme } from '@/lib/client/hooks/useTheme';
 
 export function Providers({ children }: { children: React.ReactNode }) {
   useEffect(() => {

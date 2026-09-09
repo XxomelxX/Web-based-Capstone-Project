@@ -1,4 +1,4 @@
-import { getCategoriesOffline } from '@/lib/api/offline';
+﻿import { getCategoriesOffline } from '@/lib/client/api/offline';
 
 export interface Category {
   id: number;

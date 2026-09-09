@@ -29,23 +29,6 @@ async function main() {
     console.log('Seeded admin account -> username: admin / password: admin123 (change this after first login)');
   }
 
-  // Sample cashier
-  const existingCashier = await prisma.user.findUnique({ where: { username: 'cashier' } });
-  if (!existingCashier) {
-    const passwordHash = await bcrypt.hash('cashier123', 10);
-    await prisma.user.create({
-      data: {
-        fullName: 'Judy Ann Bioco',
-        username: 'cashier',
-        email: 'judyann@jjmerchandise.com',
-        passwordHash,
-        role: 'cashier',
-        status: 'active',
-      },
-    });
-    console.log('Seeded cashier account -> username: cashier / password: cashier123');
-  }
-
   // Categories + Products (only if none exist yet)
   const categoryCount = await prisma.category.count();
   if (categoryCount === 0) {

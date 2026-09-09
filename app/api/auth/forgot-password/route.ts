@@ -1,6 +1,6 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { getClientIp, isRateLimited } from '@/lib/rate-limit';
+﻿import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/server/prisma';
+import { getClientIp, isRateLimited } from '@/lib/server/rate-limit';
 import { Resend } from 'resend';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

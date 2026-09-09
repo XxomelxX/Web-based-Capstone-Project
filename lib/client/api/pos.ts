@@ -1,4 +1,4 @@
-export interface CartItem {
+﻿export interface CartItem {
   productId: number;
   quantity: number;
   unitPrice: number;
@@ -20,7 +20,7 @@ export interface CheckoutResult {
   offline?: boolean;
 }
 
-import { checkoutOffline } from '@/lib/api/offline';
+import { checkoutOffline } from '@/lib/client/api/offline';
 
 export async function checkout(
   items: CartItem[],

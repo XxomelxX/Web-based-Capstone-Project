@@ -1,6 +1,6 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { requireSession } from '@/lib/require-session';
+﻿import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/server/prisma';
+import { requireSession } from '@/lib/server/require-session';
 
 export async function GET(request: Request) {
   const guard = await requireSession();
@@ -11,10 +11,14 @@ export async function GET(request: Request) {
 
   const now = new Date();
   let since: Date | undefined;
-  if (range === 'week') {
+  if (range === 'today') {
+    since = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  } else if (range === 'week') {
     since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   } else if (range === 'month') {
     since = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  } else if (range === 'year') {
+    since = new Date(now.getFullYear(), 0, 1);
   }
 
   const whereClause = {

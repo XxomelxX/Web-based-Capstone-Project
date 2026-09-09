@@ -1,8 +1,8 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+﻿import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/server/prisma';
 import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
-import { broadcastRealtime } from '@/lib/realtime';
+import { authOptions } from '@/lib/server/auth';
+import { broadcastRealtime } from '@/lib/server/realtime';
 
 // POST /api/transactions/:id/void   body: { reason: string, adminUsername?: string, adminPassword?: string }
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {

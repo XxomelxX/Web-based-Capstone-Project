@@ -1,11 +1,11 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import { getSession, signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { User, Lock, Eye, EyeOff } from 'lucide-react';
 import bcrypt from 'bcryptjs';
-import { db } from '@/lib/offline';
+import { db } from '@/lib/client/offline';
 
 async function checkRealConnectivity(): Promise<boolean> {
   if (typeof window === 'undefined') return false;

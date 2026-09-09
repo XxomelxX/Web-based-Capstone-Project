@@ -1,5 +1,5 @@
-import Dexie, { Table } from 'dexie';
-import { triggerQueueUpdate } from '@/lib/useOfflineSync';
+﻿import Dexie, { Table } from 'dexie';
+import { triggerQueueUpdate } from '@/lib/client/hooks/useOfflineSync';
 
 export type Category1ActionType =
   | 'pos_sale'
@@ -331,7 +331,7 @@ export async function syncQueuedSales() {
         }
       }
     } catch (err) {
-      // Network blip — leave for next retry round
+      // Network blip â€” leave for next retry round
     }
   }
 }

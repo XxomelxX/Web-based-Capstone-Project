@@ -1,8 +1,8 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
-import { prisma } from '@/lib/prisma';
-import { requireRole } from '@/lib/require-role';
-import { broadcastRealtime } from '@/lib/realtime';
+import { prisma } from '@/lib/server/prisma';
+import { requireRole } from '@/lib/server/require-role';
+import { broadcastRealtime } from '@/lib/server/realtime';
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {

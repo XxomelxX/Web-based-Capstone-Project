@@ -1,11 +1,11 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { getLowStock, restockProduct } from '@/lib/api/inventory';
-import { useRealtime } from '@/lib/use-realtime';
-import { getCategory2Cache, saveCategory2Cache } from '@/lib/localStorageCache';
+import { getLowStock, restockProduct } from '@/lib/client/api/inventory';
+import { useRealtime } from '@/lib/client/hooks/use-realtime';
+import { getCategory2Cache, saveCategory2Cache } from '@/lib/client/localStorageCache';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
-import { RECONNECT_EVENT_NAME } from '@/lib/useOfflineSync';
+import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
 
 interface LowStockProduct {
   id: number;
@@ -29,7 +29,6 @@ export default function LowStockClient() {
   const [quantity, setQuantity] = useState('');
   const [error, setError] = useState('');
   const [isCached, setIsCached] = useState(false);
-  const [cachedTime, setCachedTime] = useState<string | null>(null);
   const [isOffline, setIsOffline] = useState(false);
 
   const refresh = useCallback(() => {
@@ -42,7 +41,6 @@ export default function LowStockClient() {
         setProducts(cached.data.products || []);
         setThreshold(cached.data.threshold || 20);
         setIsCached(true);
-        setCachedTime(cached.formattedTime || cached.cachedAt);
       }
     } else {
       getLowStock()
@@ -53,7 +51,6 @@ export default function LowStockClient() {
           setThreshold(thresh);
           saveCategory2Cache('lowstock', { threshold: thresh, products: prods });
           setIsCached(false);
-          setCachedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }));
         })
         .catch(() => {
           const cached = getCategory2Cache<LowStockResponse>('lowstock');
@@ -61,7 +58,6 @@ export default function LowStockClient() {
             setProducts(cached.data.products || []);
             setThreshold(cached.data.threshold || 20);
             setIsCached(true);
-            setCachedTime(cached.formattedTime || cached.cachedAt);
           }
         });
     }
@@ -118,8 +114,6 @@ export default function LowStockClient() {
   return (
     <div className="space-y-4">
       <CachedDataBanner
-        cachedAt={cachedTime}
-        formattedTime={cachedTime}
         isOffline={isOffline}
         isCached={isCached}
         onRefresh={refresh}

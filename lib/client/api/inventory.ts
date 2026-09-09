@@ -1,4 +1,4 @@
-import {
+﻿import {
   getLowStockOffline,
   getTransactionsOffline,
   getUtangEntriesOffline,
@@ -9,10 +9,10 @@ import {
   getCachedUsers,
   saveUsers,
   cachedGet,
-} from '@/lib/api/offline';
-import { saveUtangEntries } from '@/lib/offline';
-import { queueAddUtang, queueUtangPayment } from '@/lib/offlineQueue';
-import { updateCachedProductStock } from '@/lib/offline';
+} from '@/lib/client/api/offline';
+import { saveUtangEntries, saveCachedCustomers, getCachedCustomers } from '@/lib/client/offline';
+import { queueAddUtang, queueUtangPayment } from '@/lib/client/offlineQueue';
+import { updateCachedProductStock } from '@/lib/client/offline';
 
 interface Expense {
   id: number;
@@ -76,9 +76,17 @@ export async function getCustomers<T = Record<string, unknown>>(): Promise<T[]> 
 }
 
 export async function getCustomersLight(): Promise<Array<{ id: number; name: string }>> {
-  const res = await fetch('/api/customers?light=true');
-  if (!res.ok) throw new Error('Failed to load customers');
-  return res.json();
+  return cachedGet<Array<{ id: number; name: string }>>(
+    () => getCachedCustomers<{ id: number; name: string }>(),
+    async () => {
+      const res = await fetch('/api/customers?light=true');
+      if (!res.ok) throw new Error('Failed to load customers');
+      const data = await res.json() as Array<{ id: number; name: string }>;
+      await saveCachedCustomers(data as Record<string, unknown>[]);
+      return data;
+    },
+    saveCachedCustomers as (value: Array<{ id: number; name: string }>) => Promise<void>
+  );
 }
 
 export async function addCustomer(data: {
@@ -87,7 +95,20 @@ export async function addCustomer(data: {
   email?: string;
   notes?: string;
 }) {
-  checkOnlineOrThrow();
+  if (typeof window !== 'undefined' && !navigator.onLine) {
+    const offlineCustomer = {
+      id: Date.now(),
+      name: data.name,
+      phone: data.phone,
+      email: data.email,
+      notes: data.notes,
+      createdAt: new Date().toISOString(),
+      offline: true,
+    };
+    const cached = await getCachedCustomers<Record<string, unknown>>();
+    await saveCachedCustomers([...cached, offlineCustomer]);
+    return offlineCustomer;
+  }
   const res = await fetch('/api/customers', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -153,7 +174,7 @@ export async function getUtangEntries<T = Record<string, unknown>>(): Promise<T[
   return getUtangEntriesOffline<T>();
 }
 
-// Direct fetch — bypasses cachedGet, always hits API, then updates cache.
+// Direct fetch â€” bypasses cachedGet, always hits API, then updates cache.
 // Use after mutations (addUtang / recordPayment) to guarantee fresh data.
 export async function refetchUtangEntries<T = Record<string, unknown>>(): Promise<T[]> {
   const res = await fetch('/api/utang');
@@ -333,6 +354,6 @@ export async function getItemLog<T = Record<string, unknown>>(): Promise<T[]> {
 }
 
 // Reports
-export async function getReports<T = Record<string, unknown>>(range: 'week' | 'month' | 'all' = 'all'): Promise<T> {
+export async function getReports<T = Record<string, unknown>>(range: 'today' | 'week' | 'month' | 'year' | 'all' = 'all'): Promise<T> {
   return getReportsOffline<T>(range);
 }

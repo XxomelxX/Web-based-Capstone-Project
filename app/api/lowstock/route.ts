@@ -1,6 +1,6 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { requireSession } from '@/lib/require-session';
+﻿import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/server/prisma';
+import { requireSession } from '@/lib/server/require-session';
 
 export async function GET() {
   const guard = await requireSession();

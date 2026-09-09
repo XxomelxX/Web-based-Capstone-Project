@@ -1,9 +1,9 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { getSettings, updateSettings } from '@/lib/api/inventory';
-import { useRealtime } from '@/lib/use-realtime';
-import { useCurrentUser } from '@/lib/useCurrentUser';
+import { getSettings, updateSettings } from '@/lib/client/api/inventory';
+import { useRealtime } from '@/lib/client/hooks/use-realtime';
+import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
 
 interface Settings { id: number; storeName: string; currency: string; address?: string; taxRate: number; lowStockThreshold: number }
 

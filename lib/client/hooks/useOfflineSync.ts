@@ -1,7 +1,7 @@
-'use client';
+﻿'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { getFailedCount, getPendingCount, syncQueuedSales } from '@/lib/offlineQueue';
+import { getFailedCount, getPendingCount, syncQueuedSales } from '@/lib/client/offlineQueue';
 
 export const RECONNECT_EVENT_NAME = 'sari-pos-online-refresh';
 export const QUEUE_UPDATE_EVENT_NAME = 'sari-pos-queue-updated';
@@ -58,7 +58,7 @@ export function useOfflineSync() {
       setPendingCount(pending);
       setFailedCount(failed);
     } catch {
-      // IndexedDB unavailable — ignore
+      // IndexedDB unavailable â€” ignore
     }
   }, []);
 

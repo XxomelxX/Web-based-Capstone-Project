@@ -1,12 +1,12 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { getCategories, addCategory, updateCategory, Category } from '@/lib/api/categories';
-import { getProducts, Product } from '@/lib/api/products';
-import { useRealtime } from '@/lib/use-realtime';
-import { getCategory2Cache, saveCategory2Cache } from '@/lib/localStorageCache';
+import { getCategories, addCategory, updateCategory, Category } from '@/lib/client/api/categories';
+import { getProducts, Product } from '@/lib/client/api/products';
+import { useRealtime } from '@/lib/client/hooks/use-realtime';
+import { getCategory2Cache, saveCategory2Cache } from '@/lib/client/localStorageCache';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
-import { RECONNECT_EVENT_NAME } from '@/lib/useOfflineSync';
+import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
 
 export default function CategoriesClient() {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -16,7 +16,6 @@ export default function CategoriesClient() {
   const [form, setForm] = useState({ name: '', description: '', archived: false });
   const [error, setError] = useState('');
   const [isCached, setIsCached] = useState(false);
-  const [cachedTime, setCachedTime] = useState<string | null>(null);
   const [isOffline, setIsOffline] = useState(false);
 
   const refresh = useCallback(() => {
@@ -28,7 +27,6 @@ export default function CategoriesClient() {
       if (cachedCats.data) {
         setCategories(cachedCats.data);
         setIsCached(true);
-        setCachedTime(cachedCats.formattedTime || cachedCats.cachedAt);
       }
       const cachedProds = getCategory2Cache<Product[]>('products_active');
       if (cachedProds.data) setAllProducts(cachedProds.data);
@@ -38,14 +36,12 @@ export default function CategoriesClient() {
           setCategories(cats);
           saveCategory2Cache('categories', cats);
           setIsCached(false);
-          setCachedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }));
         })
         .catch(() => {
           const cachedCats = getCategory2Cache<Category[]>('categories');
           if (cachedCats.data) {
             setCategories(cachedCats.data);
             setIsCached(true);
-            setCachedTime(cachedCats.formattedTime || cachedCats.cachedAt);
           }
         });
 
@@ -121,8 +117,6 @@ export default function CategoriesClient() {
   return (
     <div className="space-y-4">
       <CachedDataBanner
-        cachedAt={cachedTime}
-        formattedTime={cachedTime}
         isOffline={isOffline}
         isCached={isCached}
         onRefresh={refresh}

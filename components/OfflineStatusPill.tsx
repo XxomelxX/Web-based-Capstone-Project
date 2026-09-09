@@ -1,6 +1,6 @@
-'use client';
+﻿'use client';
 
-import { useOfflineSync } from '@/lib/useOfflineSync';
+import { useOfflineSync } from '@/lib/client/hooks/useOfflineSync';
 
 export function OfflineStatusPill({ onClick }: { onClick?: () => void }) {
   const { online, queuedCount, failedCount, syncing } = useOfflineSync();

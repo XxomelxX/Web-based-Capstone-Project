@@ -30,6 +30,7 @@ class SariSariPOSOfflineDB extends Dexie {
   expenses!: Dexie.Table<Record<string, unknown>, number>;
   transactions!: Dexie.Table<Record<string, unknown>, number>;
   utang!: Dexie.Table<Record<string, unknown>, number>;
+  customers!: Dexie.Table<Record<string, unknown>, number>;
   itemlog!: Dexie.Table<Record<string, unknown>, number>;
   users!: Dexie.Table<Record<string, unknown>, number>;
   settings!: Dexie.Table<OfflineCacheEntry, string>;
@@ -51,6 +52,9 @@ class SariSariPOSOfflineDB extends Dexie {
       reportCache: 'key',
       queue: '++id, status, action, createdAt',
       cachedCredentials: 'username',
+    });
+    this.version(2).stores({
+      customers: 'id',
     });
   }
 }
@@ -245,6 +249,15 @@ export async function saveUtangEntries(entries: Record<string, unknown>[]) {
 
 export async function getCachedUtangEntries<T = Record<string, unknown>>() {
   return db.utang.toArray() as Promise<T[]>;
+}
+
+export async function saveCachedCustomers(customers: Record<string, unknown>[]) {
+  if (!customers?.length) return;
+  return db.customers.bulkPut(customers);
+}
+
+export async function getCachedCustomers<T = Record<string, unknown>>() {
+  return db.customers.toArray() as Promise<T[]>;
 }
 
 export async function saveUsers(users: Record<string, unknown>[]) {

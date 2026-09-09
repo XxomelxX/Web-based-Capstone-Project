@@ -1,9 +1,9 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
-import { prisma } from '@/lib/prisma';
+import { prisma } from '@/lib/server/prisma';
 import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
-import { broadcastRealtime } from '@/lib/realtime';
+import { authOptions } from '@/lib/server/auth';
+import { broadcastRealtime } from '@/lib/server/realtime';
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {

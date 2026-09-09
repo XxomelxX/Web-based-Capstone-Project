@@ -1,8 +1,8 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { requireRole } from '@/lib/require-role';
-import { requireSession } from '@/lib/require-session';
-import { broadcastRealtime } from '@/lib/realtime';
+﻿import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/server/prisma';
+import { requireRole } from '@/lib/server/require-role';
+import { requireSession } from '@/lib/server/require-session';
+import { broadcastRealtime } from '@/lib/server/realtime';
 
 export async function GET(request: Request) {
   const guard = await requireSession();

@@ -118,21 +118,21 @@ select {
 
   .bg-white {
     background-color: rgba(19, 34, 24, 0.6) !important;
-    backdrop-filter: blur(12px) !important;
     -webkit-backdrop-filter: blur(12px) !important;
+    backdrop-filter: blur(12px) !important;
     border: 1px solid rgba(34, 197, 94, 0.08) !important;
   }
 
   .bg-gray-50 {
     background-color: rgba(19, 34, 24, 0.3) !important;
-    backdrop-filter: blur(8px) !important;
     -webkit-backdrop-filter: blur(8px) !important;
+    backdrop-filter: blur(8px) !important;
   }
 
   .bg-gray-100 {
     background-color: rgba(26, 46, 32, 0.3) !important;
-    backdrop-filter: blur(8px) !important;
     -webkit-backdrop-filter: blur(8px) !important;
+    backdrop-filter: blur(8px) !important;
   }
 
   .bg-green-50 {
@@ -183,8 +183,8 @@ select {
 
   .bg-black\/50 {
     background-color: rgba(0, 0, 0, 0.55) !important;
-    backdrop-filter: blur(10px) !important;
     -webkit-backdrop-filter: blur(10px) !important;
+    backdrop-filter: blur(10px) !important;
   }
 
   /* App-shell / navbar surfaces */
@@ -459,8 +459,8 @@ select {
   /* Generic white/gray surfaces */
   .bg-white {
     background-color: rgba(255, 255, 255, 0.92) !important;
-    backdrop-filter: blur(12px) !important;
     -webkit-backdrop-filter: blur(12px) !important;
+    backdrop-filter: blur(12px) !important;
     border: 1px solid rgba(15, 26, 18, 0.06) !important;
   }
   .bg-gray-50 {

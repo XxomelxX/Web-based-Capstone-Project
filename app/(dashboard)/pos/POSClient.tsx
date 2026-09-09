@@ -1,12 +1,13 @@
-'use client';
+﻿'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useCurrentUser } from '@/lib/useCurrentUser';
-import { getProducts, Product } from '@/lib/api/products';
-import { checkout, CheckoutResult } from '@/lib/api/pos';
-import { getSettings } from '@/lib/api/inventory';
-import { useRealtime } from '@/lib/use-realtime';
-import { ShiftDetails, ZReadSummary, applyOfflineSaleToShift, cacheActiveShift, fetchActiveShift, openShift, closeShift } from '@/lib/api/shift';
+import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
+import { formatTime, formatDateTime } from '@/lib/client/timeUtils';
+import { getProducts, Product } from '@/lib/client/api/products';
+import { checkout, CheckoutResult } from '@/lib/client/api/pos';
+import { getSettings } from '@/lib/client/api/inventory';
+import { useRealtime } from '@/lib/client/hooks/use-realtime';
+import { ShiftDetails, ZReadSummary, applyOfflineSaleToShift, cacheActiveShift, fetchActiveShift, openShift, closeShift } from '@/lib/client/api/shift';
 
 interface CartLine {
   product: Product;
@@ -199,7 +200,7 @@ export default function POSClient() {
               <span>{activeShift ? 'Shift Active' : 'No Open Shift'}</span>
               {activeShift && (
                 <span className="text-xs font-normal text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                  Opened {new Date(activeShift.openedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  Opened {formatTime(activeShift.openedAt)}
                 </span>
               )}
             </div>
@@ -605,7 +606,7 @@ function ReceiptModal({
         </div>
         <hr className="border-dashed border-slate-800 my-2" />
         <div className="flex justify-between"><span className="text-slate-400">Receipt #</span><span className="font-bold text-slate-100">{receipt.id}</span></div>
-        <div className="flex justify-between"><span className="text-slate-400">Date</span><span>{new Date(receipt.createdAt).toLocaleString()}</span></div>
+        <div className="flex justify-between"><span className="text-slate-400">Date</span><span>{formatDateTime(receipt.createdAt)}</span></div>
         <div className="flex justify-between"><span className="text-slate-400">Cashier</span><span>{cashierName}</span></div>
         {receipt.customer && (
           <div className="flex justify-between"><span className="text-slate-400">Customer</span><span className="font-bold text-amber-400">{receipt.customer.name}</span></div>
@@ -665,8 +666,8 @@ function ZReadModal({
 
         <div className="text-sm space-y-1">
           <Row label="Cashier" value={cashierName} bold />
-          <Row label="Shift Opened" value={new Date(summary.openedAt).toLocaleString()} />
-          <Row label="Shift Closed" value={new Date(summary.closedAt).toLocaleString()} />
+          <Row label="Shift Opened" value={formatDateTime(summary.openedAt)} />
+          <Row label="Shift Closed" value={formatDateTime(summary.closedAt)} />
         </div>
 
         <hr className="border-slate-200" />

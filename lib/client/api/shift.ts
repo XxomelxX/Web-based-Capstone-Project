@@ -1,4 +1,4 @@
-import { queueCloseShift, queueOpenShift } from '@/lib/offlineQueue';
+﻿import { queueCloseShift, queueOpenShift } from '@/lib/client/offlineQueue';
 
 export interface ShiftDetails {
   id: number;

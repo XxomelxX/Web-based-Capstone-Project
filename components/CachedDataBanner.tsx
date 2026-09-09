@@ -1,11 +1,10 @@
-'use client';
+﻿'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { WifiOff, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { getLastSyncTime } from '@/lib/client/timeUtils';
 
 interface CachedDataBannerProps {
-  cachedAt?: string | null;
-  formattedTime?: string | null;
   isOffline?: boolean;
   isCached?: boolean;
   onRefresh?: () => void;
@@ -13,14 +12,16 @@ interface CachedDataBannerProps {
 }
 
 export function CachedDataBanner({
-  cachedAt,
-  formattedTime,
   isOffline = false,
   isCached = false,
   onRefresh,
   className = '',
 }: CachedDataBannerProps) {
-  const displayTime = formattedTime || (cachedAt ? new Date(cachedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : null);
+  const [displayTime, setDisplayTime] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDisplayTime(getLastSyncTime());
+  }, []);
 
   if (isOffline || isCached) {
     return (
@@ -47,10 +48,5 @@ export function CachedDataBanner({
     );
   }
 
-  return (
-    <div className={`flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] font-medium w-fit mb-4 ${className}`}>
-      <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />
-      <span>Updated just now</span>
-    </div>
-  );
+  return null;
 }

@@ -1,7 +1,7 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { requireRole } from '@/lib/require-role';
-import { broadcastRealtime } from '@/lib/realtime';
+﻿import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/server/prisma';
+import { requireRole } from '@/lib/server/require-role';
+import { broadcastRealtime } from '@/lib/server/realtime';
 import { hash } from 'bcryptjs';
 
 // PATCH /api/users/:id — update user fields (e.g. status: 'inactive' for deactivation)

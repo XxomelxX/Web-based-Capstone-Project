@@ -1,14 +1,12 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { getReports } from '@/lib/api/inventory';
-import { useRealtime } from '@/lib/use-realtime';
-import { ShiftDetails } from '@/lib/api/shift';
-import { getCategory2Cache, saveCategory2Cache } from '@/lib/localStorageCache';
+import { getReports } from '@/lib/client/api/inventory';
+import { useRealtime } from '@/lib/client/hooks/use-realtime';
+import { ShiftDetails } from '@/lib/client/api/shift';
+import { getCategory2Cache, saveCategory2Cache } from '@/lib/client/localStorageCache';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
-import { RECONNECT_EVENT_NAME } from '@/lib/useOfflineSync';
-import { exportToExcel } from '@/lib/exportExcel';
-import { Download } from 'lucide-react';
+import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
 
 interface ShiftHistoryItem extends ShiftDetails {
   verificationStatus?: 'verified' | 'flagged' | null;
@@ -24,15 +22,14 @@ interface ReportData {
 }
 
 export default function ReportsClient() {
-  const [range, setRange] = useState<'week' | 'month' | 'all'>('all');
+  const [range, setRange] = useState<'today' | 'week' | 'month' | 'year' | 'all'>('all');
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [isCached, setIsCached] = useState(false);
-  const [cachedTime, setCachedTime] = useState<string | null>(null);
   const [isOffline, setIsOffline] = useState(false);
 
-  const loadReports = useCallback(async (selectedRange: 'week' | 'month' | 'all') => {
+  const loadReports = useCallback(async (selectedRange: 'today' | 'week' | 'month' | 'year' | 'all') => {
     setLoading(true);
     setError('');
     const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
@@ -44,7 +41,6 @@ export default function ReportsClient() {
         if (cached.data) {
           setData(cached.data);
           setIsCached(true);
-          setCachedTime(cached.formattedTime || cached.cachedAt);
         } else {
           throw new Error('Offline and no cached report snapshot available');
         }
@@ -53,7 +49,6 @@ export default function ReportsClient() {
         setData(reportData);
         saveCategory2Cache(`reports_${selectedRange}`, reportData);
         setIsCached(false);
-        setCachedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }));
       }
     } catch (err) {
       console.error('Failed to fetch reports:', err);
@@ -61,7 +56,6 @@ export default function ReportsClient() {
       if (cached.data) {
         setData(cached.data);
         setIsCached(true);
-        setCachedTime(cached.formattedTime || cached.cachedAt);
       } else {
         setError(err instanceof Error ? err.message : 'Unable to load reports');
         setData(null);
@@ -93,46 +87,9 @@ export default function ReportsClient() {
 
   const lowStockCount = data?.stockLevels.filter((s) => s.status === 'Critical').length ?? 0;
 
-  function handleExport() {
-    if (!data) return;
-    const sheets = [
-      {
-        name: 'Top Selling Products',
-        columns: [
-          { header: 'Rank', key: 'rank', width: 8 },
-          { header: 'Product', key: 'name', width: 30 },
-          { header: 'Units Sold', key: 'unitsSold', width: 14 },
-          { header: 'Revenue', key: 'revenue', width: 14 },
-        ],
-        data: data.topSelling.map((p, i) => ({
-          rank: i + 1,
-          name: p.name,
-          unitsSold: p.unitsSold,
-          revenue: p.revenue,
-        })),
-      },
-      {
-        name: 'Stock Levels',
-        columns: [
-          { header: 'Product', key: 'name', width: 30 },
-          { header: 'Stock', key: 'stock', width: 10 },
-          { header: 'Status', key: 'status', width: 12 },
-        ],
-        data: data.stockLevels.map((s) => ({
-          name: s.name,
-          stock: s.stock,
-          status: s.status,
-        })),
-      },
-    ];
-    exportToExcel(`Reports_${range}`, sheets);
-  }
-
   return (
     <div className="space-y-6">
       <CachedDataBanner
-        cachedAt={cachedTime}
-        formattedTime={cachedTime}
         isOffline={isOffline}
         isCached={isCached}
         onRefresh={() => loadReports(range)}
@@ -153,17 +110,16 @@ export default function ReportsClient() {
               <span className="text-gray-700">Report range</span>
               <select
                 value={range}
-                onChange={(e) => setRange(e.target.value as 'week' | 'month' | 'all')}
+                onChange={(e) => setRange(e.target.value as 'today' | 'week' | 'month' | 'year' | 'all')}
                 className="rounded-2xl border border-yellow-500 bg-yellow-300 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-yellow-600"
               >
+                <option value="today">Today</option>
                 <option value="week">This Week</option>
                 <option value="month">This Month</option>
+                <option value="year">This Year</option>
                 <option value="all">All Time</option>
               </select>
             </div>
-            <button onClick={handleExport} disabled={!data} className="flex items-center gap-1.5 rounded-3xl border border-emerald-500 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300 hover:bg-emerald-500/20 transition cursor-pointer disabled:opacity-40">
-              <Download size={16} /> Export
-            </button>
           </div>
         </div>
       </section>
@@ -380,7 +336,7 @@ function ShiftHistoryTable() {
       setLoadingShifts(false);
       return;
     }
-    import('@/lib/api/shift').then(({ fetchShiftHistory }) => {
+    import('@/lib/client/api/shift').then(({ fetchShiftHistory }) => {
       fetchShiftHistory().then((data) => {
         setShifts(data);
         setLoadingShifts(false);
