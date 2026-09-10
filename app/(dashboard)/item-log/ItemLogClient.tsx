@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { getItemLog } from '@/lib/client/api/inventory';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { formatDateTime } from '@/lib/client/timeUtils';
+import { CachedDataBanner } from '@/components/CachedDataBanner';
 
 interface ItemLogEntry {
   id: number; createdAt: string; action: string; quantity: number;
@@ -39,8 +40,11 @@ export default function ItemLogClient() {
   const [logs, setLogs] = useState<ItemLogEntry[]>([]);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [isOffline, setIsOffline] = useState(false);
 
   function refresh() {
+    const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
+    setIsOffline(offlineNow);
     getItemLog<ItemLogEntry>().then(setLogs).catch(() => {});
   }
 
@@ -52,6 +56,15 @@ export default function ItemLogClient() {
 
   useEffect(() => {
     refresh();
+    function handleOnlineChange() {
+      setIsOffline(typeof window !== 'undefined' && !navigator.onLine);
+    }
+    window.addEventListener('online', handleOnlineChange);
+    window.addEventListener('offline', handleOnlineChange);
+    return () => {
+      window.removeEventListener('online', handleOnlineChange);
+      window.removeEventListener('offline', handleOnlineChange);
+    };
   }, []);
 
   function applyPreset(preset: string) {
@@ -76,6 +89,7 @@ export default function ItemLogClient() {
 
   return (
     <div className="space-y-4">
+      <CachedDataBanner isOffline={isOffline} isCached={false} onRefresh={refresh} />
       <div>
         <h1 className="text-2xl font-bold">Item Log</h1>
         <p className="text-sm text-gray-500">Every stock movement — sales, restocks, and voids — logged automatically.</p>

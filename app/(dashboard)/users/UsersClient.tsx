@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { getUsers, addUser, updateUser, deleteUser, deactivateUser } from '@/lib/client/api/inventory';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
+import { CachedDataBanner } from '@/components/CachedDataBanner';
 
 interface User { id: number; fullName: string; username: string; email: string; role: string; status: string; createdAt: string }
 
@@ -150,6 +151,7 @@ export default function UsersClient() {
 
   return (
     <div className="space-y-4">
+      <CachedDataBanner isOffline={isOffline} isCached={false} onRefresh={refresh} />
       {isOffline && (
         <div className="p-3 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-semibold">
           ⚠️ User Account Management is disabled while offline. (Category 3 Security Risk)

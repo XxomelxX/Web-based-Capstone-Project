@@ -2,6 +2,7 @@
   "name": "Sari-Sari POS — Inventory & Sales",
   "short_name": "Sari-Sari POS",
   "start_url": "/dashboard",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#0f1a12",
   "theme_color": "#15803d",

@@ -1,4 +1,5 @@
 ﻿import { queueCloseShift, queueOpenShift } from '@/lib/client/offlineQueue';
+import { saveCategory2Cache, getCategory2Cache } from '@/lib/client/localStorageCache';
 
 export interface ShiftDetails {
   id: number;
@@ -226,5 +227,41 @@ export async function fetchShiftHistory(): Promise<ShiftDetails[]> {
   } catch (error) {
     console.error('Error fetching shift history:', error);
     return [];
+  }
+}
+
+export async function fetchShiftHistoryCached(): Promise<ShiftDetails[]> {
+  const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
+  if (offlineNow) {
+    return getCategory2Cache<ShiftDetails[]>('shift_history').data ?? [];
+  }
+  try {
+    const data = await fetchShiftHistory();
+    if (data.length > 0) saveCategory2Cache('shift_history', data);
+    return data;
+  } catch {
+    return getCategory2Cache<ShiftDetails[]>('shift_history').data ?? [];
+  }
+}
+
+export interface ActiveShiftSpotCheck {
+  shift: ShiftDetails;
+  lastTransactionAt?: string;
+}
+
+export async function fetchActiveShiftsSpotCheck(): Promise<ActiveShiftSpotCheck[]> {
+  const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
+  if (offlineNow) {
+    return getCategory2Cache<ActiveShiftSpotCheck[]>('active_shifts_spot_check').data ?? [];
+  }
+  try {
+    const res = await fetch('/api/shift/active-shifts');
+    if (!res.ok) return getCategory2Cache<ActiveShiftSpotCheck[]>('active_shifts_spot_check').data ?? [];
+    const data = (await res.json().catch(() => ({}))) as { activeShifts?: ActiveShiftSpotCheck[] };
+    const result = data.activeShifts ?? [];
+    if (result.length > 0) saveCategory2Cache('active_shifts_spot_check', result);
+    return result;
+  } catch {
+    return getCategory2Cache<ActiveShiftSpotCheck[]>('active_shifts_spot_check').data ?? [];
   }
 }

@@ -6,6 +6,7 @@ import { getReports } from '@/lib/client/api/inventory';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { getCategory2Cache, saveCategory2Cache } from '@/lib/client/localStorageCache';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
+import { PWAInstallBanner } from '@/components/PWAInstallBanner';
 import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
 import dynamic from 'next/dynamic';
 
@@ -80,8 +81,10 @@ export default function DashboardClient() {
   }, []);
 
   const loadChartData = useCallback(async (selectedRange: 'today' | 'week' | 'month' | 'year' | 'all') => {
-    if (typeof window !== 'undefined' && !navigator.onLine) {
-      setChartData(null);
+    const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
+    if (offlineNow) {
+      const cached = getCategory2Cache<ChartData>(`chart_${selectedRange}`);
+      if (cached.data) setChartData(cached.data);
       return;
     }
     try {
@@ -89,9 +92,11 @@ export default function DashboardClient() {
       if (res.ok) {
         const data = await res.json();
         setChartData(data);
+        saveCategory2Cache(`chart_${selectedRange}`, data);
       }
     } catch {
-      // Silently fail — charts are non-critical
+      const cached = getCategory2Cache<ChartData>(`chart_${selectedRange}`);
+      if (cached.data) setChartData(cached.data);
     }
   }, []);
 
@@ -121,6 +126,7 @@ export default function DashboardClient() {
 
   return (
     <div className="space-y-6">
+      <PWAInstallBanner />
       <CachedDataBanner
         isOffline={isOffline}
         isCached={isCached}

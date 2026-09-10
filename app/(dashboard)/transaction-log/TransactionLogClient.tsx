@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { getTransactions } from '@/lib/client/api/inventory';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
+import { CachedDataBanner } from '@/components/CachedDataBanner';
 
 interface Transaction {
   id: number; createdAt: string; cashier: { fullName: string };
@@ -31,8 +32,11 @@ export default function TransactionLogClient() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [isOffline, setIsOffline] = useState(false);
 
   function refresh() {
+    const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
+    setIsOffline(offlineNow);
     getTransactions<Transaction>().then(setTransactions).catch(() => {});
   }
 
@@ -42,6 +46,15 @@ export default function TransactionLogClient() {
 
   useEffect(() => {
     refresh();
+    function handleOnlineChange() {
+      setIsOffline(typeof window !== 'undefined' && !navigator.onLine);
+    }
+    window.addEventListener('online', handleOnlineChange);
+    window.addEventListener('offline', handleOnlineChange);
+    return () => {
+      window.removeEventListener('online', handleOnlineChange);
+      window.removeEventListener('offline', handleOnlineChange);
+    };
   }, []);
 
   function applyPreset(preset: string) {
@@ -66,6 +79,7 @@ export default function TransactionLogClient() {
 
   return (
     <div className="space-y-4">
+      <CachedDataBanner isOffline={isOffline} isCached={false} onRefresh={refresh} />
       <div>
         <h1 className="text-2xl font-bold">Transaction Log</h1>
         <p className="text-sm text-gray-500">Full chronological audit of every sale — read-only.</p>

@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { getSettings, updateSettings } from '@/lib/client/api/inventory';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
+import { CachedDataBanner } from '@/components/CachedDataBanner';
 
 interface Settings { id: number; storeName: string; currency: string; address?: string; taxRate: number; lowStockThreshold: number }
 
@@ -69,6 +70,7 @@ export default function SettingsClient() {
 
   return (
     <div className="space-y-4 max-w-2xl">
+      <CachedDataBanner isOffline={isOffline} isCached={false} onRefresh={refresh} />
       {isOffline && (
         <div className="p-3 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-semibold">
            Changing system settings is disabled while offline. (Category 3 System Conflict Risk)

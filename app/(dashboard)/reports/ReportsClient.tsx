@@ -7,6 +7,7 @@ import { ShiftDetails } from '@/lib/client/api/shift';
 import { getCategory2Cache, saveCategory2Cache } from '@/lib/client/localStorageCache';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
 import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
+import { useOnlineStatus } from '@/lib/client/hooks/useOfflineSync';
 
 interface ShiftHistoryItem extends ShiftDetails {
   verificationStatus?: 'verified' | 'flagged' | null;
@@ -261,20 +262,38 @@ interface ActiveShiftItem {
 function ActiveSpotCheckSection() {
   const [activeShifts, setActiveShifts] = useState<ActiveShiftItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isCached, setIsCached] = useState(false);
+  const isOffline = useOnlineStatus() === false;
 
   function loadSpotCheck() {
-    if (typeof window !== 'undefined' && !navigator.onLine) {
+    const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
+    if (offlineNow) {
+      const cached = getCategory2Cache<ActiveShiftItem[]>('active_shifts_spot_check');
+      if (cached.data) {
+        setActiveShifts(cached.data);
+        setIsCached(true);
+      }
       setLoading(false);
       return;
     }
     setLoading(true);
+    setIsCached(false);
     fetch('/api/shift/active-shifts')
       .then((res) => res.json())
       .then((data) => {
-        setActiveShifts(data.activeShifts ?? []);
+        const result = data.activeShifts ?? [];
+        setActiveShifts(result);
+        saveCategory2Cache('active_shifts_spot_check', result);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => {
+        const cached = getCategory2Cache<ActiveShiftItem[]>('active_shifts_spot_check');
+        if (cached.data) {
+          setActiveShifts(cached.data);
+          setIsCached(true);
+        }
+        setLoading(false);
+      });
   }
 
   useEffect(() => {
@@ -332,13 +351,17 @@ function ShiftHistoryTable() {
   const [auditError, setAuditError] = useState('');
 
   function loadHistory() {
-    if (typeof window !== 'undefined' && !navigator.onLine) {
+    const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
+    if (offlineNow) {
+      const cached = getCategory2Cache<ShiftHistoryItem[]>('shift_history');
+      if (cached.data) setShifts(cached.data);
       setLoadingShifts(false);
       return;
     }
     import('@/lib/client/api/shift').then(({ fetchShiftHistory }) => {
       fetchShiftHistory().then((data) => {
         setShifts(data);
+        if (data.length > 0) saveCategory2Cache('shift_history', data);
         setLoadingShifts(false);
       });
     });
