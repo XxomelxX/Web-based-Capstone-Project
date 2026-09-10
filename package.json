@@ -3,9 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --hostname localhost",
+    "dev": "next dev --hostname localhost --webpack",
     "postinstall": "node scripts/prisma-generate.js",
     "build": "next build --webpack",
+    "postbuild": "node scripts/patch-sw.js",
     "start": "next start",
     "start:prod": "npm run build && npm run start",
     "lint": "eslint"
