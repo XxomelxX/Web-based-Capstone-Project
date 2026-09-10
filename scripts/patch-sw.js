@@ -1,7 +1,11 @@
 /**
- * Post-build script: patches the generated service worker to add
- * setCatchHandler(self.fallback) so the /offline page is served
- * when all caching strategies fail (e.g., offline hard-refresh).
+ * Post-build script: patches the generated service worker to ensure
+ * the fallback mechanism works for offline hard-refresh.
+ *
+ * NOTE: setCatchHandler is NOT needed because each runtimeCaching route
+ * already has handlerDidError that calls self.fallback(request), which
+ * maps to the /offline page. This script only strips any leftover broken
+ * setCatchHandler calls from old builds.
  */
 
 const fs = require('fs');
@@ -16,37 +20,11 @@ if (!fs.existsSync(swPath)) {
 
 let content = fs.readFileSync(swPath, 'utf-8');
 
-if (content.includes('setCatchHandler')) {
-  console.log('[patch-sw] sw.js already patched, skipping.');
-  process.exit(0);
+// Remove any leftover broken setCatchHandler call from old builds
+if (content.includes('e.setCatchHandler(self.fallback)')) {
+  content = content.replace(',e.setCatchHandler(self.fallback)', '');
+  fs.writeFileSync(swPath, content, 'utf-8');
+  console.log('[patch-sw] Removed broken setCatchHandler call (route-level handlers already cover fallback)');
+} else {
+  console.log('[patch-sw] sw.js is clean, no changes needed.');
 }
-
-const precacheStart = content.indexOf('e.precacheAndRoute(');
-if (precacheStart === -1) {
-  console.error('[patch-sw] Could not find precacheAndRoute in sw.js');
-  process.exit(1);
-}
-
-let depth = 0;
-let precacheEnd = -1;
-for (let i = precacheStart + 'e.precacheAndRoute'.length; i < content.length; i++) {
-  if (content[i] === '(' || content[i] === '[' || content[i] === '{') depth++;
-  if (content[i] === ')' || content[i] === ']' || content[i] === '}') depth--;
-  if (depth === 0) {
-    precacheEnd = i + 1;
-    break;
-  }
-}
-
-if (precacheEnd === -1) {
-  console.error('[patch-sw] Could not find end of precacheAndRoute call');
-  process.exit(1);
-}
-
-const patched =
-  content.slice(0, precacheEnd) +
-  ',e.setCatchHandler(self.fallback)' +
-  content.slice(precacheEnd);
-
-fs.writeFileSync(swPath, patched, 'utf-8');
-console.log('[patch-sw] Successfully patched sw.js with setCatchHandler');

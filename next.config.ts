@@ -41,10 +41,9 @@ const withPWA = withPWAInit({
       },
       {
         urlPattern: /.*/,
-        handler: 'NetworkFirst',
+        handler: 'StaleWhileRevalidate',
         options: {
           cacheName: 'pages-cache',
-          networkTimeoutSeconds: 3,
           expiration: { maxEntries: 50, maxAgeSeconds: 86400 },
         },
       },

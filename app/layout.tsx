@@ -41,6 +41,21 @@ export default function RootLayout({
             __html: `(function(){try{var t=localStorage.getItem('sari-sari-theme');var d=t==='light'||t==='dark'?t:'dark';document.documentElement.setAttribute('data-theme',d);}catch(e){}})();`,
           }}
         />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){
+              if(!navigator.onLine||!('caches'in window))return;
+              var pages=['/pos','/dashboard','/orders','/utang'];
+              caches.open('pages-cache').then(function(cache){
+                pages.forEach(function(url){
+                  cache.match(url).then(function(hit){
+                    if(!hit)fetch(url,{cache:'no-store'}).then(function(r){if(r.ok)cache.put(url,r);}).catch(function(){});
+                  });
+                });
+              });
+            })();`,
+          }}
+        />
       </head>
       <body className="min-h-full flex flex-col bg-background text-slate-100 relative">
         <div className="relative z-10 flex flex-col min-h-screen">
