@@ -2,7 +2,7 @@
 
 import { SessionProvider } from 'next-auth/react';
 import { useEffect } from 'react';
-import { installOfflineSync, unregisterServiceWorker } from '@/lib/client/offline';
+import { installOfflineSync, unregisterServiceWorker, warmPagesCache } from '@/lib/client/offline';
 import { initTheme } from '@/lib/client/hooks/useTheme';
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -13,6 +13,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       return;
     }
     installOfflineSync();
+    warmPagesCache();
   }, []);
 
   return (

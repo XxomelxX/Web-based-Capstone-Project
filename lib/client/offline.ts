@@ -179,6 +179,24 @@ export function installOfflineSync() {
   window.addEventListener('online', syncOfflineQueue);
 }
 
+const PAGES_TO_CACHE = ['/dashboard', '/pos', '/orders', '/utang'];
+
+export async function warmPagesCache() {
+  if (!canUseWindow() || !navigator.onLine) return;
+  try {
+    const cache = await caches.open('pages-cache');
+    await Promise.allSettled(
+      PAGES_TO_CACHE.map(async (url) => {
+        const existing = await cache.match(url);
+        if (!existing) {
+          const response = await fetch(url, { cache: 'no-store' });
+          if (response.ok) await cache.put(url, response);
+        }
+      })
+    );
+  } catch { /* silent — non-critical */ }
+}
+
 export async function saveProducts(products: Record<string, unknown>[]) {
   if (!products?.length) return;
   return db.products.bulkPut(products);

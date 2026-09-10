@@ -54,7 +54,8 @@ export default function DashboardClient() {
           setData(cached.data);
           setIsCached(true);
         } else {
-          throw new Error('Offline and no cached snapshot available');
+          setError('You are offline and no cached data is available. Data will appear after you reconnect and the dashboard loads at least once.');
+          setData(null);
         }
       } else {
         const reportData = await getReports<ReportData>(selectedRange);
@@ -64,13 +65,13 @@ export default function DashboardClient() {
       }
     } catch (err) {
       console.error('Failed to fetch reports:', err);
-      // Fallback to cache if network error
       const cached = getCategory2Cache<ReportData>(`dashboard_${selectedRange}`);
       if (cached.data) {
         setData(cached.data);
         setIsCached(true);
       } else {
-        setError(err instanceof Error ? err.message : 'Unable to load reports');
+        const msg = err instanceof Error ? err.message : 'Unable to load reports';
+        setError(offlineNow ? `Offline: ${msg}. Data will appear after you reconnect.` : msg);
         setData(null);
       }
     } finally {
@@ -79,7 +80,10 @@ export default function DashboardClient() {
   }, []);
 
   const loadChartData = useCallback(async (selectedRange: 'today' | 'week' | 'month' | 'year' | 'all') => {
-    if (typeof window !== 'undefined' && !navigator.onLine) return;
+    if (typeof window !== 'undefined' && !navigator.onLine) {
+      setChartData(null);
+      return;
+    }
     try {
       const res = await fetch(`/api/reports/chart-data?range=${selectedRange}`);
       if (res.ok) {

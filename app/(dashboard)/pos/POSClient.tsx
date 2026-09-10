@@ -461,7 +461,7 @@ className={`border rounded-md py-2 text-sm ${paymentMethod === 'gcash' ? 'bg-gre
           </div>
         )}
 
-        {/* End Shift / Z-Read Reconciliation Modal */}
+        {/* End Shift */}
         {showEndShiftModal && activeShift && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
             <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
@@ -605,7 +605,7 @@ function ReceiptModal({
           <button onClick={onClose} className="text-slate-400 hover:text-white font-sans font-bold text-lg">✕</button>
         </div>
         <hr className="border-dashed border-slate-800 my-2" />
-        <div className="flex justify-between"><span className="text-slate-400">Receipt #</span><span className="font-bold text-slate-100">{receipt.id}</span></div>
+        <div className="flex justify-between"><span className="text-slate-400">Order #</span><span className="font-bold text-slate-100">{receipt.id}</span></div>
         <div className="flex justify-between"><span className="text-slate-400">Date</span><span>{formatDateTime(receipt.createdAt)}</span></div>
         <div className="flex justify-between"><span className="text-slate-400">Cashier</span><span>{cashierName}</span></div>
         {receipt.customer && (
