@@ -3,6 +3,18 @@ import type { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 
 export async function middleware(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+  if (
+    pathname === '/sw.js' ||
+    pathname === '/manifest.json' ||
+    pathname.startsWith('/workbox-') ||
+    pathname.startsWith('/fallback-') ||
+    pathname.startsWith('/icons/') ||
+    pathname === '/offline'
+  ) {
+    return NextResponse.next();
+  }
+
   const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
 
   if (!token) {

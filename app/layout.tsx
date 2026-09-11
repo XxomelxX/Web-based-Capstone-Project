@@ -49,8 +49,14 @@ export default function RootLayout({
               caches.open('pages-cache').then(function(cache){
                 pages.forEach(function(url){
                   cache.match(url).then(function(hit){
-                    if(!hit)fetch(url,{cache:'no-store'}).then(function(r){if(r.ok)cache.put(url,r);}).catch(function(){});
-                  });
+                    if(hit)return;
+                    fetch(url,{cache:'no-store',headers:{'Accept':'text/html'},credentials:'same-origin'}).then(function(r){
+                      if(!r||!r.ok)return;
+                      var ct=r.headers.get('content-type')||'';
+                      if(ct.indexOf('text/html')===-1)return;
+                      cache.put(url,r.clone()).catch(function(){});
+                    }).catch(function(){});
+                  }).catch(function(){});
                 });
               });
             })();`,
