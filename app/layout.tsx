@@ -44,21 +44,29 @@ export default function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){
-              if(!navigator.onLine||!('caches'in window))return;
-              var pages=['/login','/pos','/dashboard','/orders','/utang','/products','/categories','/expenses','/reports','/users','/settings','/lowstock','/transaction-log','/item-log'];
-              caches.open('pages-cache').then(function(cache){
-                pages.forEach(function(url){
-                  cache.match(url).then(function(hit){
-                    if(hit)return;
-                    fetch(url,{cache:'no-store',headers:{'Accept':'text/html'},credentials:'same-origin'}).then(function(r){
-                      if(!r||!r.ok)return;
-                      var ct=r.headers.get('content-type')||'';
-                      if(ct.indexOf('text/html')===-1)return;
-                      cache.put(url,r.clone()).catch(function(){});
+              if(!navigator.onLine||!('caches'in window)||!('serviceWorker'in navigator))return;
+              function warm(){
+                if(!navigator.serviceWorker.controller)return void setTimeout(warm,2000);
+                var pages=['/login','/pos','/dashboard','/orders','/utang','/products','/categories','/expenses','/reports','/users','/settings','/lowstock','/transaction-log','/item-log'];
+                caches.open('pages-cache').then(function(cache){
+                  pages.forEach(function(url){
+                    cache.match(url,{ignoreVary:true}).then(function(hit){
+                      if(hit)return;
+                      fetch(url,{cache:'no-store',credentials:'same-origin'}).then(function(r){
+                        if(!r||!r.ok||r.type!=='basic')return;
+                        var ct=r.headers.get('content-type')||'';
+                        if(ct.indexOf('text/html')===-1)return;
+                        return r.text().then(function(body){
+                          if(!body||body.length<500)return;
+                          cache.put(url,new Response(body,{status:200,statusText:'OK',headers:{'Content-Type':'text/html;charset=utf-8'}})).catch(function(){});
+                        });
+                      }).catch(function(){});
                     }).catch(function(){});
-                  }).catch(function(){});
+                  });
                 });
-              });
+              }
+              if(document.readyState==='complete')warm();
+              else window.addEventListener('load',function(){setTimeout(warm,3000);});
             })();`,
           }}
         />

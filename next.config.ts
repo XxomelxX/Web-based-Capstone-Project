@@ -40,14 +40,33 @@ const withPWA = withPWAInit({
         },
       },
       {
-        urlPattern: /^\/((?!_next|api|icons|favicon|manifest|sw\.js|workbox|fallback|robots|sitemap).*)$/,
+        urlPattern: ({ request }: { request: Request }) =>
+          request.destination === 'document' &&
+          !request.url.includes('/_next/') &&
+          !request.url.includes('/api/'),
         handler: 'NetworkFirst',
         options: {
           cacheName: 'pages-cache',
           networkTimeoutSeconds: 5,
           expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 7 },
           cacheableResponse: { statuses: [200] },
-          matchOptions: { ignoreVary: true },
+          matchOptions: { ignoreSearch: false, ignoreVary: true },
+          plugins: [
+            {
+              cacheWillUpdate: async ({ response }: { response: Response }) => {
+                if (!response || response.status !== 200) return null;
+                const ct = response.headers.get('content-type') || '';
+                if (!ct.includes('text/html')) return null;
+                try {
+                  const body = await response.clone().text();
+                  if (!body || body.length < 500) return null;
+                } catch {
+                  return null;
+                }
+                return response;
+              },
+            },
+          ],
         },
       },
     ],
