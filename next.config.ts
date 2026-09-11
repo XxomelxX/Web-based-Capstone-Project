@@ -40,17 +40,18 @@ const withPWA = withPWAInit({
         },
       },
       {
-        urlPattern: /.*/,
-        handler: 'StaleWhileRevalidate',
+        urlPattern: /^\/((?!_next|api|icons|favicon|manifest|sw\.js|workbox|fallback|robots|sitemap).*)$/,
+        handler: 'NetworkFirst',
         options: {
           cacheName: 'pages-cache',
-          expiration: { maxEntries: 50, maxAgeSeconds: 86400 },
+          networkTimeoutSeconds: 5,
+          expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 7 },
         },
       },
     ],
   },
   fallbacks: {
-    document: '/offline',
+    document: undefined,
   },
 });
 

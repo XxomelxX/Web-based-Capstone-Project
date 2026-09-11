@@ -45,7 +45,7 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             __html: `(function(){
               if(!navigator.onLine||!('caches'in window))return;
-              var pages=['/pos','/dashboard','/orders','/utang'];
+              var pages=['/login','/pos','/dashboard','/orders','/utang','/products','/categories','/expenses','/reports','/users','/settings','/lowstock','/transaction-log','/item-log'];
               caches.open('pages-cache').then(function(cache){
                 pages.forEach(function(url){
                   cache.match(url).then(function(hit){
