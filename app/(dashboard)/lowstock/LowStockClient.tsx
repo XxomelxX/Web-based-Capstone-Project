@@ -72,12 +72,18 @@ export default function LowStockClient() {
   useEffect(() => {
     refresh();
 
-    function handleReconnect() {
-      refresh();
-    }
+    function handleReconnect() { refresh(); }
+    function handleOffline() { setIsOffline(true); }
+    function handleOnline() { setIsOffline(false); refresh(); }
 
     window.addEventListener(RECONNECT_EVENT_NAME, handleReconnect);
-    return () => window.removeEventListener(RECONNECT_EVENT_NAME, handleReconnect);
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+    return () => {
+      window.removeEventListener(RECONNECT_EVENT_NAME, handleReconnect);
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+    };
   }, [refresh]);
 
   const filtered = products.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()));
