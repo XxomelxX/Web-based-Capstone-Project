@@ -7,6 +7,7 @@ import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { getCategory2Cache, saveCategory2Cache } from '@/lib/client/localStorageCache';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
 import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
+import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
 
 interface UtangItemLine { productId: number; quantity: number; unitPrice: number }
 interface UtangEntry {
@@ -19,6 +20,8 @@ interface UtangEntry {
 interface CustomerLight { id: number; name: string }
 
 export default function UtangClient() {
+  const { user } = useCurrentUser();
+  const isAdmin = user?.role === 'admin';
   const [entries, setEntries] = useState<UtangEntry[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<CustomerLight[]>([]);
@@ -42,7 +45,7 @@ export default function UtangClient() {
   const [payAmount, setPayAmount] = useState('');
   const [payNote, setPayNote] = useState('');
 
-  const [deleteTarget, setDeleteTarget] = useState<{ customerId: number; customerName: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ customerId: number; customerName: string; balance: number } | null>(null);
   const [deleteAdminUsername, setDeleteAdminUsername] = useState('');
   const [deleteAdminPassword, setDeleteAdminPassword] = useState('');
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -282,7 +285,8 @@ export default function UtangClient() {
     setDeleteLoading(true);
     setError('');
     try {
-      await deleteCustomer(deleteTarget.customerId, deleteAdminUsername, deleteAdminPassword);
+      const forceDelete = deleteTarget.balance > 0;
+      await deleteCustomer(deleteTarget.customerId, deleteAdminUsername, deleteAdminPassword, forceDelete);
       setDeleteTarget(null);
       setDeleteAdminUsername('');
       setDeleteAdminPassword('');
@@ -359,9 +363,9 @@ export default function UtangClient() {
                     </span>
                   </td>
                   <td className="text-right">
-                    {c.balance === 0 && c.customerId > 0 && (
+                    {isAdmin && c.customerId > 0 && (
                       <button
-                        onClick={() => setDeleteTarget({ customerId: c.customerId, customerName: name })}
+                        onClick={() => setDeleteTarget({ customerId: c.customerId, customerName: name, balance: c.balance })}
                         className="text-xs text-rose-400 hover:text-rose-300 font-semibold cursor-pointer"
                       >
                         Delete
@@ -581,6 +585,12 @@ export default function UtangClient() {
             <p className="text-sm text-slate-300">
               Are you sure you want to delete <span className="font-semibold text-white">{deleteTarget.customerName}</span>? This requires admin authorization.
             </p>
+            {deleteTarget.balance > 0 && (
+              <div className="bg-amber-950/40 border border-amber-800/40 rounded-xl p-3">
+                <p className="text-xs text-amber-300 font-semibold">⚠️ Outstanding utang: ₱{deleteTarget.balance.toFixed(2)}</p>
+                <p className="text-xs text-amber-400/80 mt-1">This customer has unpaid utang. Force delete will remove all their utang entries permanently.</p>
+              </div>
+            )}
             <div>
               <label className="text-sm font-medium text-slate-300">Admin Username</label>
               <input
@@ -611,7 +621,7 @@ export default function UtangClient() {
                 disabled={!deleteAdminUsername || !deleteAdminPassword || deleteLoading}
                 className="bg-rose-600 hover:bg-rose-500 text-white rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-50 cursor-pointer"
               >
-                {deleteLoading ? 'Deleting...' : 'Delete Customer'}
+                {deleteLoading ? 'Deleting...' : deleteTarget.balance > 0 ? 'Force Delete Customer' : 'Delete Customer'}
               </button>
             </div>
           </div>

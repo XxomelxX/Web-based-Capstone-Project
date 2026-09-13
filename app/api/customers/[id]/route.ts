@@ -46,7 +46,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
     const { id: idParam } = await params;
     const id = Number(idParam);
-    const { adminUsername, adminPassword } = await request.json();
+    const { adminUsername, adminPassword, force } = await request.json();
 
     if (!adminUsername || !adminPassword) {
       return NextResponse.json({ error: 'Admin credentials are required to delete a customer.' }, { status: 403 });
@@ -75,8 +75,8 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
       return NextResponse.json({ error: 'Customer not found.' }, { status: 404 });
     }
 
-    if (customer.utangEntries.length > 0) {
-      return NextResponse.json({ error: 'Cannot delete customer with outstanding utang. Collect all payments first.' }, { status: 400 });
+    if (customer.utangEntries.length > 0 && !force) {
+      return NextResponse.json({ error: 'Cannot delete customer with outstanding utang. Collect all payments first, or use force delete.', hasOutstanding: true }, { status: 400 });
     }
 
     await prisma.$transaction(async (tx) => {
@@ -93,7 +93,11 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
       await tx.utangEntryItem.deleteMany({
         where: { utangEntry: { customerId: id } },
       });
-      await tx.utangEntry.deleteMany({ where: { customerId: id } });
+      if (force) {
+        await tx.utangEntry.deleteMany({ where: { customerId: id } });
+      } else {
+        await tx.utangEntry.deleteMany({ where: { customerId: id } });
+      }
       await tx.customer.delete({ where: { id } });
     });
 

@@ -140,12 +140,12 @@ export async function updateCustomer(id: number, data: {
   return res.json();
 }
 
-export async function deleteCustomer(id: number, adminUsername: string, adminPassword: string) {
+export async function deleteCustomer(id: number, adminUsername: string, adminPassword: string, force?: boolean) {
   checkOnlineOrThrow();
   const res = await fetch(`/api/customers/${id}`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ adminUsername, adminPassword }),
+    body: JSON.stringify({ adminUsername, adminPassword, force }),
   });
   if (!res.ok) {
     const errData = await res.json().catch(() => ({}));
