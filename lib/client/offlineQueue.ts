@@ -1,4 +1,4 @@
-﻿import Dexie, { Table } from 'dexie';
+import Dexie, { Table } from 'dexie';
 import { triggerQueueUpdate } from '@/lib/client/hooks/useOfflineSync';
 
 export type Category1ActionType =
@@ -15,6 +15,7 @@ export interface QueuedSaleItem {
 }
 
 export interface QueuedActionPayload {
+  clientUuid?: string;
   // POS Sale & Add Utang items
   items?: QueuedSaleItem[];
   paymentMethod?: 'cash' | 'gcash' | string;
@@ -70,13 +71,23 @@ const db = new OfflineQueueDB();
 export const offlineDb = db;
 
 // Category 1 Queueing Functions
+// Every queued action gets a permanent clientUuid stamped ONCE at queue time.
+// The sync engine reuses this key on every retry, so a lost response can
+// never turn into a duplicate sale/payment/shift on the server (idempotency).
+function stampUuid(payload: QueuedActionPayload): QueuedActionPayload {
+  if (!payload.clientUuid) {
+    return { ...payload, clientUuid: crypto.randomUUID() };
+  }
+  return payload;
+}
+
 export async function queueCategory1Action(
   type: Category1ActionType,
   payload: QueuedActionPayload
 ): Promise<number> {
   const res = await db.queuedActions.add({
     type,
-    payload,
+    payload: stampUuid(payload),
     createdAt: new Date().toISOString(),
     synced: false,
     syncFailed: false,
@@ -91,15 +102,17 @@ export async function queueSale(sale: {
   tendered: number;
   customerId?: number | null;
   createdAt?: string;
+  clientUuid?: string;
 }): Promise<number> {
   const res = await db.queuedActions.add({
     type: 'pos_sale',
-    payload: {
+    payload: stampUuid({
       items: sale.items,
       paymentMethod: sale.paymentMethod,
       tendered: sale.tendered,
       customerId: sale.customerId ?? null,
-    },
+      clientUuid: sale.clientUuid,
+    }),
     createdAt: sale.createdAt || new Date().toISOString(),
     synced: false,
     syncFailed: false,
@@ -112,11 +125,13 @@ export async function queueAddUtang(utang: {
   customerName: string;
   items: QueuedSaleItem[];
   note?: string;
+  clientUuid?: string;
 }): Promise<number> {
   return queueCategory1Action('add_utang', {
     customerName: utang.customerName,
     items: utang.items,
     note: utang.note,
+    clientUuid: utang.clientUuid,
   });
 }
 
@@ -125,12 +140,14 @@ export async function queueUtangPayment(payment: {
   amount: number;
   note?: string;
   expectedBalance?: number;
+  clientUuid?: string;
 }): Promise<number> {
   return queueCategory1Action('record_payment', {
     customerName: payment.customerName,
     amount: payment.amount,
     note: payment.note,
     expectedBalance: payment.expectedBalance,
+    clientUuid: payment.clientUuid,
   });
 }
 
@@ -138,11 +155,13 @@ export async function queueOpenShift(shift: {
   openingFloat: number;
   notes?: string;
   openedAt?: string;
+  clientUuid?: string;
 }): Promise<number> {
   return queueCategory1Action('open_shift', {
     openingFloat: shift.openingFloat,
     notes: shift.notes,
     openedAt: shift.openedAt || new Date().toISOString(),
+    clientUuid: shift.clientUuid,
   });
 }
 
@@ -150,11 +169,13 @@ export async function queueCloseShift(shift: {
   closingCash: number;
   notes?: string;
   closedAt?: string;
+  clientUuid?: string;
 }): Promise<number> {
   return queueCategory1Action('close_shift', {
     closingCash: shift.closingCash,
     notes: shift.notes,
     closedAt: shift.closedAt || new Date().toISOString(),
+    clientUuid: shift.clientUuid,
   });
 }
 
@@ -228,112 +249,19 @@ export async function clearQueuedAction(id: number) {
   triggerQueueUpdate();
 }
 
-// Category 1 Sync Executor
+// Category 1 Sync Executor - SINGLE ENGINE (blog section 10).
+// Delegates to performSync() in lib/client/sync-engine.ts: pushes all pending
+// actions as one idempotent batch (POST /api/sync), then pulls server deltas.
+// Kept under this name for back-compat callers (useOfflineSync).
 export async function syncQueuedSales() {
   if (typeof window === 'undefined' || !navigator.onLine) return;
-
-  const pending = await db.queuedActions.toArray();
-  const toSync = pending.filter((a) => !a.synced).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-
-  for (const action of toSync) {
-    if (!action.id) continue;
-    try {
-      if (action.type === 'pos_sale') {
-        const res = await fetch('/api/pos/checkout', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            items: action.payload.items,
-            paymentMethod: action.payload.paymentMethod,
-            tendered: action.payload.tendered,
-            customerId: action.payload.customerId,
-          }),
-        });
-        if (res.ok) {
-          await markActionSynced(action.id);
-        } else {
-          const errData = await res.json().catch(() => ({}));
-          await markActionFailed(action.id, errData.error || `HTTP ${res.status}`);
-        }
-      } else if (action.type === 'add_utang') {
-        const res = await fetch('/api/utang', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            customerName: action.payload.customerName,
-            items: action.payload.items,
-            note: action.payload.note,
-          }),
-        });
-        if (res.ok) {
-          await markActionSynced(action.id);
-        } else {
-          const errData = await res.json().catch(() => ({}));
-          await markActionFailed(action.id, errData.error || `HTTP ${res.status}`);
-        }
-      } else if (action.type === 'record_payment') {
-        const res = await fetch('/api/utang/payment', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            customerName: action.payload.customerName,
-            amount: action.payload.amount,
-            note: action.payload.note,
-          }),
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          if (
-            action.payload.expectedBalance !== undefined &&
-            data.result?.unallocatedRemainder &&
-            data.result.unallocatedRemainder > 0
-          ) {
-            await markActionFailed(action.id, 'Balance changed unexpectedly while offline. Flagged for Admin review.');
-          } else {
-            await markActionSynced(action.id);
-          }
-        } else {
-          const errData = await res.json().catch(() => ({}));
-          await markActionFailed(action.id, errData.error || `HTTP ${res.status}`);
-        }
-      } else if (action.type === 'open_shift') {
-        const res = await fetch('/api/shift', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'open',
-            openingFloat: action.payload.openingFloat,
-            notes: action.payload.notes,
-          }),
-        });
-        if (res.ok) {
-          await markActionSynced(action.id);
-        } else {
-          const errData = await res.json().catch(() => ({}));
-          await markActionFailed(action.id, errData.error || `HTTP ${res.status}`);
-        }
-      } else if (action.type === 'close_shift') {
-        const res = await fetch('/api/shift', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'close',
-            closingCash: action.payload.closingCash,
-            notes: action.payload.notes,
-          }),
-        });
-        if (res.ok) {
-          await markActionSynced(action.id);
-        } else {
-          const errData = await res.json().catch(() => ({}));
-          await markActionFailed(action.id, errData.error || `HTTP ${res.status}`);
-        }
-      }
-    } catch (err) {
-      // Network blip â€” leave for next retry round
-    }
+  try {
+    const { performSync } = await import('@/lib/client/sync-engine');
+    await performSync();
+  } catch {
+    // Network blip - leave for next retry round
   }
 }
+
 
 export default db;

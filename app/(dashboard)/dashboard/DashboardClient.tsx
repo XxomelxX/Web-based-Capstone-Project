@@ -133,7 +133,7 @@ export default function DashboardClient() {
         onRefresh={() => loadReports(range)}
       />
 
-      <section className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-6 shadow-[0_24px_80px_-46px_rgba(0,0,0,0.85)] backdrop-blur-xl">
+      <section className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-6  backdrop-blur-xl">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-3">
             <p className="text-xs font-semibold uppercase tracking-[0.32em] text-cyan-300/80">Retail insights</p>
@@ -143,7 +143,7 @@ export default function DashboardClient() {
             </p>
           </div>
 
-          <div className="inline-flex items-center gap-3 rounded-3xl border border-[#f59e0b] bg-[#f59e0b] px-4 py-3 text-sm text-gray-900 shadow-lg shadow-black/10">
+          <div className="inline-flex items-center gap-3 rounded-3xl border border-[#f59e0b] bg-[#f59e0b] px-4 py-3 text-sm text-gray-900">
             <span className="text-gray-700">Report range</span>
             <select
               value={range}
@@ -161,11 +161,11 @@ export default function DashboardClient() {
       </section>
 
       {loading ? (
-        <div className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-8 shadow-[0_24px_80px_-46px_rgba(0,0,0,0.85)]">
+        <div className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-8 ">
           <p className="text-slate-400">Loading dashboard analytics…</p>
         </div>
       ) : error ? (
-        <div className="rounded-[2rem] border border-rose-500/20 bg-rose-500/5 p-6 text-rose-100 shadow-[0_24px_80px_-46px_rgba(139,0,0,0.45)]">
+        <div className="rounded-[2rem] border border-rose-500/20 bg-rose-500/5 p-6 text-rose-100 ">
           <p className="text-sm">{error}</p>
           <button
             type="button"
@@ -176,7 +176,7 @@ export default function DashboardClient() {
           </button>
         </div>
       ) : !data ? (
-        <div className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-8 shadow-[0_24px_80px_-46px_rgba(0,0,0,0.85)]">
+        <div className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-8 ">
           <p className="text-slate-400">No report data available.</p>
         </div>
       ) : (
@@ -190,7 +190,7 @@ export default function DashboardClient() {
 
           {chartData && (
             <>
-              <div className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-6 shadow-[0_24px_80px_-46px_rgba(0,0,0,0.85)]">
+              <div className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-6 ">
                 <div className="mb-5 flex items-center justify-between">
                   <div>
                     <h2 className="text-lg font-semibold text-white">Revenue Over Time</h2>
@@ -204,7 +204,7 @@ export default function DashboardClient() {
               </div>
 
               <div className="grid gap-4 xl:grid-cols-2">
-                <div className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-6 shadow-[0_24px_80px_-46px_rgba(0,0,0,0.85)]">
+                <div className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-6 ">
                   <div className="mb-5 flex items-center justify-between">
                     <div>
                       <h2 className="text-lg font-semibold text-white">Payment Methods</h2>
@@ -214,7 +214,7 @@ export default function DashboardClient() {
                   <PaymentMethodChart data={chartData.paymentMethods} />
                 </div>
 
-                <div className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-6 shadow-[0_24px_80px_-46px_rgba(0,0,0,0.85)]">
+                <div className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-6 ">
                   <div className="mb-5 flex items-center justify-between">
                     <div>
                       <h2 className="text-lg font-semibold text-white">Sales by Category</h2>
@@ -226,7 +226,7 @@ export default function DashboardClient() {
               </div>
 
               <div className="grid gap-4 xl:grid-cols-2">
-                <div className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-6 shadow-[0_24px_80px_-46px_rgba(0,0,0,0.85)]">
+                <div className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-6 ">
                   <div className="mb-5 flex items-center justify-between">
                     <div>
                       <h2 className="text-lg font-semibold text-white">Expense Breakdown</h2>
@@ -236,7 +236,7 @@ export default function DashboardClient() {
                   <ExpenseChart data={chartData.expenseByType} />
                 </div>
 
-                <div className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-6 shadow-[0_24px_80px_-46px_rgba(0,0,0,0.85)]">
+                <div className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-6 ">
                   <div className="mb-5 flex items-center justify-between">
                     <div>
                       <h2 className="text-lg font-semibold text-white">Top Products</h2>
@@ -250,7 +250,7 @@ export default function DashboardClient() {
           )}
 
           <div className="grid gap-4 xl:grid-cols-2">
-            <div className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-6 shadow-[0_24px_80px_-46px_rgba(0,0,0,0.85)]">
+            <div className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-6 ">
               <div className="mb-5 flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-white">Top Selling Products</h2>
@@ -280,7 +280,7 @@ export default function DashboardClient() {
               )}
             </div>
 
-            <div className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-6 shadow-[0_24px_80px_-46px_rgba(0,0,0,0.85)]">
+            <div className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-6 ">
               <div className="mb-5 flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-white">Stock Levels</h2>
@@ -312,7 +312,7 @@ export default function DashboardClient() {
 
 function DashboardStatCard({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
-    <div className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-5 shadow-[0_24px_80px_-46px_rgba(0,0,0,0.85)]">
+    <div className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-5 ">
       <p className="text-sm uppercase tracking-[0.18em] text-slate-400">{label}</p>
       <p className={`mt-4 text-3xl font-semibold ${accent ?? 'text-white'}`}>{value}</p>
     </div>

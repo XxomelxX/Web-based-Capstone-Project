@@ -30,12 +30,21 @@ export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
-  const { customerName, items, note } = await request.json() as {
-    customerName: string; items: UtangItem[]; note?: string;
+  const { customerName, items, note, clientUuid } = await request.json() as {
+    customerName: string; items: UtangItem[]; note?: string; clientUuid?: string;
   };
 
   if (!customerName || !items || items.length === 0) {
     return NextResponse.json({ error: 'customerName and at least one item are required' }, { status: 400 });
+  }
+
+  // Idempotency: replay of an already-synced offline action returns the original.
+  if (clientUuid) {
+    const existing = await prisma.utangEntry.findUnique({
+      where: { clientUuid },
+      include: { customer: true, items: { include: { product: true } } },
+    });
+    if (existing) return NextResponse.json(existing, { status: 200 });
   }
 
   try {
@@ -61,6 +70,7 @@ export async function POST(request: Request) {
 
       const utangEntry = await tx.utangEntry.create({
         data: {
+          clientUuid: clientUuid ?? undefined,
           customerId: customer.id,
           totalAmount,
           amountPaid: 0,

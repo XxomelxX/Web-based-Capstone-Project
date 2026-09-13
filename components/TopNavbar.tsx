@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
 import { ChevronDown, LogOut, Sun, Moon } from 'lucide-react';
-import Image from 'next/image';
 import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
 import { useTheme } from '@/lib/client/hooks/useTheme';
 import { OfflineStatusPill } from '@/components/OfflineStatusPill';
@@ -47,6 +46,9 @@ export function TopNavbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [showSyncModal, setShowSyncModal] = useState(false);
+  // Offline-hardened logo: plain <img> (cacheable by SW images-cache rule)
+  // with monogram fallback if the file is ever missing.
+  const [logoOk, setLogoOk] = useState(true);
 
   const role = user?.role ?? 'cashier';
   const links = role === 'admin' ? ADMIN_LINKS : CASHIER_LINKS;
@@ -61,16 +63,23 @@ export function TopNavbar() {
 
   return (
     <nav className="hidden md:flex items-center justify-between px-6 lg:px-8 py-3 border-b shadow-sm sticky top-0 z-40 bg-[#15803d]">
-      <div className="flex items-center gap-3">
-        <Image
-          src="/images/81e09f4c-f773-4009-b7d5-6ef3babd8388-removebg-preview.png"
-          alt="J & J Merchandise Store logo"
-          width={48}
-          height={48}
-          className="h-12 w-12 object-contain shrink-0"
-          style={{ mixBlendMode: 'screen' }}
-        />
-        <span className="font-bold text-lg text-white">J &amp; J Merchandise Store</span>
+      <div className="flex items-center gap-3 min-w-0">
+        {logoOk ? (
+          <img
+            src="/images/81e09f4c-f773-4009-b7d5-6ef3babd8388-removebg-preview.png"
+            alt="J & J Merchandise Store logo"
+            width={48}
+            height={48}
+            className="h-12 w-12 object-contain shrink-0"
+            style={{ mixBlendMode: 'screen' }}
+            onError={() => setLogoOk(false)}
+          />
+        ) : (
+          <span className="h-12 w-12 shrink-0 rounded-lg bg-white/15 border border-white/30 flex items-center justify-center text-white font-black text-sm">
+            J&amp;J
+          </span>
+        )}
+        <span className="font-bold text-lg text-white whitespace-nowrap">J &amp; J Merchandise Store</span>
       </div>
 
       <div className="flex items-center gap-6 text-sm font-semibold">

@@ -126,15 +126,18 @@ export async function openShift(
     return { success: true, shift: offlineShift };
   }
 
+  // Idempotency key generated once: reused by the live request and any
+  // offline fallback, so open-then-fail-then-queue never creates 2 shifts.
+  const clientUuid = crypto.randomUUID();
   try {
     const res = await fetch('/api/shift', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'open', openingFloat, notes }),
+      body: JSON.stringify({ action: 'open', openingFloat, notes, clientUuid }),
     });
 
     if (!res.ok) {
-      await queueOpenShift({ openingFloat, notes });
+      await queueOpenShift({ openingFloat, notes, clientUuid });
       cacheActiveShift(offlineShift);
       return { success: true, shift: offlineShift };
     }
@@ -145,12 +148,12 @@ export async function openShift(
       return { success: true, shift: data.shift };
     }
 
-    await queueOpenShift({ openingFloat, notes });
+    await queueOpenShift({ openingFloat, notes, clientUuid });
     cacheActiveShift(offlineShift);
     return { success: true, shift: offlineShift };
   } catch (error) {
     console.error('Network/DB error opening shift, fallback to offline:', error);
-    await queueOpenShift({ openingFloat, notes });
+    await queueOpenShift({ openingFloat, notes, clientUuid });
     cacheActiveShift(offlineShift);
     return { success: true, shift: offlineShift };
   }
@@ -189,15 +192,16 @@ export async function closeShift(
     return { success: true, summary: fallbackSummary };
   }
 
+  const closeUuid = crypto.randomUUID();
   try {
     const res = await fetch('/api/shift', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'close', closingCash, notes }),
+      body: JSON.stringify({ action: 'close', closingCash, notes, clientUuid: closeUuid }),
     });
 
     if (!res.ok) {
-      await queueCloseShift({ closingCash, notes });
+      await queueCloseShift({ closingCash, notes, clientUuid: closeUuid });
       cacheActiveShift(null);
       return { success: true, summary: fallbackSummary };
     }
@@ -212,7 +216,7 @@ export async function closeShift(
     return { success: true, shift: data.shift, summary: data.summary || fallbackSummary };
   } catch (error) {
     console.error('Network/DB error closing shift, fallback to offline:', error);
-    await queueCloseShift({ closingCash, notes });
+    await queueCloseShift({ closingCash, notes, clientUuid: closeUuid });
     cacheActiveShift(null);
     return { success: true, summary: fallbackSummary };
   }

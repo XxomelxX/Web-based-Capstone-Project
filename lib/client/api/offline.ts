@@ -244,11 +244,14 @@ export async function checkoutOffline(
     return { ...fallbackReceipt, offline: true };
   }
 
+  // Generate the idempotency key ONCE and use it for both the live request
+  // and the offline fallback, so a failed-then-queued sale never duplicates.
+  const clientUuid = crypto.randomUUID();
   try {
     const response = await fetch('/api/pos/checkout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items, customerId, paymentMethod, tendered }),
+      body: JSON.stringify({ clientUuid, items, customerId, paymentMethod, tendered }),
     });
 
     if (!response.ok) {
@@ -275,6 +278,7 @@ export async function checkoutOffline(
         tendered,
         customerId: customerId ?? null,
         createdAt: new Date().toISOString(),
+        clientUuid,
       });
       await updateCachedProductStock(items);
       return { ...fallbackReceipt, offline: true };

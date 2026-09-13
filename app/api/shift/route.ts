@@ -74,9 +74,14 @@ export async function POST(request: Request) {
 
     const userId = Number(session.user.id);
     const body = await request.json();
-    const { action, openingFloat, closingCash, notes } = body;
+    const { action, openingFloat, closingCash, notes, clientUuid } = body;
 
     if (action === 'open') {
+      // Idempotency: replay returns the original shift.
+      if (clientUuid) {
+        const replayed = await prisma.shift.findUnique({ where: { clientUuid } });
+        if (replayed) return NextResponse.json({ success: true, shift: replayed });
+      }
       // Check if cashier already has an open shift
       const existingOpenShift = await prisma.shift.findFirst({
         where: {
@@ -96,6 +101,7 @@ export async function POST(request: Request) {
 
       const newShift = await prisma.shift.create({
         data: {
+          clientUuid: clientUuid ?? undefined,
           cashierId: userId,
           openingFloat: floatAmount,
           status: 'open',
@@ -107,6 +113,31 @@ export async function POST(request: Request) {
     }
 
     if (action === 'close') {
+      // Idempotency: replay returns the original closed shift + summary.
+      if (clientUuid) {
+        const replayed = await prisma.shift.findUnique({
+          where: { clientUuid },
+          include: { cashier: { select: { fullName: true, username: true } } },
+        });
+        if (replayed) {
+          return NextResponse.json({
+            success: true,
+            shift: replayed,
+            summary: {
+              openedAt: replayed.openedAt,
+              closedAt: replayed.closedAt,
+              openingFloat: replayed.openingFloat,
+              cashSales: replayed.cashSales ?? 0,
+              gcashSales: replayed.gcashSales ?? 0,
+              totalSales: (replayed.cashSales ?? 0) + (replayed.gcashSales ?? 0),
+              transactionCount: 0,
+              expectedCash: replayed.expectedCash ?? replayed.openingFloat,
+              closingCash: replayed.closingCash ?? 0,
+              overageShortage: replayed.overageShortage ?? 0,
+            },
+          });
+        }
+      }
       // Find active shift
       const activeShift = await prisma.shift.findFirst({
         where: {
@@ -154,6 +185,7 @@ export async function POST(request: Request) {
       const closedShift = await prisma.shift.update({
         where: { id: activeShift.id },
         data: {
+          clientUuid: clientUuid ?? undefined,
           closingCash: countCash,
           expectedCash,
           cashSales,

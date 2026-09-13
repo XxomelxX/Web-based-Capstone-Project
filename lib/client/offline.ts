@@ -37,6 +37,8 @@ class SariSariPOSOfflineDB extends Dexie {
   reportCache!: Dexie.Table<OfflineCacheEntry, string>;
   queue!: Dexie.Table<OfflineQueuedRequest, number>;
   cachedCredentials!: Dexie.Table<CachedCredential, string>;
+  queuedActions!: Dexie.Table<Record<string, unknown>, number>;
+  syncMeta!: Dexie.Table<OfflineCacheEntry, string>;
 
   constructor() {
     super('SariSariPOSOffline');
@@ -55,6 +57,24 @@ class SariSariPOSOfflineDB extends Dexie {
     });
     this.version(2).stores({
       customers: 'id',
+    });
+    // v3: unified sync metadata (blog §5 syncMeta) + mirrored queue indexes
+    // for fast pending-sync queries. queuedActions mirrors offlineQueue DB.
+    this.version(3).stores({
+      products: 'id',
+      categories: 'id',
+      expenses: 'id',
+      transactions: 'id',
+      utang: 'id',
+      customers: 'id',
+      itemlog: 'id',
+      users: 'id',
+      settings: 'key',
+      reportCache: 'key',
+      queue: '++id, status, action, createdAt',
+      cachedCredentials: 'username',
+      queuedActions: '++id, type, createdAt, synced, syncFailed, clientUuid',
+      syncMeta: 'key',
     });
   }
 }
@@ -181,6 +201,29 @@ export function installOfflineSync() {
 
 const PAGES_TO_CACHE = ['/dashboard', '/pos', '/orders', '/utang'];
 
+// Static brand assets that must be available offline (navbar logo, PWA icons).
+const BRAND_ASSETS_TO_CACHE = [
+  '/images/81e09f4c-f773-4009-b7d5-6ef3babd8388-removebg-preview.png',
+  '/icons/icon-192x192.png',
+  '/icons/icon-512x512.png',
+];
+
+export async function warmBrandCache() {
+  if (!canUseWindow() || !navigator.onLine) return;
+  try {
+    const cache = await caches.open('images-cache');
+    await Promise.allSettled(
+      BRAND_ASSETS_TO_CACHE.map(async (url) => {
+        const existing = await cache.match(url);
+        if (!existing) {
+          const response = await fetch(url, { cache: 'no-store' });
+          if (response.ok) await cache.put(url, response);
+        }
+      })
+    );
+  } catch { /* silent — non-critical */ }
+}
+
 export async function warmPagesCache() {
   if (!canUseWindow() || !navigator.onLine) return;
   try {
@@ -285,6 +328,28 @@ export async function saveUsers(users: Record<string, unknown>[]) {
 
 export async function getCachedUsers<T = Record<string, unknown>>() {
   return db.users.toArray() as Promise<T[]>;
+}
+
+export async function getLastSyncedAt(): Promise<string | null> {
+  try {
+    const entry = await db.table('syncMeta').get('lastSyncedAt');
+    return (entry?.value as string) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setLastSyncedAt(timestamp: string): Promise<void> {
+  await db.table('syncMeta').put({ key: 'lastSyncedAt', value: timestamp });
+}
+
+export async function getPendingSyncCount(): Promise<number> {
+  try {
+    const pending = await db.table('queuedActions').where('synced').equals(0).toArray();
+    return pending.length;
+  } catch {
+    return 0;
+  }
 }
 
 export async function updateCachedProductStock(items: Array<{ productId: number; quantity: number }>) {

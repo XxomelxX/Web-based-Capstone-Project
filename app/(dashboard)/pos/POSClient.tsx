@@ -6,6 +6,8 @@ import { formatTime, formatDateTime } from '@/lib/client/timeUtils';
 import { getProducts, Product } from '@/lib/client/api/products';
 import { checkout, CheckoutResult } from '@/lib/client/api/pos';
 import { getSettings } from '@/lib/client/api/inventory';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db as offlineCache } from '@/lib/client/offline';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { ShiftDetails, ZReadSummary, applyOfflineSaleToShift, cacheActiveShift, fetchActiveShift, openShift, closeShift } from '@/lib/client/api/shift';
 
@@ -31,7 +33,10 @@ interface StoreSettings {
 
 export default function POSClient() {
   const { user } = useCurrentUser();
-  const [products, setProducts] = useState<Product[]>([]);
+  const [fallbackProducts, setProducts] = useState<Product[]>([]);
+  // Local-first: reactively read cached products (blog §13 useLiveQuery).
+  // Falls back to useState list when cache is empty/loading.
+  const cachedProducts = useLiveQuery(() => offlineCache.products.toArray(), []) as unknown as Product[] | undefined;
   const [cart, setCart] = useState<CartLine[]>([]);
   const [search, setSearch] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'gcash'>('cash');
@@ -67,6 +72,8 @@ export default function POSClient() {
     getSettings<StoreSettings>().then(setSettings);
     loadShiftData();
   }, []);
+
+  const products = cachedProducts?.length ? cachedProducts : fallbackProducts;
 
   useRealtime({
     products: refresh,

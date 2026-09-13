@@ -12,13 +12,30 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
-  const { customerName, amount: amountRaw, note } = await request.json() as {
-    customerName: string; amount: number; note?: string;
+  const { customerName, amount: amountRaw, note, clientUuid } = await request.json() as {
+    customerName: string; amount: number; note?: string; clientUuid?: string;
   };
   const amount = Number(amountRaw);
 
   if (!customerName || Number.isNaN(amount) || amount <= 0) {
     return NextResponse.json({ error: 'customerName and a positive amount are required' }, { status: 400 });
+  }
+
+  // Idempotency: replay returns the original payment + allocations.
+  if (clientUuid) {
+    const existing = await prisma.payment.findUnique({
+      where: { clientUuid },
+      include: { allocations: true },
+    });
+    if (existing) {
+      const applied = existing.allocations.reduce((s, a) => s + a.amountApplied, 0);
+      return NextResponse.json({
+        payment: existing,
+        allocations: existing.allocations,
+        unallocatedRemainder: Math.max(0, existing.amount - applied),
+        replayed: true,
+      }, { status: 200 });
+    }
   }
 
   try {
@@ -41,7 +58,7 @@ export async function POST(request: Request) {
 
       // Create the Payment record first
       const payment = await tx.payment.create({
-        data: { amount, note: note ?? null },
+        data: { clientUuid: clientUuid ?? undefined, amount, note: note ?? null },
       });
 
       let remainingPayment = amount;

@@ -206,16 +206,40 @@ export async function addUtang(data: {
     };
   }
 
-  const res = await fetch('/api/utang', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) {
-    const errData = await res.json().catch(() => ({}));
-    throw new Error(errData.error || 'Failed to add utang');
+  const clientUuid = crypto.randomUUID();
+  try {
+    const res = await fetch('/api/utang', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...data, clientUuid }),
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || 'Failed to add utang');
+    }
+    return res.json();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const isNetworkError =
+      error instanceof TypeError || /failed to fetch|network|offline/i.test(message);
+    if (typeof window !== 'undefined' && isNetworkError) {
+      await queueAddUtang({ ...data, clientUuid });
+      await updateCachedProductStock(data.items);
+      const totalAmount = data.items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
+      return {
+        id: Date.now(),
+        customer: { name: data.customerName },
+        totalAmount,
+        amountPaid: 0,
+        remainingBalance: totalAmount,
+        note: data.note ?? null,
+        status: 'unpaid',
+        createdAt: new Date().toISOString(),
+        offline: true,
+      };
+    }
+    throw error;
   }
-  return res.json();
 }
 
 export async function recordUtangPayment(data: { customerName: string; amount: number; note?: string; expectedBalance?: number }) {
@@ -230,16 +254,34 @@ export async function recordUtangPayment(data: { customerName: string; amount: n
     };
   }
 
-  const res = await fetch('/api/utang/payment', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ customerName: data.customerName, amount: data.amount, note: data.note }),
-  });
-  if (!res.ok) {
-    const errData = await res.json().catch(() => ({}));
-    throw new Error(errData.error || 'Failed to record payment');
+  const paymentUuid = crypto.randomUUID();
+  try {
+    const res = await fetch('/api/utang/payment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ customerName: data.customerName, amount: data.amount, note: data.note, clientUuid: paymentUuid }),
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || 'Failed to record payment');
+    }
+    return res.json();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const isNetworkError =
+      error instanceof TypeError || /failed to fetch|network|offline/i.test(message);
+    if (typeof window !== 'undefined' && isNetworkError) {
+      await queueUtangPayment({ ...data, clientUuid: paymentUuid });
+      return {
+        id: Date.now(),
+        amount: data.amount,
+        note: data.note ?? null,
+        createdAt: new Date().toISOString(),
+        offline: true,
+      };
+    }
+    throw error;
   }
-  return res.json();
 }
 
 // Users (Category 3 - Blocked offline)

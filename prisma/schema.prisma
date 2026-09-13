@@ -54,6 +54,7 @@ model Product {
   unit       String?
   barcode    String?
   archived   Boolean  @default(false)
+  updatedAt  DateTime @default(now()) @updatedAt
   goodsType  String   @default("non-perishable") // "perishable" | "non-perishable" | "durable"
   vatType    String   @default("exempt") // "exempt" | "regular" | "zero-rated"
   expiryDate DateTime?
@@ -66,6 +67,7 @@ model Product {
 
 model Transaction {
   id            Int       @id @default(autoincrement())
+  clientUuid    String?   @unique
   cashierId     Int
   cashier       User      @relation(fields: [cashierId], references: [id])
   customerId    Int?
@@ -119,6 +121,7 @@ model Customer {
 
 model UtangEntry {
   id               Int                 @id @default(autoincrement())
+  clientUuid       String?             @unique
   customerId       Int
   customer         Customer            @relation(fields: [customerId], references: [id])
   totalAmount      Float
@@ -145,6 +148,7 @@ model UtangEntryItem {
 
 model Payment {
   id            Int                  @id @default(autoincrement())
+  clientUuid    String?              @unique
   amount        Float
   note          String?
   createdAt     DateTime             @default(now())
@@ -193,6 +197,7 @@ model Settings {
 
 model Shift {
   id              Int       @id @default(autoincrement())
+  clientUuid      String?   @unique
   cashierId       Int
   cashier         User      @relation(fields: [cashierId], references: [id])
   openingFloat    Float

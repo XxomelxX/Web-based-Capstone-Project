@@ -40,6 +40,17 @@ const withPWA = withPWAInit({
         },
       },
       {
+        // Next.js image optimizer URLs (/_next/image?url=...) don't end in
+        // an image extension, so they miss the rule above. Cache them too
+        // so <Image>-rendered assets also survive offline.
+        urlPattern: /^\/_next\/image/,
+        handler: 'CacheFirst',
+        options: {
+          cacheName: 'next-image-cache',
+          expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 30 },
+        },
+      },
+      {
         urlPattern: ({ request }: { request: Request }) =>
           request.destination === 'document' &&
           !request.url.includes('/_next/') &&

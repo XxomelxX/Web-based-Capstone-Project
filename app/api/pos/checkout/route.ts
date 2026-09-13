@@ -17,6 +17,7 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
+  const clientUuid: string | undefined = typeof body.clientUuid === 'string' ? body.clientUuid : undefined;
   const items: CartItem[] = body.items;
   const customerId: number | null = body.customerId ?? null;
   const paymentMethod: string = body.paymentMethod;
@@ -31,6 +32,10 @@ export async function POST(request: Request) {
   }
 
   try {
+    if (clientUuid) {
+      const existing = await prisma.transaction.findUnique({ where: { clientUuid } });
+      if (existing) return NextResponse.json(existing, { status: 200 });
+    }
     const result = await prisma.$transaction(async (tx) => {
       const productIds = items.map((i) => i.productId);
       const allProducts = await tx.product.findMany({ where: { id: { in: productIds } } });
@@ -73,6 +78,7 @@ export async function POST(request: Request) {
 
       const transaction = await tx.transaction.create({
         data: {
+          clientUuid,
           cashierId: Number(session.user.id),
           customerId,
           paymentMethod,

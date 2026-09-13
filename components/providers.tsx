@@ -2,7 +2,8 @@
 
 import { SessionProvider } from 'next-auth/react';
 import { useEffect } from 'react';
-import { installOfflineSync, unregisterServiceWorker, warmPagesCache } from '@/lib/client/offline';
+import { installOfflineSync, unregisterServiceWorker, warmBrandCache, warmPagesCache } from '@/lib/client/offline';
+import { OnlineProvider } from '@/components/providers/online-provider';
 import { initTheme } from '@/lib/client/hooks/useTheme';
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -14,11 +15,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
     }
     installOfflineSync();
     warmPagesCache();
+    warmBrandCache();
   }, []);
 
   return (
     <SessionProvider refetchOnWindowFocus={false} refetchWhenOffline={false}>
-      {children}
+      <OnlineProvider>{children}</OnlineProvider>
     </SessionProvider>
   );
 }
