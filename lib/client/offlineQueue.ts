@@ -193,13 +193,13 @@ export async function getAllQueuedCategory1Actions(): Promise<QueuedCategory1Act
 }
 
 export async function getPendingCount(): Promise<number> {
-  const actions = await db.queuedActions.toArray();
-  return actions.filter((a) => !a.synced && !a.syncFailed).length;
+  const pending = await db.queuedActions.where('synced').equals(0).toArray();
+  return pending.filter((a) => !a.syncFailed).length;
 }
 
 export async function getFailedCount(): Promise<number> {
-  const actions = await db.queuedActions.toArray();
-  return actions.filter((a) => a.syncFailed).length;
+  const failed = await db.queuedActions.where('syncFailed').equals(1).toArray();
+  return failed.length;
 }
 
 export async function getPendingSales(): Promise<QueuedSale[]> {

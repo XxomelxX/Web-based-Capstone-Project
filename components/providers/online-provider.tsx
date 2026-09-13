@@ -1,13 +1,18 @@
 'use client';
 
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { performSync, checkConnectivity, shouldRetry, getRetryDelay, incrementRetry, resetRetries } from '@/lib/client/sync-engine';
-import { getPendingCount } from '@/lib/client/offlineQueue';
+import { performSync, checkConnectivity, shouldRetry, getRetryDelay, incrementRetry, resetRetries, getRetryCount } from '@/lib/client/sync-engine';
+import { getPendingCount, getFailedCount } from '@/lib/client/offlineQueue';
+import { getLastSyncedAt } from '@/lib/client/offline';
+import { toast } from 'sonner';
+import { triggerCategory2Refresh } from '@/lib/client/hooks/useOfflineSync';
 
 interface OnlineContextType {
   isOnline: boolean;
   isSyncing: boolean;
   pendingCount: number;
+  failedCount: number;
+  retryCount: number;
   lastSyncedAt: string | null;
   forceOffline: boolean;
   setForceOffline: (v: boolean) => void;
@@ -21,6 +26,7 @@ export function OnlineProvider({ children }: { children: React.ReactNode }) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [forceOffline, setForceOffline] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const [failedCount, setFailedCount] = useState(0);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const syncingRef = useRef(false);
   const wasOfflineRef = useRef(false);
@@ -41,7 +47,12 @@ export function OnlineProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const update = async () => {
-      try { setPendingCount(await getPendingCount()); } catch { /* dexie not ready */ }
+      try {
+        setPendingCount(await getPendingCount());
+        setFailedCount(await getFailedCount());
+        const synced = await getLastSyncedAt();
+        if (synced) setLastSyncedAt(synced);
+      } catch { /* dexie not ready */ }
     };
     update();
     const i = setInterval(update, 5000);
@@ -57,19 +68,31 @@ export function OnlineProvider({ children }: { children: React.ReactNode }) {
       if (result.success) {
         resetRetries();
         setPendingCount(await getPendingCount());
+        setFailedCount(await getFailedCount());
         setLastSyncedAt(result.syncedAt);
+        if (result.synced > 0) {
+          toast.success(`Synced ${result.synced} action${result.synced !== 1 ? 's' : ''}`);
+        }
+        if (result.conflicts > 0) {
+          toast.warning(`${result.conflicts} conflict${result.conflicts !== 1 ? 's' : ''} resolved (server-wins)`);
+        }
+        triggerCategory2Refresh();
       } else {
         throw new Error(result.error || 'Sync failed');
       }
-    } catch {
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Sync failed';
       if (shouldRetry()) {
         incrementRetry();
-        setTimeout(() => { syncingRef.current = false; void syncNow(); }, getRetryDelay());
+        const retryIn = getRetryDelay();
+        toast.warning(`Sync failed, retrying in ${Math.round(retryIn / 1000)}s... (${getRetryCount()}/5)`);
+        setTimeout(() => { syncingRef.current = false; void syncNow(); }, retryIn);
         setIsSyncing(false);
         return;
       } else {
         resetRetries();
         setForceOffline(true);
+        toast.error(`Sync failed after 5 retries: ${msg}`);
       }
     } finally {
       syncingRef.current = false;
@@ -83,7 +106,7 @@ export function OnlineProvider({ children }: { children: React.ReactNode }) {
   }, [effectiveOnline, syncNow]);
 
   return (
-    <OnlineContext.Provider value={{ isOnline: effectiveOnline, isSyncing, pendingCount, lastSyncedAt, forceOffline, setForceOffline, syncNow }}>
+    <OnlineContext.Provider value={{ isOnline: effectiveOnline, isSyncing, pendingCount, failedCount, retryCount: getRetryCount(), lastSyncedAt, forceOffline, setForceOffline, syncNow }}>
       {children}
     </OnlineContext.Provider>
   );

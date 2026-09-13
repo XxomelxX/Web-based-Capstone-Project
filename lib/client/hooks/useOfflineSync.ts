@@ -58,7 +58,7 @@ export function useOfflineSync() {
       setPendingCount(pending);
       setFailedCount(failed);
     } catch {
-      // IndexedDB unavailable â€” ignore
+      // IndexedDB unavailable — ignore
     }
   }, []);
 
@@ -84,14 +84,12 @@ export function useOfflineSync() {
     void refreshPendingCount();
 
     function handleOnline() {
-      console.log('EVENT: browser online');
       void checkActualConnectivity().then((online) => {
         if (online) void syncQueue();
       });
     }
 
     function handleOffline() {
-      console.log('EVENT: browser offline');
       setIsOnline(false);
     }
 
@@ -103,16 +101,10 @@ export function useOfflineSync() {
     window.addEventListener('offline', handleOffline);
     window.addEventListener(QUEUE_UPDATE_EVENT_NAME, handleQueueChange);
 
-    // Active heartbeat check every 6 seconds to catch OS network adapter false positives
-    const interval = setInterval(() => {
-      void checkActualConnectivity();
-    }, 6000);
-
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener(QUEUE_UPDATE_EVENT_NAME, handleQueueChange);
-      clearInterval(interval);
     };
   }, [checkActualConnectivity, refreshPendingCount, syncQueue]);
 

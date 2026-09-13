@@ -5,6 +5,7 @@ import { getItemLog } from '@/lib/client/api/inventory';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { formatDateTime } from '@/lib/client/timeUtils';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
+import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
 
 interface ItemLogEntry {
   id: number; createdAt: string; action: string; quantity: number;
@@ -56,14 +57,12 @@ export default function ItemLogClient() {
 
   useEffect(() => {
     refresh();
-    function handleOnlineChange() {
-      setIsOffline(typeof window !== 'undefined' && !navigator.onLine);
-    }
-    window.addEventListener('online', handleOnlineChange);
-    window.addEventListener('offline', handleOnlineChange);
+    function handleReconnect() { refresh(); }
+    window.addEventListener(RECONNECT_EVENT_NAME, handleReconnect);
+    window.addEventListener('online', handleReconnect);
     return () => {
-      window.removeEventListener('online', handleOnlineChange);
-      window.removeEventListener('offline', handleOnlineChange);
+      window.removeEventListener(RECONNECT_EVENT_NAME, handleReconnect);
+      window.removeEventListener('online', handleReconnect);
     };
   }, []);
 
@@ -89,7 +88,7 @@ export default function ItemLogClient() {
 
   return (
     <div className="space-y-4">
-      <CachedDataBanner isOffline={isOffline} isCached={false} onRefresh={refresh} />
+      <CachedDataBanner isOffline={isOffline} isCached={isOffline && logs.length > 0} onRefresh={refresh} />
       <div>
         <h1 className="text-2xl font-bold">Item Log</h1>
         <p className="text-sm text-gray-500">Every stock movement — sales, restocks, and voids — logged automatically.</p>

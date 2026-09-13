@@ -7,7 +7,7 @@ import { ShiftDetails } from '@/lib/client/api/shift';
 import { getCategory2Cache, saveCategory2Cache } from '@/lib/client/localStorageCache';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
 import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
-import { useOnlineStatus } from '@/lib/client/hooks/useOfflineSync';
+import { useOnline } from '@/components/providers/online-provider';
 
 interface ShiftHistoryItem extends ShiftDetails {
   verificationStatus?: 'verified' | 'flagged' | null;
@@ -263,7 +263,8 @@ function ActiveSpotCheckSection() {
   const [activeShifts, setActiveShifts] = useState<ActiveShiftItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCached, setIsCached] = useState(false);
-  const isOffline = useOnlineStatus() === false;
+  const { isOnline } = useOnline();
+  const isOffline = !isOnline;
 
   function loadSpotCheck() {
     const offlineNow = typeof window !== 'undefined' && !navigator.onLine;

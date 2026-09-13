@@ -1,13 +1,12 @@
 ﻿'use client';
 
 import { useEffect, useState } from 'react';
-import { useOfflineSync } from '@/lib/client/hooks/useOfflineSync';
-import { formatTime } from '@/lib/client/timeUtils';
+import { useOnline } from '@/components/providers/online-provider';
 import { getAllQueuedCategory1Actions } from '@/lib/client/offlineQueue';
 import type { QueuedCategory1Action } from '@/lib/client/offlineQueue';
 
 export function OfflineSyncModal({ onClose }: { onClose: () => void }) {
-  const { online, queuedCount, failedCount, syncing, syncQueue } = useOfflineSync();
+  const { isOnline, pendingCount, isSyncing, syncNow } = useOnline();
   const [queuedItems, setQueuedItems] = useState<QueuedCategory1Action[]>([]);
 
   useEffect(() => {
@@ -27,12 +26,12 @@ export function OfflineSyncModal({ onClose }: { onClose: () => void }) {
         <div className="text-xs flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-200">
           <div>
             Status:{' '}
-            <strong className={online ? 'text-green-600' : 'text-amber-600'}>
-              {online ? '🟢 Connected' : '🟡 Offline Mode'}
+            <strong className={isOnline ? 'text-green-600' : 'text-amber-600'}>
+              {isOnline ? '🟢 Connected' : '🟡 Offline Mode'}
             </strong>
           </div>
           <div>
-            Category 1 Queued: <strong className="text-cyan-600">{queuedCount}</strong>
+            Category 1 Queued: <strong className="text-cyan-600">{pendingCount}</strong>
           </div>
         </div>
 
@@ -48,14 +47,22 @@ export function OfflineSyncModal({ onClose }: { onClose: () => void }) {
                   ? 'POS Complete Sale'
                   : item.type === 'add_utang'
                   ? 'Utang — Add Utang'
-                  : 'Utang — Record Payment';
+                  : item.type === 'record_payment'
+                  ? 'Utang — Record Payment'
+                  : item.type === 'open_shift'
+                  ? 'Shift — Open Shift'
+                  : 'Shift — Close Shift';
 
               const detail =
                 item.type === 'pos_sale'
                   ? `Items: ${item.payload.items?.length || 0} · Method: ${item.payload.paymentMethod}`
                   : item.type === 'add_utang'
                   ? `Customer: ${item.payload.customerName} · Items: ${item.payload.items?.length || 0}`
-                  : `Customer: ${item.payload.customerName} · Amount: ₱${item.payload.amount?.toFixed(2) || '0.00'}`;
+                  : item.type === 'record_payment'
+                  ? `Customer: ${item.payload.customerName} · Amount: ₱${item.payload.amount?.toFixed(2) || '0.00'}`
+                  : item.type === 'open_shift'
+                  ? `Float: ₱${item.payload.openingFloat?.toFixed(2) || '0.00'}`
+                  : `Cash: ₱${item.payload.closingCash?.toFixed(2) || '0.00'}`;
 
               return (
                 <div key={idx} className="bg-gray-50 border border-gray-200 p-3 rounded-xl space-y-1">
@@ -101,13 +108,13 @@ export function OfflineSyncModal({ onClose }: { onClose: () => void }) {
           <button
             type="button"
             onClick={async () => {
-              await syncQueue();
+              await syncNow();
               setQueuedItems(await getAllQueuedCategory1Actions());
             }}
-            disabled={!online || syncing}
+            disabled={!isOnline || isSyncing}
             className="flex-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl py-2 text-xs font-semibold transition disabled:opacity-50"
           >
-            {syncing ? 'Syncing...' : '🔄 Force Sync Queue Now'}
+            {isSyncing ? 'Syncing...' : '🔄 Force Sync Queue Now'}
           </button>
           <button
             type="button"

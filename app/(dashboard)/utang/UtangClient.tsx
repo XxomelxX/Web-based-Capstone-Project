@@ -168,6 +168,28 @@ export default function UtangClient() {
       });
       if (res?.offline) {
         setNotice('Utang entry queued offline! It will automatically sync once online.');
+        const offlineEntry = res as unknown as UtangEntry;
+        setEntries((prev) => {
+          const next = [offlineEntry, ...prev];
+          saveCategory2Cache('utang', next);
+          return next;
+        });
+        setIsCached(true);
+      } else {
+        setShowAdd(false);
+        setSelectedCustomerId(0);
+        setNewCustomerName('');
+        setShowNewCustomer(false);
+        setLines([{ productId: 0, quantity: 1, unitPrice: 0 }]);
+        setNote('');
+        try {
+          const freshEntries = await refetchUtangEntries<UtangEntry>();
+          setEntries(freshEntries);
+          saveCategory2Cache('utang', freshEntries);
+          setIsCached(false);
+        } catch {
+          refresh();
+        }
       }
       setShowAdd(false);
       setSelectedCustomerId(0);
@@ -175,15 +197,6 @@ export default function UtangClient() {
       setShowNewCustomer(false);
       setLines([{ productId: 0, quantity: 1, unitPrice: 0 }]);
       setNote('');
-      // Force fresh fetch from API after mutation
-      try {
-        const freshEntries = await refetchUtangEntries<UtangEntry>();
-        setEntries(freshEntries);
-        saveCategory2Cache('utang', freshEntries);
-        setIsCached(false);
-      } catch {
-        refresh();
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add utang');
     }
@@ -226,6 +239,32 @@ export default function UtangClient() {
       });
       if (res?.offline) {
         setNotice('Utang payment queued offline! It will auto-post on reconnect.');
+        setEntries((prev) => {
+          const updated = prev.map((entry) => {
+            if (entry.customer?.name === customerName && entry.status !== 'paid') {
+              const newPaid = entry.amountPaid + Number(payAmount);
+              const newBalance = Math.max(0, entry.remainingBalance - Number(payAmount));
+              return {
+                ...entry,
+                amountPaid: newPaid,
+                remainingBalance: newBalance,
+                status: newBalance === 0 ? 'paid' : newPaid > 0 ? 'partial' : entry.status,
+              };
+            }
+            return entry;
+          });
+          saveCategory2Cache('utang', updated);
+          return updated;
+        });
+      } else {
+        try {
+          const freshEntries = await refetchUtangEntries<UtangEntry>();
+          setEntries(freshEntries);
+          saveCategory2Cache('utang', freshEntries);
+          setIsCached(false);
+        } catch {
+          refresh();
+        }
       }
       setShowPayment(false);
       setPaySelectedCustomerId(0);
@@ -233,15 +272,6 @@ export default function UtangClient() {
       setPayShowNewCustomer(false);
       setPayAmount('');
       setPayNote('');
-      // Force fresh fetch from API after mutation
-      try {
-        const freshEntries = await refetchUtangEntries<UtangEntry>();
-        setEntries(freshEntries);
-        saveCategory2Cache('utang', freshEntries);
-        setIsCached(false);
-      } catch {
-        refresh();
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Payment failed');
     }

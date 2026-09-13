@@ -1,11 +1,12 @@
 ﻿'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '@/lib/client/offline';
 import { getTransactions, voidTransaction } from '@/lib/client/api/inventory';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
-import { getCategory2Cache, saveCategory2Cache } from '@/lib/client/localStorageCache';
-import { CachedDataBanner } from '@/components/CachedDataBanner';
 import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
+import { CachedDataBanner } from '@/components/CachedDataBanner';
 import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
 
 interface OrderItem { productId: number; quantity: number; unitPrice: number; lineTotal: number; product: { name: string } }
@@ -16,7 +17,7 @@ interface Order {
 
 export default function OrdersClient() {
   const { user } = useCurrentUser();
-  const [orders, setOrders] = useState<Order[]>([]);
+  const liveOrders = useLiveQuery(() => db.transactions.toArray());
   const [viewing, setViewing] = useState<Order | null>(null);
   const [voiding, setVoiding] = useState<Order | null>(null);
   const [reason, setReason] = useState('');
@@ -26,30 +27,20 @@ export default function OrdersClient() {
   const [isCached, setIsCached] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
 
-  const refresh = useCallback(() => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const orders: Order[] = (liveOrders ?? []) as any;
+
+  const refresh = useCallback(async () => {
     const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
     setIsOffline(offlineNow);
+    if (offlineNow) return;
 
-    if (offlineNow) {
-      const cached = getCategory2Cache<Order[]>('transactions');
-      if (cached.data) {
-        setOrders(cached.data);
-        setIsCached(true);
-      }
-    } else {
-      getTransactions<Order>()
-        .then((txs) => {
-          setOrders(txs);
-          saveCategory2Cache('transactions', txs);
-          setIsCached(false);
-        })
-        .catch(() => {
-          const cached = getCategory2Cache<Order[]>('transactions');
-          if (cached.data) {
-            setOrders(cached.data);
-            setIsCached(true);
-          }
-        });
+    try {
+      const txs = await getTransactions<Order>();
+      await db.transactions.bulkPut(txs as unknown as Record<string, unknown>[]);
+      setIsCached(false);
+    } catch {
+      setIsCached(true);
     }
   }, []);
 
@@ -57,14 +48,9 @@ export default function OrdersClient() {
     transactions: refresh,
   });
 
-  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     refresh();
-
-    function handleReconnect() {
-      refresh();
-    }
-
+    function handleReconnect() { refresh(); }
     window.addEventListener(RECONNECT_EVENT_NAME, handleReconnect);
     return () => window.removeEventListener(RECONNECT_EVENT_NAME, handleReconnect);
   }, [refresh]);
@@ -101,7 +87,7 @@ export default function OrdersClient() {
       setReason('');
       setAdminUsername('');
       setAdminPassword('');
-      refresh();
+      await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Void failed');
     }

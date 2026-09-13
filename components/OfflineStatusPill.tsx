@@ -1,11 +1,11 @@
 ﻿'use client';
 
-import { useOfflineSync } from '@/lib/client/hooks/useOfflineSync';
+import { useOnline } from '@/components/providers/online-provider';
 
 export function OfflineStatusPill({ onClick }: { onClick?: () => void }) {
-  const { online, queuedCount, failedCount, syncing } = useOfflineSync();
+  const { isOnline, isSyncing, pendingCount, failedCount } = useOnline();
 
-  const show = syncing ? 'syncing' : online && queuedCount === 0 ? 'online' : 'offline';
+  const show = isSyncing ? 'syncing' : isOnline && pendingCount === 0 ? 'online' : 'offline';
 
   const styles: Record<string, string> = {
     syncing: 'bg-sky-500/20 text-sky-300 border border-sky-500/40',
@@ -26,13 +26,13 @@ export function OfflineStatusPill({ onClick }: { onClick?: () => void }) {
       className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full ${styles[show]} ${onClick ? 'hover:opacity-80 transition cursor-pointer text-left' : 'cursor-default'}`}
     >
       <span className={`mr-1.5 h-2 w-2 rounded-full ${dot[show]}`} />
-      {syncing
+      {isSyncing
         ? 'Syncing...'
-        : online && queuedCount === 0
+        : isOnline && pendingCount === 0
         ? 'Online'
-        : online
-        ? `Online (${queuedCount} queued)`
-        : `Offline (${queuedCount} queued)`}
+        : isOnline
+        ? `Online (${pendingCount} queued)`
+        : `Offline (${pendingCount} queued)`}
       {failedCount > 0 && (
         <span className="ml-1 text-rose-300">⚠ {failedCount}</span>
       )}

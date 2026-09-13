@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { getExpenses, addExpense } from '@/lib/client/api/inventory';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
+import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
 
 
 interface Expense { id: number; type: string; amount: number; period: string; note?: string; createdAt: string }
@@ -48,14 +49,12 @@ export default function ExpensesClient() {
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     refresh();
-    function handleOnlineChange() {
-      setIsOffline(typeof window !== 'undefined' && !navigator.onLine);
-    }
-    window.addEventListener('online', handleOnlineChange);
-    window.addEventListener('offline', handleOnlineChange);
+    function handleReconnect() { refresh(); }
+    window.addEventListener(RECONNECT_EVENT_NAME, handleReconnect);
+    window.addEventListener('online', handleReconnect);
     return () => {
-      window.removeEventListener('online', handleOnlineChange);
-      window.removeEventListener('offline', handleOnlineChange);
+      window.removeEventListener(RECONNECT_EVENT_NAME, handleReconnect);
+      window.removeEventListener('online', handleReconnect);
     };
   }, [refresh]);
 
@@ -107,7 +106,7 @@ export default function ExpensesClient() {
 
   return (
     <div className="space-y-4">
-      <CachedDataBanner isOffline={isOffline} isCached={false} onRefresh={refresh} />
+      <CachedDataBanner isOffline={isOffline} isCached={isOffline && expenses.length > 0} onRefresh={refresh} />
       {isOffline && (
         <div className="p-3 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-semibold">
           ⚠️ Adding expenses is disabled while offline. (Category 3 Low-value requirement)

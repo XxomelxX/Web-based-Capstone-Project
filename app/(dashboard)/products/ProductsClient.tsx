@@ -1,6 +1,8 @@
 ﻿'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '@/lib/client/offline';
 import {
   getProducts,
   getArchivedProducts,
@@ -12,9 +14,8 @@ import {
 } from '@/lib/client/api/products';
 import { getCategories, Category } from '@/lib/client/api/categories';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
-import { getCategory2Cache, saveCategory2Cache } from '@/lib/client/localStorageCache';
-import { CachedDataBanner } from '@/components/CachedDataBanner';
 import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
+import { CachedDataBanner } from '@/components/CachedDataBanner';
 import { formatDate } from '@/lib/client/timeUtils';
 
 const GOODS_BADGE: Record<string, string> = {
@@ -46,8 +47,8 @@ function getExpiryBadge(expiryDate?: string | Date | null) {
 }
 
 export default function ProductsClient() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const liveProducts = useLiveQuery(() => db.products.toArray());
+  const liveCategories = useLiveQuery(() => db.categories.toArray());
   const [showModal, setShowModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [tab, setTab] = useState<'active' | 'archived'>('active');
@@ -64,47 +65,33 @@ export default function ProductsClient() {
   const [isCached, setIsCached] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
 
-  const refresh = useCallback(() => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const allProducts: Product[] = (liveProducts ?? []) as any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const categories: Category[] = (liveCategories ?? []) as any;
+
+  const products = tab === 'active'
+    ? allProducts.filter((p) => !p.archived)
+    : allProducts.filter((p) => p.archived);
+
+  const refresh = useCallback(async () => {
     const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
     setIsOffline(offlineNow);
+    if (offlineNow) return;
 
-    if (offlineNow) {
-      const cachedProds = getCategory2Cache<Product[]>(`products_${tab}`);
-      if (cachedProds.data) {
-        setProducts(cachedProds.data);
-        setIsCached(true);
-      }
-      const cachedCats = getCategory2Cache<Category[]>('categories');
-      if (cachedCats.data) {
-        setCategories(cachedCats.data);
-      }
-    } else {
-      const fetchFn = tab === 'active' ? getProducts : getArchivedProducts;
-      fetchFn()
-        .then((prods) => {
-          setProducts(prods);
-          saveCategory2Cache(`products_${tab}`, prods);
-          setIsCached(false);
-        })
-        .catch(() => {
-          const cachedProds = getCategory2Cache<Product[]>(`products_${tab}`);
-          if (cachedProds.data) {
-            setProducts(cachedProds.data);
-            setIsCached(true);
-          }
-        });
-
-      getCategories()
-        .then((cats) => {
-          setCategories(cats);
-          saveCategory2Cache('categories', cats);
-        })
-        .catch(() => {
-          const cachedCats = getCategory2Cache<Category[]>('categories');
-          if (cachedCats.data) setCategories(cachedCats.data);
-        });
+    try {
+      const [activeProds, archivedProds, cats] = await Promise.all([
+        getProducts(),
+        getArchivedProducts(),
+        getCategories(),
+      ]);
+      await db.products.bulkPut([...activeProds, ...archivedProds] as unknown as Record<string, unknown>[]);
+      await db.categories.bulkPut(cats as unknown as Record<string, unknown>[]);
+      setIsCached(false);
+    } catch {
+      setIsCached(true);
     }
-  }, [tab]);
+  }, []);
 
   useRealtime({
     products: () => refresh(),
@@ -112,17 +99,12 @@ export default function ProductsClient() {
     restock: () => refresh(),
   });
 
-  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     refresh();
-
-    function handleReconnect() {
-      refresh();
-    }
-
+    function handleReconnect() { refresh(); }
     window.addEventListener(RECONNECT_EVENT_NAME, handleReconnect);
     return () => window.removeEventListener(RECONNECT_EVENT_NAME, handleReconnect);
-  }, [tab, refresh]);
+  }, [refresh]);
 
   function checkOnlineOrSetError(): boolean {
     if (typeof window !== 'undefined' && !navigator.onLine) {
@@ -183,7 +165,7 @@ export default function ProductsClient() {
         });
       }
       setShowModal(false);
-      refresh();
+      await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save product');
     }
@@ -193,7 +175,7 @@ export default function ProductsClient() {
     if (!checkOnlineOrSetError()) return;
     try {
       await archiveProduct(id);
-      refresh();
+      await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to archive product');
     }
@@ -203,7 +185,7 @@ export default function ProductsClient() {
     if (!checkOnlineOrSetError()) return;
     try {
       await unarchiveProduct(id);
-      refresh();
+      await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to unarchive product');
     }

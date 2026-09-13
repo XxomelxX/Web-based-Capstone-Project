@@ -1,16 +1,17 @@
 ﻿'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '@/lib/client/offline';
 import { getCategories, addCategory, updateCategory, Category } from '@/lib/client/api/categories';
 import { getProducts, Product } from '@/lib/client/api/products';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
-import { getCategory2Cache, saveCategory2Cache } from '@/lib/client/localStorageCache';
-import { CachedDataBanner } from '@/components/CachedDataBanner';
 import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
+import { CachedDataBanner } from '@/components/CachedDataBanner';
 
 export default function CategoriesClient() {
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [allProducts, setAllProducts] = useState<Product[]>([]);
+  const liveCategories = useLiveQuery(() => db.categories.toArray());
+  const liveProducts = useLiveQuery(() => db.products.toArray());
   const [showModal, setShowModal] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [form, setForm] = useState({ name: '', description: '', archived: false });
@@ -18,34 +19,23 @@ export default function CategoriesClient() {
   const [isCached, setIsCached] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
 
-  const refresh = useCallback(() => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const categories: Category[] = (liveCategories ?? []) as any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const allProducts: Product[] = (liveProducts ?? []) as any;
+
+  const refresh = useCallback(async () => {
     const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
     setIsOffline(offlineNow);
+    if (offlineNow) return;
 
-    if (offlineNow) {
-      const cachedCats = getCategory2Cache<Category[]>('categories');
-      if (cachedCats.data) {
-        setCategories(cachedCats.data);
-        setIsCached(true);
-      }
-      const cachedProds = getCategory2Cache<Product[]>('products_active');
-      if (cachedProds.data) setAllProducts(cachedProds.data);
-    } else {
-      getCategories()
-        .then((cats) => {
-          setCategories(cats);
-          saveCategory2Cache('categories', cats);
-          setIsCached(false);
-        })
-        .catch(() => {
-          const cachedCats = getCategory2Cache<Category[]>('categories');
-          if (cachedCats.data) {
-            setCategories(cachedCats.data);
-            setIsCached(true);
-          }
-        });
-
-      getProducts().then(setAllProducts).catch(() => {});
+    try {
+      const [cats, prods] = await Promise.all([getCategories(), getProducts()]);
+      await db.categories.bulkPut(cats as unknown as Record<string, unknown>[]);
+      await db.products.bulkPut(prods as unknown as Record<string, unknown>[]);
+      setIsCached(false);
+    } catch {
+      setIsCached(true);
     }
   }, []);
 
@@ -54,14 +44,9 @@ export default function CategoriesClient() {
     products: refresh,
   });
 
-  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     refresh();
-
-    function handleReconnect() {
-      refresh();
-    }
-
+    function handleReconnect() { refresh(); }
     window.addEventListener(RECONNECT_EVENT_NAME, handleReconnect);
     return () => window.removeEventListener(RECONNECT_EVENT_NAME, handleReconnect);
   }, [refresh]);
@@ -105,7 +90,7 @@ export default function CategoriesClient() {
         await addCategory({ name: form.name, description: form.description || undefined });
       }
       setShowModal(false);
-      refresh();
+      await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save category');
     }
