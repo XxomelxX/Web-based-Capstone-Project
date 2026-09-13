@@ -224,6 +224,37 @@ export async function warmBrandCache() {
   } catch { /* silent — non-critical */ }
 }
 
+// Warm the CSS file + critical static assets into the runtime cache as a
+// backup to the SW precache. If precache entries get evicted (storage
+// pressure), the runtime CacheFirst rule for /_next/static/ serves from
+// this cache instead — preventing unstyled offline pages.
+export async function warmStaticAssets() {
+  if (!canUseWindow() || !navigator.onLine) return;
+  try {
+    const cache = await caches.open('static-assets');
+    // Collect CSS <link> tags currently in the DOM (guaranteed current hash)
+    const cssLinks = Array.from(document.querySelectorAll('link[rel="stylesheet"]'))
+      .map((el) => (el as HTMLLinkElement).href)
+      .filter((href) => href.startsWith('/_next/'));
+    // Also grab critical JS chunks from script tags
+    const jsSrcs = Array.from(document.querySelectorAll('script[src]'))
+      .map((el) => (el as HTMLScriptElement).src)
+      .filter((src) => src.includes('/_next/static/chunks/'))
+      .slice(0, 10); // cap at 10 to avoid warming too many
+
+    const urls = [...cssLinks, ...jsSrcs];
+    await Promise.allSettled(
+      urls.map(async (url) => {
+        const existing = await cache.match(url);
+        if (!existing) {
+          const response = await fetch(url, { cache: 'no-store' });
+          if (response.ok) await cache.put(url, response);
+        }
+      })
+    );
+  } catch { /* silent — non-critical */ }
+}
+
 export async function warmPagesCache() {
   if (!canUseWindow() || !navigator.onLine) return;
   try {
