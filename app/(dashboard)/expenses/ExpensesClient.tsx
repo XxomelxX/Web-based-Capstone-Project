@@ -5,6 +5,7 @@ import { getExpenses, addExpense } from '@/lib/client/api/inventory';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
 import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
+import { WifiOff } from 'lucide-react';
 
 
 interface Expense { id: number; type: string; amount: number; period: string; note?: string; createdAt: string }
@@ -108,8 +109,9 @@ export default function ExpensesClient() {
     <div className="space-y-4">
       <CachedDataBanner isOffline={isOffline} isCached={isOffline && expenses.length > 0} onRefresh={refresh} />
       {isOffline && (
-        <div className="p-3 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-semibold">
-          ⚠️ Adding expenses is disabled while offline. (Category 3 Low-value requirement)
+        <div className="flex items-center gap-2 text-sm text-amber-200 bg-amber-950/60 border border-amber-800/40 rounded-xl px-4 py-2.5">
+          <WifiOff className="h-4 w-4 shrink-0" />
+          <span>This page requires an internet connection. Data may be outdated.</span>
         </div>
       )}
 

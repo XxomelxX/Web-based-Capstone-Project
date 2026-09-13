@@ -8,6 +8,7 @@ import { getCategory2Cache, saveCategory2Cache } from '@/lib/client/localStorage
 import { CachedDataBanner } from '@/components/CachedDataBanner';
 import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
 import { useOnline } from '@/components/providers/online-provider';
+import { WifiOff } from 'lucide-react';
 
 interface ShiftHistoryItem extends ShiftDetails {
   verificationStatus?: 'verified' | 'flagged' | null;
@@ -95,6 +96,12 @@ export default function ReportsClient() {
         isCached={isCached}
         onRefresh={() => loadReports(range)}
       />
+      {isOffline && (
+        <div className="flex items-center gap-2 text-sm text-amber-200 bg-amber-950/60 border border-amber-800/40 rounded-xl px-4 py-2.5">
+          <WifiOff className="h-4 w-4 shrink-0" />
+          <span>This page requires an internet connection. Data may be outdated.</span>
+        </div>
+      )}
 
       <section className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-6 shadow-[0_24px_80px_-46px_rgba(0,0,0,0.85)] backdrop-blur-xl">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">

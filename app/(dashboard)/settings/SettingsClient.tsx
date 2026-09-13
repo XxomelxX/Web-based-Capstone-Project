@@ -6,6 +6,7 @@ import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
 import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
+import { WifiOff } from 'lucide-react';
 
 interface Settings { id: number; storeName: string; currency: string; address?: string; taxRate: number; lowStockThreshold: number }
 
@@ -71,8 +72,9 @@ export default function SettingsClient() {
     <div className="space-y-4 max-w-2xl">
       <CachedDataBanner isOffline={isOffline} isCached={isOffline && !!settings} onRefresh={refresh} />
       {isOffline && (
-        <div className="p-3 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-semibold">
-           Changing system settings is disabled while offline. (Category 3 System Conflict Risk)
+        <div className="flex items-center gap-2 text-sm text-amber-200 bg-amber-950/60 border border-amber-800/40 rounded-xl px-4 py-2.5">
+          <WifiOff className="h-4 w-4 shrink-0" />
+          <span>This page requires an internet connection. Data may be outdated.</span>
         </div>
       )}
 

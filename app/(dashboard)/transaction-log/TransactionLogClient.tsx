@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { getTransactions } from '@/lib/client/api/inventory';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
+import { WifiOff } from 'lucide-react';
 
 interface Transaction {
   id: number; createdAt: string; cashier: { fullName: string };
@@ -80,6 +81,12 @@ export default function TransactionLogClient() {
   return (
     <div className="space-y-4">
       <CachedDataBanner isOffline={isOffline} isCached={false} onRefresh={refresh} />
+      {isOffline && (
+        <div className="flex items-center gap-2 text-sm text-amber-200 bg-amber-950/60 border border-amber-800/40 rounded-xl px-4 py-2.5">
+          <WifiOff className="h-4 w-4 shrink-0" />
+          <span>This page requires an internet connection. Data may be outdated.</span>
+        </div>
+      )}
       <div>
         <h1 className="text-2xl font-bold">Transaction Log</h1>
         <p className="text-sm text-gray-500">Full chronological audit of every sale — read-only.</p>

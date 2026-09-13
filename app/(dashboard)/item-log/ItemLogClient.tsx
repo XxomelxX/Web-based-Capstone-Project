@@ -6,6 +6,7 @@ import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { formatDateTime } from '@/lib/client/timeUtils';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
 import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
+import { WifiOff } from 'lucide-react';
 
 interface ItemLogEntry {
   id: number; createdAt: string; action: string; quantity: number;
@@ -89,6 +90,12 @@ export default function ItemLogClient() {
   return (
     <div className="space-y-4">
       <CachedDataBanner isOffline={isOffline} isCached={isOffline && logs.length > 0} onRefresh={refresh} />
+      {isOffline && (
+        <div className="flex items-center gap-2 text-sm text-amber-200 bg-amber-950/60 border border-amber-800/40 rounded-xl px-4 py-2.5">
+          <WifiOff className="h-4 w-4 shrink-0" />
+          <span>This page requires an internet connection. Data may be outdated.</span>
+        </div>
+      )}
       <div>
         <h1 className="text-2xl font-bold">Item Log</h1>
         <p className="text-sm text-gray-500">Every stock movement — sales, restocks, and voids — logged automatically.</p>

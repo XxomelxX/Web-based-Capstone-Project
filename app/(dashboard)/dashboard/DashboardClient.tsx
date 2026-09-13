@@ -7,6 +7,7 @@ import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { getCategory2Cache, saveCategory2Cache } from '@/lib/client/localStorageCache';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
 import { PWAInstallBanner } from '@/components/PWAInstallBanner';
+import { WifiOff } from 'lucide-react';
 import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
 import dynamic from 'next/dynamic';
 
@@ -132,6 +133,12 @@ export default function DashboardClient() {
         isCached={isCached}
         onRefresh={() => loadReports(range)}
       />
+      {isOffline && (
+        <div className="flex items-center gap-2 text-sm text-amber-200 bg-amber-950/60 border border-amber-800/40 rounded-xl px-4 py-2.5">
+          <WifiOff className="h-4 w-4 shrink-0" />
+          <span>This page requires an internet connection. Data may be outdated.</span>
+        </div>
+      )}
 
       <section className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-6  backdrop-blur-xl">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
