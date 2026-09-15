@@ -18,15 +18,15 @@ const withPWA = withPWAInit({
         urlPattern: /\/_next\/static\/.*\.(css|js)$/,
         handler: 'CacheFirst',
         options: {
-          cacheName: 'static-assets',
+          cacheName: 'static-assets-v1',
           expiration: { maxEntries: 100, maxAgeSeconds: 30 * 24 * 60 * 60 },
         },
       },
       {
-        urlPattern: /\.(png|jpg|jpeg|svg|gif|webp|woff2?|ttf)$/,
+        urlPattern: /\.(png|jpg|jpeg|svg|gif|webp|woff2?|ttf|ico)$/,
         handler: 'CacheFirst',
         options: {
-          cacheName: 'media-assets',
+          cacheName: 'media-assets-v1',
           expiration: { maxEntries: 60, maxAgeSeconds: 30 * 24 * 60 * 60 },
         },
       },
@@ -47,10 +47,10 @@ const withPWA = withPWAInit({
         },
       },
       {
-        urlPattern: /^\/api\/.*/,
+        urlPattern: /^\/api\/(products|categories|lowstock|reports)/,
         handler: 'NetworkFirst',
         options: {
-          cacheName: 'api-cache',
+          cacheName: 'api-cache-v1',
           networkTimeoutSeconds: 3,
           expiration: { maxEntries: 50, maxAgeSeconds: 86400 },
         },
@@ -59,7 +59,7 @@ const withPWA = withPWAInit({
         urlPattern: /.*/,
         handler: 'NetworkFirst',
         options: {
-          cacheName: 'pages-cache',
+          cacheName: 'pages-cache-v1',
           networkTimeoutSeconds: 3,
         },
       },
