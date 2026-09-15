@@ -47,7 +47,7 @@ export default function RootLayout({
               if(!navigator.onLine||!('caches'in window)||!('serviceWorker'in navigator))return;
               function warm(){
                 if(!navigator.serviceWorker.controller)return void setTimeout(warm,2000);
-                var pages=['/login','/pos','/dashboard','/orders','/utang','/products','/categories','/expenses','/reports','/users','/settings','/lowstock','/transaction-log','/item-log'];
+                var pages=['/login','/pos','/dashboard','/orders','/credit','/products','/categories','/expenses','/reports','/users','/settings','/lowstock','/transaction-log','/item-log'];
                 caches.open('pages-cache').then(function(cache){
                   pages.forEach(function(url){
                     cache.match(url,{ignoreVary:true}).then(function(hit){
