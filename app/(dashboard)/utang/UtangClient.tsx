@@ -1,7 +1,8 @@
 ﻿'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { getUtangEntries, addUtang, recordUtangPayment, getCustomersLight, addCustomer, refetchUtangEntries, deleteCustomer } from '@/lib/client/api/inventory';
+import { getUtangEntries, recordUtangPayment, getCustomersLight, addCustomer, refetchUtangEntries, deleteCustomer } from '@/lib/client/api/inventory';
+import { addUtangOffline } from '@/lib/client/api/offline';
 import { getProducts, Product } from '@/lib/client/api/products';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { getCategory2Cache, saveCategory2Cache } from '@/lib/client/localStorageCache';
@@ -164,11 +165,11 @@ export default function UtangClient() {
         return;
       }
 
-      const res = await addUtang({
+      const res = await addUtangOffline(
         customerName,
-        items: validLines.map((l) => ({ productId: l.productId, quantity: l.quantity, unitPrice: l.unitPrice })),
+        validLines.map((l) => ({ productId: l.productId, quantity: l.quantity, unitPrice: l.unitPrice })),
         note,
-      });
+      );
       if (res?.offline) {
         setNotice('Utang entry queued offline! It will automatically sync once online.');
         const offlineEntry = res as unknown as UtangEntry;

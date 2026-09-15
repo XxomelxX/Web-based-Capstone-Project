@@ -19,7 +19,7 @@
   queueOrFetch,
   isOnline,
 } from '@/lib/client/offline';
-import { queueSale } from '@/lib/client/offlineQueue';
+import { queueSale, queueAddUtang } from '@/lib/client/offlineQueue';
 
 export { getCachedUsers, saveUsers, queueOrFetch } from '@/lib/client/offline';
 
@@ -282,6 +282,78 @@ export async function checkoutOffline(
       });
       await updateCachedProductStock(items);
       return { ...fallbackReceipt, offline: true };
+    }
+
+    throw error;
+  }
+}
+
+export interface UtangResult {
+  id: number;
+  customer: { name: string };
+  totalAmount: number;
+  amountPaid: number;
+  remainingBalance: number;
+  note: string | null;
+  status: 'unpaid' | 'partial' | 'paid';
+  createdAt: string;
+  items?: Array<{ productId: number; quantity: number; unitPrice: number }>;
+}
+
+export async function addUtangOffline(
+  customerName: string,
+  items: Array<{ productId: number; quantity: number; unitPrice: number }>,
+  note?: string
+) {
+  const totalAmount = items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+
+  const fallbackEntry: UtangResult = {
+    id: Date.now(),
+    customer: { name: customerName },
+    totalAmount,
+    amountPaid: 0,
+    remainingBalance: totalAmount,
+    note: note ?? null,
+    status: 'unpaid',
+    createdAt: new Date().toISOString(),
+    items,
+  };
+
+  if (!isOnline()) {
+    await queueAddUtang({ customerName, items, note });
+    await updateCachedProductStock(items);
+    return { ...fallbackEntry, offline: true };
+  }
+
+  const clientUuid = crypto.randomUUID();
+  try {
+    const response = await fetch('/api/utang', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ customerName, items, note, clientUuid }),
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error || `Add utang failed with status ${response.status}`);
+    }
+
+    const data = (await response.json()) as UtangResult;
+    return { ...data, offline: false };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+
+    const isNetworkError =
+      error instanceof TypeError ||
+      /failed to fetch|network|offline/i.test(message);
+
+    const isDatabaseUnreachable =
+      /can't reach database server|connection refused|econnrefused|timeout|p1001/i.test(message);
+
+    if (typeof window !== 'undefined' && (isNetworkError || isDatabaseUnreachable)) {
+      await queueAddUtang({ customerName, items, note, clientUuid });
+      await updateCachedProductStock(items);
+      return { ...fallbackEntry, offline: true };
     }
 
     throw error;
