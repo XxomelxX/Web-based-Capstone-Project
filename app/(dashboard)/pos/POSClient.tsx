@@ -903,7 +903,7 @@ export default function POSClient() {
                     disabled={shiftActionLoading || closeCashInput === ''}
                     className="flex-1 bg-rose-600 hover:bg-rose-500 text-white rounded-xl py-2.5 text-sm font-semibold transition disabled:opacity-60"
                   >
-                    {shiftActionLoading ? 'Closing Shift...' : 'Close Shift & Z-Read'}
+                    {shiftActionLoading ? 'Closing Shift...' : 'Close Shift'}
                   </button>
                 </div>
               </form>
