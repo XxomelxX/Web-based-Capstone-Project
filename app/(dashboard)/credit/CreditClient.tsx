@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '@/lib/client/offline';
+import { db, getCachedUtangEntries } from '@/lib/client/offline';
 import { getUtangEntries } from '@/lib/client/api/inventory';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
@@ -69,7 +69,11 @@ export default function CreditClient() {
   const refresh = useCallback(async () => {
     const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
     setIsOffline(offlineNow);
-    if (offlineNow) return;
+    if (offlineNow) {
+      const cached = await getCachedUtangEntries<UtangEntry>();
+      if (cached?.length) setIsCached(true);
+      return;
+    }
     try {
       const data = await getUtangEntries<UtangEntry>();
       await db.utang.bulkPut(data as unknown as Record<string, unknown>[]);

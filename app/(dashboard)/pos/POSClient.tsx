@@ -6,9 +6,9 @@ import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
 import { formatTime, formatDateTime } from '@/lib/client/timeUtils';
 import { getProducts, Product } from '@/lib/client/api/products';
 import { checkout, CheckoutResult } from '@/lib/client/api/pos';
-import { getSettings, getCustomersLight, recordUtangPayment, getUtangEntries } from '@/lib/client/api/inventory';
+import { getSettings, getCustomersLight, recordUtangPayment } from '@/lib/client/api/inventory';
 import { addUtangOffline } from '@/lib/client/api/offline';
-import { getCachedCustomers, saveCachedCustomers } from '@/lib/client/offline';
+import { getCachedCustomers, saveCachedCustomers, getCachedUtangEntries } from '@/lib/client/offline';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db as offlineCache } from '@/lib/client/offline';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
@@ -94,7 +94,7 @@ export default function POSClient() {
     getSettings<StoreSettings>().then(setSettings);
     loadShiftData();
     getCustomersLight().then(setCustomers).catch(() => {});
-    getUtangEntries<{ customerId: number; remainingBalance: number; status: string }>().then(setUtangEntries).catch(() => {});
+    getCachedUtangEntries<{ customerId: number; remainingBalance: number; status: string }>().then(setUtangEntries).catch(() => {});
   }, []);
 
   const products = cachedProducts?.length ? cachedProducts : fallbackProducts;

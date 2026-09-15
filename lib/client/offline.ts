@@ -207,7 +207,7 @@ export function installOfflineSync() {
   window.addEventListener('online', syncOfflineQueue);
 }
 
-const PAGES_TO_CACHE = ['/dashboard', '/pos', '/orders', '/utang'];
+const PAGES_TO_CACHE = ['/dashboard', '/pos', '/orders', '/credit'];
 
 // Static brand assets that must be available offline (navbar logo, PWA icons).
 const BRAND_ASSETS_TO_CACHE = [

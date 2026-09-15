@@ -1,7 +1,7 @@
 // Sync engine: push pending batch → pull delta → merge (blog §10).
 // Server-wins conflicts; exponential backoff 1s→2s→4s→8s→16s, max 5.
 import { getPendingActions, markActionSynced, markActionFailed, offlineDb } from '@/lib/client/offlineQueue';
-import { saveProducts, saveCategories, saveCachedCustomers, saveSettings, getLastSyncedAt, setLastSyncedAt } from '@/lib/client/offline';
+import { saveProducts, saveCategories, saveCachedCustomers, saveSettings, saveUtangEntries, getLastSyncedAt, setLastSyncedAt } from '@/lib/client/offline';
 
 let retryCount = 0;
 const MAX_RETRIES = 5;
@@ -87,12 +87,14 @@ export async function performSync(): Promise<SyncResult> {
         products: Record<string, unknown>[];
         categories: Record<string, unknown>[];
         customers: Record<string, unknown>[];
+        utang: Record<string, unknown>[];
         settings: Record<string, unknown> | null;
         syncedAt: string;
       };
       if (pull.products?.length) await saveProducts(pull.products);
       if (pull.categories?.length) await saveCategories(pull.categories);
       if (pull.customers?.length) await saveCachedCustomers(pull.customers);
+      if (pull.utang?.length) await saveUtangEntries(pull.utang);
       if (pull.settings) await saveSettings(pull.settings);
       await setLastSyncedAt(pull.syncedAt ?? syncedAt);
     }
