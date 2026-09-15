@@ -24,7 +24,7 @@ export function MobileTopBar() {
 
   return (
     <div className="md:hidden sticky top-0 z-30 border-b flex items-center justify-between px-4 py-3 bg-[#15803d]">
-      <div className="flex items-center gap-2 min-w-0">
+      <div className="flex items-center gap-2 min-w-0 flex-1">
         {logoOk ? (
           <img
             src="/images/81e09f4c-f773-4009-b7d5-6ef3babd8388-removebg-preview.png"
@@ -40,9 +40,9 @@ export function MobileTopBar() {
             J&amp;J
           </span>
         )}
-        <span className="font-bold text-sm text-white whitespace-nowrap">J &amp; J Merchandise Store</span>
+        <span className="font-bold text-sm text-white truncate">J &amp; J Merchandise Store</span>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 shrink-0">
         <OfflineStatusPill onClick={() => setShowSyncModal(true)} />
         <button
           type="button"

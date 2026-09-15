@@ -70,6 +70,18 @@ export default function RootLayout({
             })();`,
           }}
         />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){
+              if(!('serviceWorker'in navigator))return;
+              window.addEventListener('load',function(){
+                navigator.serviceWorker.getRegistrations().then(function(regs){
+                  regs.forEach(function(reg){reg.update()});
+                });
+              });
+            })();`,
+          }}
+        />
       </head>
       <body className="min-h-full flex flex-col bg-background text-slate-100 relative">
         <div className="relative z-10 flex flex-col min-h-screen">

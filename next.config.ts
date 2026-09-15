@@ -15,6 +15,22 @@ const withPWA = withPWAInit({
         handler: 'NetworkOnly',
       },
       {
+        urlPattern: /\/_next\/static\/.*\.(css|js)$/,
+        handler: 'CacheFirst',
+        options: {
+          cacheName: 'static-assets',
+          expiration: { maxEntries: 100, maxAgeSeconds: 30 * 24 * 60 * 60 },
+        },
+      },
+      {
+        urlPattern: /\.(png|jpg|jpeg|svg|gif|webp|woff2?|ttf)$/,
+        handler: 'CacheFirst',
+        options: {
+          cacheName: 'media-assets',
+          expiration: { maxEntries: 60, maxAgeSeconds: 30 * 24 * 60 * 60 },
+        },
+      },
+      {
         urlPattern: /^https:\/\/fonts\.gstatic\.com/,
         handler: 'CacheFirst',
         options: {
@@ -31,14 +47,6 @@ const withPWA = withPWAInit({
         },
       },
       {
-        urlPattern: /^\/_next\/static\//,
-        handler: 'CacheFirst',
-        options: {
-          cacheName: 'static-assets',
-          expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 30 },
-        },
-      },
-      {
         urlPattern: /^\/api\/.*/,
         handler: 'NetworkFirst',
         options: {
@@ -48,52 +56,11 @@ const withPWA = withPWAInit({
         },
       },
       {
-        urlPattern: /\.(?:png|jpg|jpeg|svg|gif|ico|webp)$/,
-        handler: 'CacheFirst',
-        options: {
-          cacheName: 'images-cache',
-          expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 30 },
-        },
-      },
-      {
-        // Next.js image optimizer URLs (/_next/image?url=...) don't end in
-        // an image extension, so they miss the rule above. Cache them too
-        // so <Image>-rendered assets also survive offline.
-        urlPattern: /^\/_next\/image/,
-        handler: 'CacheFirst',
-        options: {
-          cacheName: 'next-image-cache',
-          expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 30 },
-        },
-      },
-      {
-        urlPattern: ({ request }: { request: Request }) =>
-          request.destination === 'document' &&
-          !request.url.includes('/_next/') &&
-          !request.url.includes('/api/'),
+        urlPattern: /.*/,
         handler: 'NetworkFirst',
         options: {
           cacheName: 'pages-cache',
-          networkTimeoutSeconds: 5,
-          expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 7 },
-          cacheableResponse: { statuses: [200] },
-          matchOptions: { ignoreSearch: false, ignoreVary: true },
-          plugins: [
-            {
-              cacheWillUpdate: async ({ response }: { response: Response }) => {
-                if (!response || response.status !== 200) return null;
-                const ct = response.headers.get('content-type') || '';
-                if (!ct.includes('text/html')) return null;
-                try {
-                  const body = await response.clone().text();
-                  if (!body || body.length < 500) return null;
-                } catch {
-                  return null;
-                }
-                return response;
-              },
-            },
-          ],
+          networkTimeoutSeconds: 3,
         },
       },
     ],
