@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { getUtangEntries, recordUtangPayment, getCustomersLight, addCustomer, refetchUtangEntries, deleteCustomer } from '@/lib/client/api/inventory';
 import { addUtangOffline } from '@/lib/client/api/offline';
-import { saveCachedCustomers, getCachedCustomers } from '@/lib/client/offline';
+import { saveCachedCustomers, getCachedCustomers, getCachedProducts } from '@/lib/client/offline';
 import { getProducts, Product } from '@/lib/client/api/products';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { getCategory2Cache, saveCategory2Cache } from '@/lib/client/localStorageCache';
@@ -52,7 +52,7 @@ export default function UtangClient() {
   const [deleteAdminPassword, setDeleteAdminPassword] = useState('');
   const [deleteLoading, setDeleteLoading] = useState(false);
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback(async () => {
     const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
     setIsOffline(offlineNow);
 
@@ -62,8 +62,10 @@ export default function UtangClient() {
         setEntries(cached.data);
         setIsCached(true);
       }
-      const cachedProds = getCategory2Cache<Product[]>('products_active');
-      if (cachedProds.data) setProducts(cachedProds.data);
+      const cachedProds = await getCachedProducts<Product>();
+      if (cachedProds?.length) setProducts(cachedProds.filter((p) => !p.archived));
+      const cachedCustomers = await getCachedCustomers<CustomerLight>();
+      if (cachedCustomers?.length) setCustomers(cachedCustomers);
     } else {
       getUtangEntries<UtangEntry>()
         .then((data) => {
