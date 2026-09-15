@@ -1,6 +1,7 @@
 ﻿'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Search } from 'lucide-react';
 import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
 import { formatTime, formatDateTime } from '@/lib/client/timeUtils';
 import { getProducts, Product } from '@/lib/client/api/products';
@@ -84,9 +85,15 @@ export default function POSClient() {
     refresh();
   }, [refresh]);
 
-  const filtered = products.filter((p) =>
-    p.name.toLowerCase().includes(search.toLowerCase()) || p.barcode === search
-  );
+  const filteredProducts = useMemo(() => {
+    if (!search.trim()) return products;
+    const query = search.toLowerCase();
+    return products.filter((p) =>
+      p.name.toLowerCase().includes(query) ||
+      p.barcode?.toLowerCase().includes(query) ||
+      p.category?.name?.toLowerCase().includes(query)
+    );
+  }, [products, search]);
 
   function addToCart(product: Product) {
     if (!activeShift) {
@@ -102,6 +109,13 @@ export default function POSClient() {
       }
       return [...prev, { product, quantity: 1 }];
     });
+  }
+
+  function handleSearchKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Enter' && filteredProducts.length === 1) {
+      addToCart(filteredProducts[0]);
+      setSearch('');
+    }
   }
 
   function changeCartQuantity(productId: number, delta: number) {
@@ -249,38 +263,58 @@ export default function POSClient() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-4">
           <h1 className="text-2xl font-bold">Point Of Sale</h1>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Input a Product or Click a Product and press enter..."
-            className="w-full border rounded-md px-4 py-3 bg-white"
-          />
+          <div className="relative mb-4">
+            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
+              placeholder="Search products by name..."
+              className="w-full border rounded-lg pl-10 pr-10 py-3 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+              autoFocus
+            />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                aria-label="Clear search"
+              >
+                ✕
+              </button>
+            )}
+          </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {filtered.map((p) => {
-              const expBadge = getExpiryBadge(p.expiryDate);
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => addToCart(p)}
-                  disabled={p.stock <= 0}
-                  className={`bg-white rounded-lg shadow p-4 text-left hover:shadow-md transition cursor-pointer disabled:opacity-40 ${expBadge ? 'border-l-4 border-l-amber-400' : ''}`}
-                >
-                  <div className="font-medium text-sm">{p.name}</div>
-                  {expBadge && (
-                    <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded-full mt-1 font-medium ${expBadge.className}`}>
-                      {expBadge.label}
-                    </span>
-                  )}
-                  <div className="flex justify-between items-center mt-2">
-                    <span className="text-green-700 font-bold">₱{p.price}</span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${p.stock < 20 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>
-                      {p.stock} stk
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
+            {filteredProducts.length === 0 ? (
+              <p className="col-span-full text-center text-gray-400 py-8">
+                No products found matching &quot;{search}&quot;
+              </p>
+            ) : (
+              filteredProducts.map((p) => {
+                const expBadge = getExpiryBadge(p.expiryDate);
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => addToCart(p)}
+                    disabled={p.stock <= 0}
+                    className={`bg-white rounded-lg shadow p-4 text-left hover:shadow-md transition cursor-pointer disabled:opacity-40 ${expBadge ? 'border-l-4 border-l-amber-400' : ''}`}
+                  >
+                    <div className="font-medium text-sm">{p.name}</div>
+                    {expBadge && (
+                      <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded-full mt-1 font-medium ${expBadge.className}`}>
+                        {expBadge.label}
+                      </span>
+                    )}
+                    <div className="flex justify-between items-center mt-2">
+                      <span className="text-green-700 font-bold">₱{p.price}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${p.stock < 20 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>
+                        {p.stock} stk
+                      </span>
+                    </div>
+                  </button>
+                );
+              })
+            )}
           </div>
         </div>
 

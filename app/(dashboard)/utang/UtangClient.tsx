@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { getUtangEntries, recordUtangPayment, getCustomersLight, addCustomer, refetchUtangEntries, deleteCustomer } from '@/lib/client/api/inventory';
 import { addUtangOffline } from '@/lib/client/api/offline';
+import { saveCachedCustomers, getCachedCustomers } from '@/lib/client/offline';
 import { getProducts, Product } from '@/lib/client/api/products';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { getCategory2Cache, saveCategory2Cache } from '@/lib/client/localStorageCache';
@@ -148,7 +149,12 @@ export default function UtangClient() {
         customerName = newCustomerName.trim();
         const existing = customers.find((c) => c.name.toLowerCase() === customerName.toLowerCase());
         if (!existing) {
-          await addCustomer({ name: customerName });
+          if (navigator.onLine) {
+            await addCustomer({ name: customerName });
+          } else {
+            const cached = await getCachedCustomers<Record<string, unknown>>();
+            await saveCachedCustomers([...cached, { id: Date.now(), name: customerName, createdAt: new Date().toISOString() }]);
+          }
         }
       } else {
         const found = customers.find((c) => c.id === selectedCustomerId);
@@ -220,7 +226,12 @@ export default function UtangClient() {
       customerName = payNewCustomerName.trim();
       const existing = customers.find((c) => c.name.toLowerCase() === customerName.toLowerCase());
       if (!existing) {
-        await addCustomer({ name: customerName });
+        if (navigator.onLine) {
+          await addCustomer({ name: customerName });
+        } else {
+          const cached = await getCachedCustomers<Record<string, unknown>>();
+          await saveCachedCustomers([...cached, { id: Date.now(), name: customerName, createdAt: new Date().toISOString() }]);
+        }
       }
     } else {
       const found = customers.find((c) => c.id === paySelectedCustomerId);
