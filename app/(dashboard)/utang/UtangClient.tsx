@@ -402,7 +402,10 @@ export default function UtangClient() {
                 <tr key={e.id} className="hover:bg-slate-900/50">
                   <td className="py-2.5 text-slate-400">{new Date(e.createdAt).toLocaleDateString()}</td>
                   <td className="font-medium text-slate-100">{e.customer?.name || 'Unknown'}</td>
-                  <td className="text-slate-300">{e.items?.map((i) => `${i.product?.name || 'Item'} x${i.quantity}`).join(', ') || '—'}</td>
+                  <td className="text-slate-300">{e.items?.map((i) => {
+                    const name = i.product?.name || products.find((p) => p.id === (i as unknown as { productId?: number }).productId)?.name || 'Item';
+                    return `${name} x${i.quantity}`;
+                  }).join(', ') || '—'}</td>
                   <td className="text-slate-400">{e.note || '—'}</td>
                   <td className="font-semibold text-emerald-400">₱{e.totalAmount.toFixed(2)}</td>
                   <td className="text-slate-400">
