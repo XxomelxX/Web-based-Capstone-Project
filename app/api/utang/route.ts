@@ -69,6 +69,7 @@ export async function POST(request: Request) {
       const totalAmount = items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
 
       const utangEntry = await tx.utangEntry.create({
+        include: { customer: true, items: true },
         data: {
           clientUuid: clientUuid ?? undefined,
           customerId: customer.id,
@@ -106,10 +107,41 @@ export async function POST(request: Request) {
         });
       }
 
+      const txn = await tx.transaction.create({
+        data: {
+          clientUuid: clientUuid ? `utang-${clientUuid}` : undefined,
+          cashierId: Number(session.user.id),
+          customerId: customer.id,
+          paymentMethod: 'credit',
+          subtotal: totalAmount,
+          vat: 0,
+          total: totalAmount,
+          tendered: 0,
+          change: 0,
+          status: 'complete',
+        },
+      });
+
+      for (const item of items) {
+        await tx.transactionItem.create({
+          data: {
+            transactionId: txn.id,
+            productId: item.productId,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            lineTotal: item.quantity * item.unitPrice,
+          },
+        });
+      }
+
       return utangEntry;
+    }, {
+      maxWait: 15000,
+      timeout: 25000,
     });
 
     broadcastRealtime('utang', { action: 'created', entry: result });
+    broadcastRealtime('transactions', { action: 'created' });
     broadcastRealtime('products', { action: 'stock-updated' });
     broadcastRealtime('itemlog', { action: 'created' });
 

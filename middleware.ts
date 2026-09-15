@@ -33,7 +33,7 @@ export const config = {
     '/products/:path*',
     '/categories/:path*',
     '/orders/:path*',
-    '/utang/:path*',
+    '/credit/:path*',
     '/expenses/:path*',
     '/reports/:path*',
     '/users/:path*',

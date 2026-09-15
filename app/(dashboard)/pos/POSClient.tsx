@@ -6,7 +6,9 @@ import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
 import { formatTime, formatDateTime } from '@/lib/client/timeUtils';
 import { getProducts, Product } from '@/lib/client/api/products';
 import { checkout, CheckoutResult } from '@/lib/client/api/pos';
-import { getSettings } from '@/lib/client/api/inventory';
+import { getSettings, getCustomersLight, recordUtangPayment, getUtangEntries } from '@/lib/client/api/inventory';
+import { addUtangOffline } from '@/lib/client/api/offline';
+import { getCachedCustomers, saveCachedCustomers } from '@/lib/client/offline';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db as offlineCache } from '@/lib/client/offline';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
@@ -15,6 +17,11 @@ import { ShiftDetails, ZReadSummary, applyOfflineSaleToShift, cacheActiveShift, 
 interface CartLine {
   product: Product;
   quantity: number;
+}
+
+interface CustomerLight {
+  id: number;
+  name: string;
 }
 
 function getExpiryBadge(expiryDate?: string | Date | null) {
@@ -35,12 +42,10 @@ interface StoreSettings {
 export default function POSClient() {
   const { user } = useCurrentUser();
   const [fallbackProducts, setProducts] = useState<Product[]>([]);
-  // Local-first: reactively read cached products (blog §13 useLiveQuery).
-  // Falls back to useState list when cache is empty/loading.
   const cachedProducts = useLiveQuery(() => offlineCache.products.toArray(), []) as unknown as Product[] | undefined;
   const [cart, setCart] = useState<CartLine[]>([]);
   const [search, setSearch] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'gcash'>('cash');
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'gcash' | 'credit'>('cash');
   const [tendered, setTendered] = useState(0);
   const [receipt, setReceipt] = useState<CheckoutResult | null>(null);
   const [error, setError] = useState('');
@@ -48,7 +53,23 @@ export default function POSClient() {
   const [settings, setSettings] = useState<StoreSettings>({ storeName: 'Store' });
   const [showSyncModal, setShowSyncModal] = useState(false);
 
-  // Shift & Cash Drawer State
+  const [customers, setCustomers] = useState<CustomerLight[]>([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<number>(0);
+  const [newCustomerName, setNewCustomerName] = useState('');
+  const [showNewCustomer, setShowNewCustomer] = useState(false);
+  const [creditNote, setCreditNote] = useState('');
+
+  const [utangEntries, setUtangEntries] = useState<Array<{ customerId: number; remainingBalance: number; status: string }>>([]);
+
+  const [showPayment, setShowPayment] = useState(false);
+  const [paySelectedCustomerId, setPaySelectedCustomerId] = useState<number>(0);
+  const [payNewCustomerName, setPayNewCustomerName] = useState('');
+  const [payShowNewCustomer, setPayShowNewCustomer] = useState(false);
+  const [payAmount, setPayAmount] = useState('');
+  const [payNote, setPayNote] = useState('');
+  const [payError, setPayError] = useState('');
+  const [payNotice, setPayNotice] = useState('');
+
   const [activeShift, setActiveShift] = useState<ShiftDetails | null>(null);
   const [showOpenShiftModal, setShowOpenShiftModal] = useState(false);
   const [showEndShiftModal, setShowEndShiftModal] = useState(false);
@@ -68,10 +89,12 @@ export default function POSClient() {
     });
   }
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback(async () => {
     getProducts().then(setProducts);
     getSettings<StoreSettings>().then(setSettings);
     loadShiftData();
+    getCustomersLight().then(setCustomers).catch(() => {});
+    getUtangEntries<{ customerId: number; remainingBalance: number; status: string }>().then(setUtangEntries).catch(() => {});
   }, []);
 
   const products = cachedProducts?.length ? cachedProducts : fallbackProducts;
@@ -79,11 +102,20 @@ export default function POSClient() {
   useRealtime({
     products: refresh,
     settings: refresh,
+    utang: refresh,
   });
 
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !navigator.onLine && customers.length === 0) {
+      getCachedCustomers<CustomerLight>().then((cached) => {
+        if (cached?.length) setCustomers(cached);
+      }).catch(() => {});
+    }
+  }, [customers.length]);
 
   const filteredProducts = useMemo(() => {
     if (!search.trim()) return products;
@@ -94,6 +126,15 @@ export default function POSClient() {
       p.category?.name?.toLowerCase().includes(query)
     );
   }, [products, search]);
+
+  const customerBalances = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const e of utangEntries) {
+      if (e.status === 'paid') continue;
+      map.set(e.customerId, (map.get(e.customerId) ?? 0) + e.remainingBalance);
+    }
+    return map;
+  }, [utangEntries]);
 
   function addToCart(product: Product) {
     if (!activeShift) {
@@ -134,6 +175,36 @@ export default function POSClient() {
   const total = cart.reduce((s, l) => s + l.quantity * l.product.price, 0);
   const change = tendered - total;
 
+  async function resolveCustomerName(): Promise<string | null> {
+    if (showNewCustomer) {
+      if (!newCustomerName.trim()) {
+        setError('Enter a customer name');
+        return null;
+      }
+      const name = newCustomerName.trim();
+      const existing = customers.find((c) => c.name.toLowerCase() === name.toLowerCase());
+      if (!existing) {
+        if (navigator.onLine) {
+          const { addCustomer } = await import('@/lib/client/api/inventory');
+          const result = await addCustomer({ name });
+          setCustomers((prev) => [...prev, { id: result.id, name }]);
+        } else {
+          const cached = await getCachedCustomers<Record<string, unknown>>();
+          const newId = Date.now();
+          await saveCachedCustomers([...cached, { id: newId, name, createdAt: new Date().toISOString() }]);
+          setCustomers((prev) => [...prev, { id: newId, name }]);
+        }
+      }
+      return name;
+    }
+    const found = customers.find((c) => c.id === selectedCustomerId);
+    if (!found) {
+      setError('Select a customer');
+      return null;
+    }
+    return found.name;
+  }
+
   async function handleCompleteSale() {
     if (!activeShift) {
       setError('Please open a shift before completing transactions.');
@@ -143,32 +214,131 @@ export default function POSClient() {
     setError('');
     setProcessing(true);
     try {
-      const finalTendered = paymentMethod === 'gcash' ? (tendered >= total ? tendered : total) : tendered;
-      const result = await checkout(
-        cart.map((l) => ({ productId: l.product.id, quantity: l.quantity, unitPrice: l.product.price })),
-        paymentMethod,
-        finalTendered
-      );
-      setReceipt(result);
-      setCart([]);
-      setTendered(0);
-      void getProducts().then(setProducts).catch(() => {
-        // Use cached products when offline
-      });
-
-      if (result.offline && activeShift) {
-        const updatedShift = applyOfflineSaleToShift(activeShift, result.total, paymentMethod);
-        cacheActiveShift(updatedShift);
-        setActiveShift(updatedShift);
-      } else {
-        void fetchActiveShift().then((shift) => {
-          if (shift) setActiveShift(shift);
+      if (paymentMethod === 'credit') {
+        const customerName = await resolveCustomerName();
+        if (!customerName) {
+          setProcessing(false);
+          return;
+        }
+        const items = cart.map((l) => ({ productId: l.product.id, quantity: l.quantity, unitPrice: l.product.price }));
+        const result = await addUtangOffline(customerName, items, creditNote || undefined);
+        setReceipt({
+          id: result.id,
+          subtotal: result.totalAmount,
+          vat: 0,
+          total: result.totalAmount,
+          tendered: 0,
+          change: 0,
+          paymentMethod: 'credit',
+          createdAt: result.createdAt,
+          customer: {
+            id: result.customer?.id ?? (result as unknown as { customerId?: number }).customerId ?? result.id,
+            name: result.customer?.name ?? customerName,
+          },
+          offline: (result as Record<string, unknown>).offline as boolean | undefined,
         });
+        setCart([]);
+        setTendered(0);
+        setCreditNote('');
+        setSelectedCustomerId(0);
+        setNewCustomerName('');
+        setShowNewCustomer(false);
+        void getProducts().then(setProducts).catch(() => {});
+        if ((result as Record<string, unknown>).offline && activeShift) {
+          const updatedShift = applyOfflineSaleToShift(activeShift, result.totalAmount, 'cash');
+          cacheActiveShift(updatedShift);
+          setActiveShift(updatedShift);
+        } else {
+          void fetchActiveShift().then((shift) => {
+            if (shift) setActiveShift(shift);
+          });
+        }
+      } else {
+        const finalTendered = paymentMethod === 'gcash' ? (tendered >= total ? tendered : total) : tendered;
+        const result = await checkout(
+          cart.map((l) => ({ productId: l.product.id, quantity: l.quantity, unitPrice: l.product.price })),
+          paymentMethod,
+          finalTendered
+        );
+        setReceipt(result);
+        setCart([]);
+        setTendered(0);
+        void getProducts().then(setProducts).catch(() => {});
+
+        if (result.offline && activeShift) {
+          const updatedShift = applyOfflineSaleToShift(activeShift, result.total, paymentMethod);
+          cacheActiveShift(updatedShift);
+          setActiveShift(updatedShift);
+        } else {
+          void fetchActiveShift().then((shift) => {
+            if (shift) setActiveShift(shift);
+          });
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Checkout failed');
     } finally {
       setProcessing(false);
+    }
+  }
+
+  async function handleRecordPayment(e: React.FormEvent) {
+    e.preventDefault();
+    setPayError('');
+    setPayNotice('');
+    try {
+      let customerName = '';
+      if (payShowNewCustomer) {
+        if (!payNewCustomerName.trim()) {
+          setPayError('Enter a customer name');
+          return;
+        }
+        customerName = payNewCustomerName.trim();
+        const existing = customers.find((c) => c.name.toLowerCase() === customerName.toLowerCase());
+        if (!existing) {
+          if (navigator.onLine) {
+            const { addCustomer } = await import('@/lib/client/api/inventory');
+            await addCustomer({ name: customerName });
+          } else {
+            const cached = await getCachedCustomers<Record<string, unknown>>();
+            await saveCachedCustomers([...cached, { id: Date.now(), name: customerName, createdAt: new Date().toISOString() }]);
+          }
+        }
+      } else {
+        const found = customers.find((c) => c.id === paySelectedCustomerId);
+        if (!found) {
+          setPayError('Select a customer');
+          return;
+        }
+        customerName = found.name;
+      }
+
+      const amount = parseFloat(payAmount);
+      if (!amount || amount <= 0) {
+        setPayError('Enter a valid amount');
+        return;
+      }
+
+      const result = await recordUtangPayment({
+        customerName,
+        amount,
+        note: payNote || undefined,
+      });
+
+      if ((result as Record<string, unknown>).offline) {
+        setPayNotice('Payment queued offline! It will auto-sync once online.');
+      } else {
+        setPayNotice('Payment recorded successfully!');
+      }
+
+      setShowPayment(false);
+      setPaySelectedCustomerId(0);
+      setPayNewCustomerName('');
+      setPayShowNewCustomer(false);
+      setPayAmount('');
+      setPayNote('');
+    } catch (err) {
+      setPayError(err instanceof Error ? err.message : 'Payment failed');
     }
   }
 
@@ -205,10 +375,11 @@ export default function POSClient() {
     }
   }
 
-  // Calculate live variance in End Shift Modal
   const expectedCashAmount = activeShift?.expectedCash ?? 0;
   const countedCashAmount = parseFloat(closeCashInput) || 0;
   const varianceAmount = countedCashAmount - expectedCashAmount;
+
+  const isCredit = paymentMethod === 'credit';
 
   return (
     <div className="space-y-4">
@@ -362,11 +533,11 @@ export default function POSClient() {
 
           <div>
             <p className="text-sm font-medium mb-1">Payment Method</p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <button
                 onClick={() => setPaymentMethod('cash')}
-className={`border rounded-md py-2 text-sm ${paymentMethod === 'cash' ? 'bg-green-700 text-white' : ''} cursor-pointer`}
-                >
+                className={`border rounded-md py-2 text-sm ${paymentMethod === 'cash' ? 'bg-green-700 text-white' : ''} cursor-pointer`}
+              >
                 Cash
               </button>
               <button
@@ -374,44 +545,103 @@ className={`border rounded-md py-2 text-sm ${paymentMethod === 'cash' ? 'bg-gree
                   setPaymentMethod('gcash');
                   setTendered(total);
                 }}
-className={`border rounded-md py-2 text-sm ${paymentMethod === 'gcash' ? 'bg-green-700 text-white' : ''} cursor-pointer`}
-                >
+                className={`border rounded-md py-2 text-sm ${paymentMethod === 'gcash' ? 'bg-green-700 text-white' : ''} cursor-pointer`}
+              >
                 GCash
+              </button>
+              <button
+                onClick={() => setPaymentMethod('credit')}
+                className={`border rounded-md py-2 text-sm ${isCredit ? 'bg-amber-600 text-white' : ''} cursor-pointer`}
+              >
+                Credit
               </button>
             </div>
           </div>
 
-          <div>
-            <label className="text-sm font-medium">
-              {paymentMethod === 'cash' ? 'Cash Tendered' : 'GCash Reference #'}
-            </label>
-            <input
-              type="number"
-              value={tendered || ''}
-              onChange={(e) => setTendered(Number(e.target.value))}
-              className="w-full border rounded-md px-3 py-2 mt-1"
-              placeholder={paymentMethod === 'cash' ? '0.00' : 'Reference Number'}
-            />
-          </div>
+          {isCredit && (
+            <div>
+              <label className="text-sm font-medium">Customer</label>
+              {showNewCustomer ? (
+                <div className="flex gap-2 mt-1">
+                  <input
+                    required
+                    value={newCustomerName}
+                    onChange={(e) => setNewCustomerName(e.target.value)}
+                    placeholder="Enter customer name"
+                    className="flex-1 border rounded-md px-3 py-2 text-sm"
+                  />
+                  <button type="button" onClick={() => { setShowNewCustomer(false); setNewCustomerName(''); }} className="text-xs text-gray-500 hover:text-gray-700 px-2 cursor-pointer">Cancel</button>
+                </div>
+              ) : (
+                <div className="flex gap-2 mt-1">
+                  <select
+                    required
+                    value={selectedCustomerId || ''}
+                    onChange={(e) => setSelectedCustomerId(Number(e.target.value))}
+                    className="flex-1 border rounded-md px-3 py-2 text-sm"
+                  >
+                    <option value="">Select customer</option>
+                    {customers.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}{customerBalances.get(c.id) ? ` — ₱${customerBalances.get(c.id)!.toFixed(2)} owed` : ''}</option>
+                    ))}
+                  </select>
+                  <button type="button" onClick={() => setShowNewCustomer(true)} className="text-xs text-amber-600 font-semibold hover:underline whitespace-nowrap cursor-pointer">+ New</button>
+                </div>
+              )}
+              <input
+                value={creditNote}
+                onChange={(e) => setCreditNote(e.target.value)}
+                placeholder="Note (optional)"
+                className="w-full border rounded-md px-3 py-2 mt-2 text-sm"
+              />
+            </div>
+          )}
 
-          <div className="flex justify-between text-sm">
-            <span>Change</span>
-            <span className="font-semibold">
-              {paymentMethod === 'cash' && change > 0
-                ? `₱${change.toFixed(2)}`
-                : '₱0.00'}
-            </span>
-          </div>
+          {!isCredit && (
+            <>
+              <div>
+                <label className="text-sm font-medium">
+                  {paymentMethod === 'cash' ? 'Cash Tendered' : 'GCash Reference #'}
+                </label>
+                <input
+                  type="number"
+                  value={tendered || ''}
+                  onChange={(e) => setTendered(Number(e.target.value))}
+                  className="w-full border rounded-md px-3 py-2 mt-1"
+                  placeholder={paymentMethod === 'cash' ? '0.00' : 'Reference Number'}
+                />
+              </div>
+
+              <div className="flex justify-between text-sm">
+                <span>Change</span>
+                <span className="font-semibold">
+                  {paymentMethod === 'cash' && change > 0
+                    ? `₱${change.toFixed(2)}`
+                    : '₱0.00'}
+                </span>
+              </div>
+            </>
+          )}
 
           {error && <p className="text-sm text-red-600 font-medium bg-red-50 p-2 rounded border border-red-200">{error}</p>}
 
           <button
             onClick={handleCompleteSale}
-            disabled={cart.length === 0 || (paymentMethod === 'cash' && tendered < total) || processing || !activeShift}
-            className="w-full bg-green-700 hover:bg-green-600 text-white rounded-md py-3 font-medium disabled:opacity-40 transition cursor-pointer"
+            disabled={cart.length === 0 || (!isCredit && paymentMethod === 'cash' && tendered < total) || (isCredit && !selectedCustomerId && !showNewCustomer) || processing || !activeShift}
+            className={`w-full text-white rounded-md py-3 font-medium disabled:opacity-40 transition cursor-pointer ${isCredit ? 'bg-amber-600 hover:bg-amber-500' : 'bg-green-700 hover:bg-green-600'}`}
           >
-            {processing ? 'Processing...' : !activeShift ? 'Open Shift to Complete Sale' : '✓ Complete Sale'}
+            {processing ? 'Processing...' : !activeShift ? 'Open Shift to Complete Sale' : isCredit ? '✓ Record Credit Sale' : '✓ Complete Sale'}
           </button>
+
+          <div className="border-t pt-3">
+            <button
+              onClick={() => { setShowPayment(true); setPayError(''); setPayNotice(''); }}
+              className="w-full border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-md py-2 text-sm font-medium transition cursor-pointer"
+            >
+              Record Payment
+            </button>
+          </div>
+          {payNotice && <p className="text-xs text-emerald-600 bg-emerald-50 p-2 rounded">{payNotice}</p>}
         </div>
 
         {/* Sale Receipt Modal */}
@@ -423,6 +653,80 @@ className={`border rounded-md py-2 text-sm ${paymentMethod === 'gcash' ? 'bg-gre
             storeAddress={settings.address ?? ''}
             onClose={() => setReceipt(null)}
           />
+        )}
+
+        {/* Record Payment Modal */}
+        {showPayment && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
+            <form onSubmit={handleRecordPayment} className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+              <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+                <h3 className="font-bold text-lg text-slate-100">Record Payment</h3>
+                <button type="button" onClick={() => setShowPayment(false)} className="text-slate-400 hover:text-slate-200">✕</button>
+              </div>
+              {payError && <p className="text-sm text-rose-400 bg-rose-500/10 border border-rose-500/20 p-2 rounded">{payError}</p>}
+
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Customer</label>
+                {payShowNewCustomer ? (
+                  <div className="flex gap-2">
+                    <input
+                      required
+                      value={payNewCustomerName}
+                      onChange={(e) => setPayNewCustomerName(e.target.value)}
+                      placeholder="Enter customer name"
+                      className="flex-1 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-white text-sm outline-none focus:border-cyan-500"
+                    />
+                    <button type="button" onClick={() => { setPayShowNewCustomer(false); setPayNewCustomerName(''); }} className="text-xs text-slate-400 hover:text-white px-2 cursor-pointer">Cancel</button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <select
+                      required
+                      value={paySelectedCustomerId || ''}
+                      onChange={(e) => setPaySelectedCustomerId(Number(e.target.value))}
+                      className="flex-1 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-white text-sm outline-none focus:border-cyan-500"
+                    >
+                      <option value="">Select customer</option>
+                      {customers.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}{customerBalances.get(c.id) ? ` — ₱${customerBalances.get(c.id)!.toFixed(2)} owed` : ''}</option>
+                      ))}
+                    </select>
+                    <button type="button" onClick={() => setPayShowNewCustomer(true)} className="text-xs text-cyan-400 font-semibold hover:underline whitespace-nowrap cursor-pointer">+ New</button>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Amount (₱)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  required
+                  value={payAmount}
+                  onChange={(e) => setPayAmount(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-lg font-bold text-emerald-400 outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1">Note (optional)</label>
+                <input
+                  type="text"
+                  value={payNote}
+                  onChange={(e) => setPayNote(e.target.value)}
+                  placeholder="e.g. Partial cash payment"
+                  className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-200"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button type="button" onClick={() => setShowPayment(false)} className="flex-1 border border-slate-700 rounded-xl py-2.5 text-sm font-semibold text-slate-300 hover:bg-slate-800">Cancel</button>
+                <button type="submit" className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl py-2.5 text-sm font-semibold transition">Record Payment</button>
+              </div>
+            </form>
+          </div>
         )}
 
         {/* Open Shift Modal */}
@@ -513,7 +817,6 @@ className={`border rounded-md py-2 text-sm ${paymentMethod === 'gcash' ? 'bg-gre
                 <button onClick={() => setShowEndShiftModal(false)} className="text-slate-400 hover:text-slate-200">✕</button>
               </div>
 
-              {/* X-Read Live Summary */}
               <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-2 text-sm">
                 <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Live X-Read Summary</div>
                 <div className="flex justify-between text-slate-300">
@@ -551,7 +854,6 @@ className={`border rounded-md py-2 text-sm ${paymentMethod === 'gcash' ? 'bg-gre
                   />
                 </div>
 
-                {/* Live Variance Calculation Badge */}
                 {closeCashInput !== '' && (
                   <div className={`p-3 rounded-xl border flex justify-between items-center ${
                     varianceAmount === 0
@@ -657,9 +959,16 @@ function ReceiptModal({
         <div className="flex justify-between"><span className="text-slate-400">Subtotal</span><span>₱{receipt.subtotal.toFixed(2)}</span></div>
         <div className="flex justify-between"><span className="text-slate-400">VAT</span><span>₱{receipt.vat.toFixed(2)}</span></div>
         <div className="flex justify-between font-bold text-sm text-slate-100"><span>Total</span><span className="text-emerald-400">₱{receipt.total.toFixed(2)}</span></div>
-        <div className="flex justify-between"><span className="text-slate-400">Tendered</span><span>₱{receipt.tendered.toFixed(2)}</span></div>
-        <div className="flex justify-between font-bold text-cyan-300"><span>Change</span><span>₱{receipt.change.toFixed(2)}</span></div>
-        
+        {receipt.paymentMethod !== 'credit' && (
+          <>
+            <div className="flex justify-between"><span className="text-slate-400">Tendered</span><span>₱{receipt.tendered.toFixed(2)}</span></div>
+            <div className="flex justify-between font-bold text-cyan-300"><span>Change</span><span>₱{receipt.change.toFixed(2)}</span></div>
+          </>
+        )}
+        {receipt.paymentMethod === 'credit' && (
+          <div className="flex justify-between"><span className="text-slate-400">Amount Owed</span><span className="font-bold text-amber-400">₱{receipt.total.toFixed(2)}</span></div>
+        )}
+
         {receipt.offline && (
           <div className="bg-amber-500/20 border border-amber-500/30 rounded-xl p-2 text-center text-[11px] font-bold text-amber-300">
             🟡 Saved Offline — will sync automatically once online
@@ -750,4 +1059,3 @@ function Row({ label, value, bold }: { label: string; value: string; bold?: bool
     </div>
   );
 }
-

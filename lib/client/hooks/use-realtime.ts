@@ -13,15 +13,20 @@ export function useRealtime(handlers: RealtimeHandlers) {
   }, [handlers]);
 
   useEffect(() => {
-    // Allow disabling realtime via env var for environments that don't support long-lived SSE.
-    // Vercel edge functions do not support long-lived SSE connections reliably.
     if (typeof window === 'undefined') return;
     if (process.env.NEXT_PUBLIC_DISABLE_REALTIME === 'true') return;
     if (!('EventSource' in window)) return;
 
-    const source = new EventSource('/api/realtime');
+    let currentSource: EventSource | null = null;
     let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+    let unmounted = false;
     let reconnectDelay = 1000;
+
+    const eventNames: RealtimeChannel[] = [
+      'products', 'categories', 'settings', 'transactions',
+      'utang', 'expenses', 'users', 'customers',
+      'itemlog', 'lowstock', 'reports', 'restock',
+    ];
 
     const handleEvent = (event: MessageEvent, channel: RealtimeChannel) => {
       reconnectDelay = 1000;
@@ -34,47 +39,35 @@ export function useRealtime(handlers: RealtimeHandlers) {
       }
     };
 
-    const eventNames: RealtimeChannel[] = [
-      'products',
-      'categories',
-      'settings',
-      'transactions',
-      'utang',
-      'expenses',
-      'users',
-      'customers',
-      'itemlog',
-      'lowstock',
-      'reports',
-      'restock',
-    ];
-
-    for (const eventName of eventNames) {
-      source.addEventListener(eventName, (event) => handleEvent(event as MessageEvent, eventName));
+    function attachListeners(src: EventSource) {
+      for (const eventName of eventNames) {
+        src.addEventListener(eventName, (event) => handleEvent(event as MessageEvent, eventName));
+      }
+      src.addEventListener('keep-alive', () => { reconnectDelay = 1000; });
     }
 
-    source.addEventListener('keep-alive', () => {
-      reconnectDelay = 1000;
-    });
+    function connect() {
+      if (unmounted) return;
+      const src = new EventSource('/api/realtime');
+      currentSource = src;
+      attachListeners(src);
 
-    source.onerror = () => {
-      source.close();
-      reconnectTimeout = setTimeout(() => {
-        reconnectDelay = Math.min(reconnectDelay * 2, 30000);
-        source.close();
-        const newSource = new EventSource('/api/realtime');
-        for (const eventName of eventNames) {
-          newSource.addEventListener(eventName, (event) => handleEvent(event as MessageEvent, eventName));
-        }
-        newSource.addEventListener('keep-alive', () => {
-          reconnectDelay = 1000;
-        });
-      }, reconnectDelay);
-    };
+      src.onerror = () => {
+        src.close();
+        if (unmounted) return;
+        reconnectTimeout = setTimeout(() => {
+          reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+          connect();
+        }, reconnectDelay);
+      };
+    }
+
+    connect();
 
     return () => {
+      unmounted = true;
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
-      source.close();
+      if (currentSource) currentSource.close();
     };
   }, []);
 }

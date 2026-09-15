@@ -1,5 +1,5 @@
 ﻿'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
@@ -15,7 +15,7 @@ const ADMIN_LINKS = [
   { href: '/products', label: 'Products' },
   { href: '/categories', label: 'Categories' },
   { href: '/orders', label: 'Orders' },
-  { href: '/utang', label: 'Utang / Credit' },
+  { href: '/credit', label: 'Credit' },
 ];
 
 const ADMIN_MORE = [
@@ -32,7 +32,7 @@ const CASHIER_LINKS = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/pos', label: 'POS' },
   { href: '/orders', label: 'Orders' },
-  { href: '/utang', label: 'Utang / Credit' },
+  { href: '/credit', label: 'Credit' },
 ];
 
 const CASHIER_MORE = [
@@ -49,6 +49,18 @@ export function TopNavbar() {
   // Offline-hardened logo: plain <img> (cacheable by SW images-cache rule)
   // with monogram fallback if the file is ever missing.
   const [logoOk, setLogoOk] = useState(true);
+
+  useEffect(() => {
+    setMenuOpen(false);
+    setMoreOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!moreOpen && !menuOpen) return;
+    const handler = () => { setMoreOpen(false); setMenuOpen(false); };
+    document.addEventListener('click', handler);
+    return () => document.removeEventListener('click', handler);
+  }, [moreOpen, menuOpen]);
 
   const role = user?.role ?? 'cashier';
   const links = role === 'admin' ? ADMIN_LINKS : CASHIER_LINKS;

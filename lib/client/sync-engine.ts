@@ -37,9 +37,12 @@ export async function performSync(): Promise<SyncResult> {
           a.payload = { ...a.payload, clientUuid };
         }
       }
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
       const res = await fetch('/api/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           actions: pending.map((a) => ({
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -50,6 +53,7 @@ export async function performSync(): Promise<SyncResult> {
           })),
         }),
       });
+      clearTimeout(timeoutId);
       if (!res.ok) throw new Error(`Sync push failed: ${res.status}`);
       const data = await res.json() as {
         results: { clientUuid: string; ok: boolean; serverId?: number; conflict?: boolean; error?: string }[];
@@ -74,7 +78,10 @@ export async function performSync(): Promise<SyncResult> {
 
     // Pull delta: products (delta) + categories/customers/settings (full) (server-wins merge)
     const lastSynced = await getLastSyncedAt();
-    const pullRes = await fetch(`/api/sync/pull${lastSynced ? `?since=${encodeURIComponent(lastSynced)}` : ''}`, { cache: 'no-store' });
+    const pullController = new AbortController();
+    const pullTimeout = setTimeout(() => pullController.abort(), 30000);
+    const pullRes = await fetch(`/api/sync/pull${lastSynced ? `?since=${encodeURIComponent(lastSynced)}` : ''}`, { cache: 'no-store', signal: pullController.signal });
+    clearTimeout(pullTimeout);
     if (pullRes.ok) {
       const pull = await pullRes.json() as {
         products: Record<string, unknown>[];

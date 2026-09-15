@@ -161,14 +161,18 @@ export async function queueRequest(
   body: unknown,
   action: string
 ) {
-  return db.queue.add({
-    url,
-    method,
-    body,
-    action,
-    createdAt: Date.now(),
-    status: 'pending',
-  });
+  try {
+    await db.queue.add({
+      url,
+      method,
+      body,
+      action,
+      createdAt: Date.now(),
+      status: 'pending',
+    });
+  } catch (e) {
+    console.error('[Dexie] queueRequest failed:', e);
+  }
 }
 
 export async function syncOfflineQueue() {
@@ -183,13 +187,17 @@ export async function syncOfflineQueue() {
         body: request.body ? JSON.stringify(request.body) : undefined,
       });
 
-      if (response.ok) {
-        await db.queue.update(request.id!, { status: 'synced' });
-      } else {
-        await db.queue.update(request.id!, { status: 'failed' });
+      try {
+        await db.queue.update(request.id!, { status: response.ok ? 'synced' : 'failed' });
+      } catch (e) {
+        console.error('[Dexie] syncOfflineQueue update failed:', e);
       }
     } catch {
-      await db.queue.update(request.id!, { status: 'failed' });
+      try {
+        await db.queue.update(request.id!, { status: 'failed' });
+      } catch (e) {
+        console.error('[Dexie] syncOfflineQueue update failed:', e);
+      }
     }
   }
 }
@@ -273,7 +281,7 @@ export async function warmPagesCache() {
 
 export async function saveProducts(products: Record<string, unknown>[]) {
   if (!products?.length) return;
-  return db.products.bulkPut(products);
+  try { await db.products.bulkPut(products); } catch (e) { console.error('[Dexie] saveProducts failed:', e); }
 }
 
 export async function getCachedProducts<T = Record<string, unknown>>() {
@@ -282,7 +290,7 @@ export async function getCachedProducts<T = Record<string, unknown>>() {
 
 export async function saveCategories(categories: Record<string, unknown>[]) {
   if (!categories?.length) return;
-  return db.categories.bulkPut(categories);
+  try { await db.categories.bulkPut(categories); } catch (e) { console.error('[Dexie] saveCategories failed:', e); }
 }
 
 export async function getCachedCategories<T = Record<string, unknown>>() {
@@ -290,7 +298,7 @@ export async function getCachedCategories<T = Record<string, unknown>>() {
 }
 
 export async function saveSettings(settings: Record<string, unknown>): Promise<void> {
-  await db.settings.put({ key: 'settings', value: settings });
+  try { await db.settings.put({ key: 'settings', value: settings }); } catch (e) { console.error('[Dexie] saveSettings failed:', e); }
 }
 
 export async function getCachedSettings<T = Record<string, unknown>>() {
@@ -299,7 +307,7 @@ export async function getCachedSettings<T = Record<string, unknown>>() {
 }
 
 export async function saveReport<T = unknown>(range: string, value: T) {
-  return db.reportCache.put({ key: range, value });
+  try { await db.reportCache.put({ key: range, value }); } catch (e) { console.error('[Dexie] saveReport failed:', e); }
 }
 
 export async function getCachedReport<T = unknown>(range: string): Promise<T> {
@@ -309,7 +317,7 @@ export async function getCachedReport<T = unknown>(range: string): Promise<T> {
 
 export async function saveExpenses(expenses: Record<string, unknown>[]) {
   if (!expenses?.length) return;
-  return db.expenses.bulkPut(expenses);
+  try { await db.expenses.bulkPut(expenses); } catch (e) { console.error('[Dexie] saveExpenses failed:', e); }
 }
 
 export async function getCachedExpenses<T = Record<string, unknown>>() {
@@ -318,7 +326,7 @@ export async function getCachedExpenses<T = Record<string, unknown>>() {
 
 export async function saveItemLog(itemLog: Record<string, unknown>[]) {
   if (!itemLog?.length) return;
-  return db.itemlog.bulkPut(itemLog);
+  try { await db.itemlog.bulkPut(itemLog); } catch (e) { console.error('[Dexie] saveItemLog failed:', e); }
 }
 
 export async function getCachedItemLog<T = Record<string, unknown>>() {
@@ -327,7 +335,7 @@ export async function getCachedItemLog<T = Record<string, unknown>>() {
 
 export async function saveTransactions(transactions: Record<string, unknown>[]) {
   if (!transactions?.length) return;
-  return db.transactions.bulkPut(transactions);
+  try { await db.transactions.bulkPut(transactions); } catch (e) { console.error('[Dexie] saveTransactions failed:', e); }
 }
 
 export async function getCachedTransactions<T = Record<string, unknown>>() {
@@ -336,7 +344,7 @@ export async function getCachedTransactions<T = Record<string, unknown>>() {
 
 export async function saveUtangEntries(entries: Record<string, unknown>[]) {
   if (!entries?.length) return;
-  return db.utang.bulkPut(entries);
+  try { await db.utang.bulkPut(entries); } catch (e) { console.error('[Dexie] saveUtangEntries failed:', e); }
 }
 
 export async function getCachedUtangEntries<T = Record<string, unknown>>() {
@@ -345,7 +353,7 @@ export async function getCachedUtangEntries<T = Record<string, unknown>>() {
 
 export async function saveCachedCustomers(customers: Record<string, unknown>[]) {
   if (!customers?.length) return;
-  return db.customers.bulkPut(customers);
+  try { await db.customers.bulkPut(customers); } catch (e) { console.error('[Dexie] saveCachedCustomers failed:', e); }
 }
 
 export async function getCachedCustomers<T = Record<string, unknown>>() {
@@ -354,7 +362,7 @@ export async function getCachedCustomers<T = Record<string, unknown>>() {
 
 export async function saveUsers(users: Record<string, unknown>[]) {
   if (!users?.length) return;
-  return db.users.bulkPut(users);
+  try { await db.users.bulkPut(users); } catch (e) { console.error('[Dexie] saveUsers failed:', e); }
 }
 
 export async function getCachedUsers<T = Record<string, unknown>>() {
@@ -430,7 +438,12 @@ export async function queueOrFetch<T>(
     }
 
     const text = await res.text();
-    const data = text ? JSON.parse(text) : undefined;
+    let data: T | undefined;
+    try {
+      data = text ? JSON.parse(text) : undefined;
+    } catch {
+      throw new Error(`Invalid JSON from server: ${text.slice(0, 200)}`);
+    }
     return { data: data as T };
   } catch (error: unknown) {
     if (canUseWindow() && !navigator.onLine) {

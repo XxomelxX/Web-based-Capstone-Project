@@ -1,5 +1,7 @@
 ﻿import { NextResponse } from 'next/server';
 import { addRealtimeClient, removeRealtimeClient } from '@/lib/server/realtime';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/server/auth';
 
 export const runtime = 'edge';
 
@@ -11,6 +13,11 @@ const realtimeDisabled =
 export async function GET() {
   if (realtimeDisabled) {
     return new NextResponse(null, { status: 204 });
+  }
+
+  const session = await getServerSession(authOptions);
+  if (!session?.user) {
+    return new NextResponse(null, { status: 401 });
   }
 
   let interval: ReturnType<typeof setInterval>;

@@ -1,6 +1,7 @@
 ﻿import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/server/prisma';
 import bcrypt from 'bcryptjs';
+import { getClientIp, isRateLimited } from '@/lib/server/rate-limit';
 
 export async function POST(request: Request) {
   try {
@@ -12,6 +13,10 @@ export async function POST(request: Request) {
 
     if (newPassword.length < 6) {
       return NextResponse.json({ error: 'Password must be at least 6 characters.' }, { status: 400 });
+    }
+
+    if (isRateLimited(`reset-password:${getClientIp(request)}`, 10, 10 * 60 * 1000)) {
+      return NextResponse.json({ error: 'Too many requests. Please try again later.' }, { status: 429 });
     }
 
     const user = await prisma.user.findFirst({

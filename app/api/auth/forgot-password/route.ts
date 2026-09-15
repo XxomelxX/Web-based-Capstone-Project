@@ -2,6 +2,7 @@
 import { prisma } from '@/lib/server/prisma';
 import { getClientIp, isRateLimited } from '@/lib/server/rate-limit';
 import { Resend } from 'resend';
+import { randomInt } from 'crypto';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -34,7 +35,7 @@ export async function POST(request: Request) {
       (await prisma.user.findUnique({ where: { email: trimmedEmail } })) ??
       (await prisma.user.findUnique({ where: { email: normalizedEmail } }));
 
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const code = randomInt(100000, 999999).toString();
     const expiry = new Date(Date.now() + 15 * 60 * 1000);
     let greeting: string;
 

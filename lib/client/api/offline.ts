@@ -290,7 +290,7 @@ export async function checkoutOffline(
 
 export interface UtangResult {
   id: number;
-  customer: { name: string };
+  customer: { id?: number; name: string };
   totalAmount: number;
   amountPaid: number;
   remainingBalance: number;

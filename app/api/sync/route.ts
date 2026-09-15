@@ -3,6 +3,7 @@ import { prisma } from '@/lib/server/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/server/auth';
 import { batchSyncSchema } from '@/lib/client/validation';
+import { broadcastRealtime } from '@/lib/server/realtime';
 
 // POST /api/sync — batch push of Category-1 offline actions.
 // Each action carries a permanent clientUuid (stamped at queue time).
@@ -62,7 +63,10 @@ export async function POST(request: Request) {
             await tx.itemLog.create({ data: { productId: item.productId, action: 'sold', quantity: item.quantity, performedBy: cashierId } });
           }
           return txn;
-        });
+        }, { maxWait: 15000, timeout: 25000 });
+        broadcastRealtime('transactions', { action: 'created' });
+        broadcastRealtime('products', { action: 'stock-updated' });
+        broadcastRealtime('itemlog', { action: 'created' });
         results.push({ clientUuid: action.clientUuid, ok: true, serverId: created.id });
       } else if (action.type === 'add_utang') {
         if (!p.customerName || !p.items?.length) throw new Error('customerName and items required');
@@ -97,8 +101,40 @@ export async function POST(request: Request) {
             await tx.product.update({ where: { id: item.productId }, data: { stock: { decrement: item.quantity } } });
             await tx.itemLog.create({ data: { productId: item.productId, action: 'sold', quantity: item.quantity, performedBy: cashierId } });
           }
+
+          const txn = await tx.transaction.create({
+            data: {
+              clientUuid: `utang-${action.clientUuid}`,
+              cashierId,
+              customerId: customer.id,
+              paymentMethod: 'credit',
+              subtotal: totalAmount,
+              vat: 0,
+              total: totalAmount,
+              tendered: 0,
+              change: 0,
+              status: 'complete',
+            },
+          });
+
+          for (const item of p.items!) {
+            await tx.transactionItem.create({
+              data: {
+                transactionId: txn.id,
+                productId: item.productId,
+                quantity: item.quantity,
+                unitPrice: item.unitPrice,
+                lineTotal: item.quantity * item.unitPrice,
+              },
+            });
+          }
+
           return entry;
-        });
+        }, { maxWait: 15000, timeout: 25000 });
+        broadcastRealtime('utang', { action: 'created' });
+        broadcastRealtime('transactions', { action: 'created' });
+        broadcastRealtime('products', { action: 'stock-updated' });
+        broadcastRealtime('itemlog', { action: 'created' });
         results.push({ clientUuid: action.clientUuid, ok: true, serverId: created.id });
       } else if (action.type === 'record_payment') {
         if (!p.customerName || !p.amount || p.amount <= 0) throw new Error('customerName and positive amount required');
@@ -144,7 +180,8 @@ export async function POST(request: Request) {
             remaining -= apply;
           }
           return payment;
-        });
+        }, { maxWait: 15000, timeout: 25000 });
+        broadcastRealtime('utang', { action: 'payment' });
         results.push({
           clientUuid: action.clientUuid, ok: true, serverId: created.id,
           conflict: conflict || undefined,

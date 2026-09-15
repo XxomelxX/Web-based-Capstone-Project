@@ -19,7 +19,14 @@ export async function PATCH(request: Request) {
   const guard = await requireRole(['admin']);
   if (guard) return guard;
 
-  const data = await request.json();
+  const raw = await request.json();
+  const data: Record<string, unknown> = {};
+  if ('storeName' in raw) data.storeName = String(raw.storeName);
+  if ('currency' in raw) data.currency = String(raw.currency);
+  if ('address' in raw) data.address = String(raw.address);
+  if ('taxRate' in raw) data.taxRate = Number(raw.taxRate);
+  if ('lowStockThreshold' in raw) data.lowStockThreshold = Number(raw.lowStockThreshold);
+
   const existing = await prisma.settings.findFirst();
 
   const settings = existing

@@ -9,7 +9,7 @@ const TABS = [
   { href: '/dashboard', label: 'Home', icon: LayoutDashboard },
   { href: '/pos', label: 'POS', icon: ShoppingCart },
   { href: '/orders', label: 'Orders', icon: ClipboardList },
-  { href: '/utang', label: 'Utang', icon: Wallet },
+  { href: '/credit', label: 'Credit', icon: Wallet },
 ];
 
 export function BottomTabBar() {

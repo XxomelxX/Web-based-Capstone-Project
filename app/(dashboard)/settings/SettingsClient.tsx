@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { getSettings, updateSettings } from '@/lib/client/api/inventory';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
@@ -39,6 +39,14 @@ export default function SettingsClient() {
     };
   }, [refresh]);
 
+  const savedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (savedTimeoutRef.current) clearTimeout(savedTimeoutRef.current);
+    };
+  }, []);
+
   async function handleSave() {
     if (!settings) return;
     if (typeof window !== 'undefined' && !navigator.onLine) {
@@ -49,7 +57,8 @@ export default function SettingsClient() {
     try {
       await updateSettings(settings);
       setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      if (savedTimeoutRef.current) clearTimeout(savedTimeoutRef.current);
+      savedTimeoutRef.current = setTimeout(() => setSaved(false), 2000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update settings');
     }

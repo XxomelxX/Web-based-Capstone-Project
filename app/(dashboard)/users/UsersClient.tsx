@@ -28,6 +28,7 @@ export default function UsersClient() {
   const refresh = useCallback(() => {
     const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
     setIsOffline(offlineNow);
+    if (offlineNow) return;
     getUsers<User>().then(setUsers).catch(() => {});
   }, []);
 
