@@ -3,8 +3,6 @@ import { addRealtimeClient, removeRealtimeClient } from '@/lib/server/realtime';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/server/auth';
 
-export const runtime = 'edge';
-
 const realtimeDisabled =
   process.env.NEXT_PUBLIC_DISABLE_REALTIME === 'true' ||
   process.env.DISABLE_REALTIME === 'true' ||
