@@ -5,7 +5,7 @@ import { performSync, checkConnectivity, shouldRetry, getRetryDelay, incrementRe
 import { getPendingCount, getFailedCount } from '@/lib/client/offlineQueue';
 import { getLastSyncedAt } from '@/lib/client/offline';
 import { toast } from 'sonner';
-import { triggerCategory2Refresh } from '@/lib/client/hooks/useOfflineSync';
+import { triggerCategory2Refresh, QUEUE_UPDATE_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
 
 interface OnlineContextType {
   isOnline: boolean;
@@ -21,6 +21,8 @@ interface OnlineContextType {
 
 const OnlineContext = createContext<OnlineContextType | undefined>(undefined);
 
+const OFFLINE_CONFIRMATION_DELAY_MS = 10000;
+
 export function OnlineProvider({ children }: { children: React.ReactNode }) {
   const [isOnline, setIsOnline] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -30,20 +32,81 @@ export function OnlineProvider({ children }: { children: React.ReactNode }) {
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const syncingRef = useRef(false);
   const wasOfflineRef = useRef(false);
+  const offlineTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const effectiveOnline = isOnline && !forceOffline;
 
+  // 10s confirmation gate: going offline is delayed, coming back online is instant.
+  const handleConnectivityResult = useCallback(
+    (reachable: boolean) => {
+      if (reachable) {
+        if (offlineTimerRef.current) {
+          clearTimeout(offlineTimerRef.current);
+          offlineTimerRef.current = null;
+        }
+        if (!forceOffline) setIsOnline(true);
+        return;
+      }
+      if (forceOffline) return;
+      if (!offlineTimerRef.current) {
+        offlineTimerRef.current = setTimeout(() => {
+          setIsOnline(false);
+          offlineTimerRef.current = null;
+        }, OFFLINE_CONFIRMATION_DELAY_MS);
+      }
+    },
+    [forceOffline],
+  );
+
   useEffect(() => {
-    setIsOnline(navigator.onLine);
-    const on = () => setIsOnline(true);
-    const off = () => setIsOnline(false);
+    let cancelled = false;
+    let pinging = false;
+    const verify = async () => {
+      if (pinging) return;
+      pinging = true;
+      try {
+        const online = await checkConnectivity();
+        if (!cancelled) handleConnectivityResult(online);
+      } finally {
+        pinging = false;
+      }
+    };
+    // Verify real connectivity on mount — never trust initial `true`.
+    // Route through the confirmation gate so a cold load with wifi off
+    // also gets the 10s delay instead of flashing Offline instantly.
+    if (!navigator.onLine) handleConnectivityResult(false);
+    void verify();
+    // Browser says offline → start confirmation timer. Browser says online →
+    // verify against /api/health before showing Online (captive portals
+    // and dead routers still fire 'online').
+    const on = () => {
+      if (!navigator.onLine) {
+        handleConnectivityResult(false);
+        return;
+      }
+      void verify();
+    };
+    const off = () => handleConnectivityResult(false);
     window.addEventListener('online', on);
     window.addEventListener('offline', off);
-    const ping = setInterval(async () => {
-      if (!forceOffline) setIsOnline(await checkConnectivity());
-    }, 30000);
-    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); clearInterval(ping); };
-  }, [forceOffline]);
+    // Re-verify whenever the user comes back to the tab — e.g. they turned
+    // wifi off/on while looking at another window. No DevTools needed.
+    window.addEventListener('focus', on);
+    document.addEventListener('visibilitychange', on);
+    const ping = setInterval(verify, 6000);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('online', on);
+      window.removeEventListener('offline', off);
+      window.removeEventListener('focus', on);
+      document.removeEventListener('visibilitychange', on);
+      clearInterval(ping);
+      if (offlineTimerRef.current) {
+        clearTimeout(offlineTimerRef.current);
+        offlineTimerRef.current = null;
+      }
+    };
+  }, [forceOffline, handleConnectivityResult]);
 
   useEffect(() => {
     const update = async () => {
@@ -56,7 +119,11 @@ export function OnlineProvider({ children }: { children: React.ReactNode }) {
     };
     update();
     const i = setInterval(update, 5000);
-    return () => clearInterval(i);
+    window.addEventListener(QUEUE_UPDATE_EVENT_NAME, update);
+    return () => {
+      clearInterval(i);
+      window.removeEventListener(QUEUE_UPDATE_EVENT_NAME, update);
+    };
   }, []);
 
   const syncNow = useCallback(async () => {

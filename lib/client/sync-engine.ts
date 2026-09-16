@@ -107,8 +107,19 @@ export async function performSync(): Promise<SyncResult> {
 }
 
 export async function checkConnectivity(): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+  if (!navigator.onLine) return false;
   try {
-    const res = await fetch('/api/health', { cache: 'no-store' });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
+    const res = await fetch(`/api/health?t=${Date.now()}`, {
+      method: 'GET',
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
     return res.ok;
-  } catch { return false; }
+  } catch {
+    return false;
+  }
 }

@@ -11,7 +11,12 @@ const withPWA = withPWAInit({
     disableDevLogs: true,
     runtimeCaching: [
       {
-        urlPattern: /^\/api\/health/,
+        // NOTE: Workbox matches against the FULL request URL
+        // (e.g. "http://localhost:3000/api/health"), so the pattern must
+        // NOT be anchored with ^\/ — an anchored pattern never matches and
+        // the request falls through to the NetworkFirst catch-all, which can
+        // serve a stale cached 200 while offline (false "Online").
+        urlPattern: /\/api\/health/,
         handler: 'NetworkOnly',
       },
       {

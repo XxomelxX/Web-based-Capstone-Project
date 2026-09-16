@@ -28,11 +28,11 @@ export function OfflineStatusPill({ onClick }: { onClick?: () => void }) {
       <span className={`mr-1.5 h-2 w-2 rounded-full ${dot[show]}`} />
       {isSyncing
         ? 'Syncing...'
-        : isOnline && pendingCount === 0
-        ? 'Online'
+        : pendingCount > 0
+        ? `${isOnline ? 'Online' : 'Offline'} (${pendingCount} queued)`
         : isOnline
-        ? `Online (${pendingCount} queued)`
-        : `Offline (${pendingCount} queued)`}
+        ? 'Online'
+        : 'Offline'}
       {failedCount > 0 && (
         <span className="ml-1 text-rose-300">⚠ {failedCount}</span>
       )}
