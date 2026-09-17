@@ -212,14 +212,14 @@ const PAGES_TO_CACHE = ['/dashboard', '/pos', '/orders', '/credit'];
 // Static brand assets that must be available offline (navbar logo, PWA icons).
 const BRAND_ASSETS_TO_CACHE = [
   '/images/81e09f4c-f773-4009-b7d5-6ef3babd8388-removebg-preview.png',
-  '/icons/icon-192x192.png',
-  '/icons/icon-512x512.png',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
 ];
 
 export async function warmBrandCache() {
   if (!canUseWindow() || !navigator.onLine) return;
   try {
-    const cache = await caches.open('images-cache');
+    const cache = await caches.open('media-assets-v1');
     await Promise.allSettled(
       BRAND_ASSETS_TO_CACHE.map(async (url) => {
         const existing = await cache.match(url);
@@ -239,7 +239,7 @@ export async function warmBrandCache() {
 export async function warmStaticAssets() {
   if (!canUseWindow() || !navigator.onLine) return;
   try {
-    const cache = await caches.open('static-assets');
+    const cache = await caches.open('static-assets-v1');
     // Collect CSS <link> tags currently in the DOM (guaranteed current hash)
     const cssLinks = Array.from(document.querySelectorAll('link[rel="stylesheet"]'))
       .map((el) => (el as HTMLLinkElement).href)
@@ -266,7 +266,7 @@ export async function warmStaticAssets() {
 export async function warmPagesCache() {
   if (!canUseWindow() || !navigator.onLine) return;
   try {
-    const cache = await caches.open('pages-cache');
+    const cache = await caches.open('pages-cache-v1');
     await Promise.allSettled(
       PAGES_TO_CACHE.map(async (url) => {
         const existing = await cache.match(url);
