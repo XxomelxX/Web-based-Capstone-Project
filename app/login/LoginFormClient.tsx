@@ -140,7 +140,7 @@ export default function LoginFormClient() {
       <img
         src="/images/81e09f4c-f773-4009-b7d5-6ef3babd8388-removebg-preview.png"
         alt="J & J Merchandise Store"
-        className="mx-auto mb-8 h-16 w-auto object-contain sm:h-20 md:h-24"
+        className="mx-auto mb-8 h-40 w-auto object-contain sm:h-48 md:h-64"
       />
 
       {/* Form */}

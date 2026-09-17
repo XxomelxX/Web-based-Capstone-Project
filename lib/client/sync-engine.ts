@@ -91,10 +91,10 @@ export async function performSync(): Promise<SyncResult> {
         settings: Record<string, unknown> | null;
         syncedAt: string;
       };
-      if (pull.products?.length) await saveProducts(pull.products);
-      if (pull.categories?.length) await saveCategories(pull.categories);
-      if (pull.customers?.length) await saveCachedCustomers(pull.customers);
-      if (pull.utang?.length) await saveUtangEntries(pull.utang);
+      if (pull.products) await saveProducts(pull.products);
+      if (pull.categories) await saveCategories(pull.categories);
+      if (pull.customers) await saveCachedCustomers(pull.customers);
+      if (pull.utang) await saveUtangEntries(pull.utang);
       if (pull.settings) await saveSettings(pull.settings);
       await setLastSyncedAt(pull.syncedAt ?? syncedAt);
     }
