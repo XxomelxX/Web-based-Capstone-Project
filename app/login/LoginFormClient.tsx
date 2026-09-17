@@ -136,13 +136,12 @@ export default function LoginFormClient() {
 
   return (
     <div className="w-full max-w-sm">
-      {/* Heading */}
-      <h2
-        className="text-4xl font-bold text-gray-800 text-center mb-8 tracking-widest"
-        style={{ fontFamily: "'Playfair Display', serif" }}
-      >
-        LOGIN
-      </h2>
+      {/* Logo */}
+      <img
+        src="/images/81e09f4c-f773-4009-b7d5-6ef3babd8388-removebg-preview.png"
+        alt="J & J Merchandise Store"
+        className="mx-auto mb-8 h-16 w-auto object-contain sm:h-20 md:h-24"
+      />
 
       {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-5">

@@ -14,7 +14,7 @@ export default function OfflinePage() {
           </div>
           <h1 className="text-2xl font-bold text-slate-100">You&apos;re Offline</h1>
           <p className="mt-3 text-sm leading-relaxed text-slate-400">
-            Sari-Sari POS can&apos;t reach the server right now. Pages you&apos;ve already opened may
+            J & J Merchandise Store can&apos;t reach the server right now. Pages you&apos;ve already opened may
             still work — try going back to POS or dashboard.
           </p>
           <p className="mt-2 text-xs text-slate-500">

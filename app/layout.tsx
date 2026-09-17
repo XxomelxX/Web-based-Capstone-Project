@@ -3,13 +3,13 @@ import "./globals.css";
 import { Providers } from "@/components/providers";
 
 export const metadata: Metadata = {
-  title: "Web-Based POS Inventory and Sales System for Sari-Sari Store",
+  title: "J & J Merchandise Store",
   description: "Simple. Efficient. Reliable. Manage your store better every day.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Sari-Sari POS",
+    title: "J & J Merchandise Store",
   },
   icons: {
     icon: "/icons/icon-192.png",

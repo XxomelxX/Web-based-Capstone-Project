@@ -1,6 +1,6 @@
 {
-  "name": "Sari-Sari POS — Inventory & Sales",
-  "short_name": "Sari-Sari POS",
+  "name": "J & J Merchandise Store",
+  "short_name": "J & J Merchandise Store",
   "start_url": "/dashboard",
   "scope": "/",
   "display": "standalone",
