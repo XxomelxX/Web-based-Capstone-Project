@@ -142,9 +142,10 @@ async function wipeExistingData() {
   await prisma.transaction.deleteMany({});
   await prisma.utangEntry.deleteMany({});
   await prisma.customer.deleteMany({});
+  await prisma.expense.deleteMany({});
   await prisma.product.deleteMany({});
   await prisma.category.deleteMany({});
-  console.log('Wiped all products, categories, customers, and transaction history.');
+  console.log('Wiped all products, categories, customers, expenses, and transaction history.');
 }
 
 async function seedProductsAndCategories() {
