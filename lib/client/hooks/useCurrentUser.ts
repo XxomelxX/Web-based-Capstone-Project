@@ -1,7 +1,7 @@
 'use client';
 
 import { useSession } from 'next-auth/react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 export interface CurrentUser {
   id: number | string;
@@ -11,26 +11,21 @@ export interface CurrentUser {
   isOfflineSession?: boolean;
 }
 
+function readOfflineSession(): CurrentUser | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem('offlineSession');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return { ...parsed, isOfflineSession: true };
+  } catch {
+    return null;
+  }
+}
+
 export function useCurrentUser(): { user: CurrentUser | null; status: 'loading' | 'authenticated' | 'unauthenticated' } {
   const { data: session, status: sessionStatus } = useSession();
-  const [offlineUser, setOfflineUser] = useState<CurrentUser | null>(null);
-  const [mounted, setMounted] = useState(false);
-
-  /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => {
-    setMounted(true);
-    if (typeof window !== 'undefined') {
-      const raw = sessionStorage.getItem('offlineSession');
-      if (raw) {
-        try {
-          const parsed = JSON.parse(raw);
-          setOfflineUser({ ...parsed, isOfflineSession: true });
-        } catch {
-          // ignore parsing error
-        }
-      }
-    }
-  }, []);
+  const [offlineUser] = useState<CurrentUser | null>(readOfflineSession);
 
   // 1. Prefer real NextAuth session if available
   if (session?.user) {
@@ -46,8 +41,8 @@ export function useCurrentUser(): { user: CurrentUser | null; status: 'loading' 
     };
   }
 
-  // 2. Fall back to local offline session storage
-  if (mounted && offlineUser) {
+  // 2. Fall back to local offline session storage (available on first render)
+  if (offlineUser) {
     return {
       user: offlineUser,
       status: 'authenticated',

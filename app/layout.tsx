@@ -44,11 +44,17 @@ export default function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){
-              if(!navigator.onLine||!('caches'in window)||!('serviceWorker'in navigator))return;
+              if(!('caches'in window)||!('serviceWorker'in navigator))return;
+              caches.keys().then(function(names){
+                names.forEach(function(n){
+                  if(n==='pages'||n==='pages-cache-v1')caches.delete(n);
+                });
+              });
+              if(!navigator.onLine)return;
               function warm(){
                 if(!navigator.serviceWorker.controller)return void setTimeout(warm,2000);
                 var pages=['/login','/pos','/dashboard','/orders','/credit','/products','/categories','/expenses','/reports','/users','/settings','/lowstock','/transaction-log','/item-log'];
-                caches.open('pages-cache-v1').then(function(cache){
+                caches.open('pages-cache-v2').then(function(cache){
                   pages.forEach(function(url){
                     cache.match(url,{ignoreVary:true}).then(function(hit){
                       if(hit)return;

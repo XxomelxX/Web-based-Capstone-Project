@@ -46,12 +46,12 @@ export async function cachedGet<T>(
       return value;
     } catch (error) {
       const cached = await cacheFn();
-      if (cached !== null && cached !== undefined) return cached;
+      if (cached !== null && cached !== undefined && !(Array.isArray(cached) && cached.length === 0)) return cached;
       throw error;
     }
   }
   const cached = await cacheFn();
-  if (cached !== null && cached !== undefined) return cached;
+  if (cached !== null && cached !== undefined && !(Array.isArray(cached) && cached.length === 0)) return cached;
   throw new Error('Offline and no cached data available');
 }
 

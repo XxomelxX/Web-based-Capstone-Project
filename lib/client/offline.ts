@@ -207,7 +207,11 @@ export function installOfflineSync() {
   window.addEventListener('online', syncOfflineQueue);
 }
 
-const PAGES_TO_CACHE = ['/dashboard', '/pos', '/orders', '/credit'];
+const PAGES_TO_CACHE = [
+  '/dashboard', '/pos', '/orders', '/credit',
+  '/products', '/categories', '/users', '/lowstock',
+  '/transaction-log', '/item-log', '/expenses', '/reports', '/settings',
+];
 
 // Static brand assets that must be available offline (navbar logo, PWA icons).
 const BRAND_ASSETS_TO_CACHE = [
@@ -266,7 +270,7 @@ export async function warmStaticAssets() {
 export async function warmPagesCache() {
   if (!canUseWindow() || !navigator.onLine) return;
   try {
-    const cache = await caches.open('pages-cache-v1');
+    const cache = await caches.open('pages-cache-v2');
     await Promise.allSettled(
       PAGES_TO_CACHE.map(async (url) => {
         const existing = await cache.match(url);
@@ -280,7 +284,12 @@ export async function warmPagesCache() {
 }
 
 export async function saveProducts(products: Record<string, unknown>[]) {
-  try { await db.products.clear(); await db.products.bulkPut(products); } catch (e) { console.error('[Dexie] saveProducts failed:', e); }
+  try {
+    await db.transaction('rw', db.products, async () => {
+      await db.products.clear();
+      await db.products.bulkPut(products);
+    });
+  } catch (e) { console.error('[Dexie] saveProducts failed:', e); }
 }
 
 export async function getCachedProducts<T = Record<string, unknown>>() {
@@ -288,7 +297,12 @@ export async function getCachedProducts<T = Record<string, unknown>>() {
 }
 
 export async function saveCategories(categories: Record<string, unknown>[]) {
-  try { await db.categories.clear(); await db.categories.bulkPut(categories); } catch (e) { console.error('[Dexie] saveCategories failed:', e); }
+  try {
+    await db.transaction('rw', db.categories, async () => {
+      await db.categories.clear();
+      await db.categories.bulkPut(categories);
+    });
+  } catch (e) { console.error('[Dexie] saveCategories failed:', e); }
 }
 
 export async function getCachedCategories<T = Record<string, unknown>>() {
@@ -314,7 +328,12 @@ export async function getCachedReport<T = unknown>(range: string): Promise<T> {
 }
 
 export async function saveExpenses(expenses: Record<string, unknown>[]) {
-  try { await db.expenses.clear(); await db.expenses.bulkPut(expenses); } catch (e) { console.error('[Dexie] saveExpenses failed:', e); }
+  try {
+    await db.transaction('rw', db.expenses, async () => {
+      await db.expenses.clear();
+      await db.expenses.bulkPut(expenses);
+    });
+  } catch (e) { console.error('[Dexie] saveExpenses failed:', e); }
 }
 
 export async function getCachedExpenses<T = Record<string, unknown>>() {
@@ -322,7 +341,12 @@ export async function getCachedExpenses<T = Record<string, unknown>>() {
 }
 
 export async function saveItemLog(itemLog: Record<string, unknown>[]) {
-  try { await db.itemlog.clear(); await db.itemlog.bulkPut(itemLog); } catch (e) { console.error('[Dexie] saveItemLog failed:', e); }
+  try {
+    await db.transaction('rw', db.itemlog, async () => {
+      await db.itemlog.clear();
+      await db.itemlog.bulkPut(itemLog);
+    });
+  } catch (e) { console.error('[Dexie] saveItemLog failed:', e); }
 }
 
 export async function getCachedItemLog<T = Record<string, unknown>>() {
@@ -330,7 +354,12 @@ export async function getCachedItemLog<T = Record<string, unknown>>() {
 }
 
 export async function saveTransactions(transactions: Record<string, unknown>[]) {
-  try { await db.transactions.clear(); await db.transactions.bulkPut(transactions); } catch (e) { console.error('[Dexie] saveTransactions failed:', e); }
+  try {
+    await db.transaction('rw', db.transactions, async () => {
+      await db.transactions.clear();
+      await db.transactions.bulkPut(transactions);
+    });
+  } catch (e) { console.error('[Dexie] saveTransactions failed:', e); }
 }
 
 export async function getCachedTransactions<T = Record<string, unknown>>() {
@@ -338,7 +367,12 @@ export async function getCachedTransactions<T = Record<string, unknown>>() {
 }
 
 export async function saveUtangEntries(entries: Record<string, unknown>[]) {
-  try { await db.utang.clear(); await db.utang.bulkPut(entries); } catch (e) { console.error('[Dexie] saveUtangEntries failed:', e); }
+  try {
+    await db.transaction('rw', db.utang, async () => {
+      await db.utang.clear();
+      await db.utang.bulkPut(entries);
+    });
+  } catch (e) { console.error('[Dexie] saveUtangEntries failed:', e); }
 }
 
 export async function getCachedUtangEntries<T = Record<string, unknown>>() {
@@ -346,7 +380,12 @@ export async function getCachedUtangEntries<T = Record<string, unknown>>() {
 }
 
 export async function saveCachedCustomers(customers: Record<string, unknown>[]) {
-  try { await db.customers.clear(); await db.customers.bulkPut(customers); } catch (e) { console.error('[Dexie] saveCachedCustomers failed:', e); }
+  try {
+    await db.transaction('rw', db.customers, async () => {
+      await db.customers.clear();
+      await db.customers.bulkPut(customers);
+    });
+  } catch (e) { console.error('[Dexie] saveCachedCustomers failed:', e); }
 }
 
 export async function getCachedCustomers<T = Record<string, unknown>>() {
@@ -354,7 +393,12 @@ export async function getCachedCustomers<T = Record<string, unknown>>() {
 }
 
 export async function saveUsers(users: Record<string, unknown>[]) {
-  try { await db.users.clear(); await db.users.bulkPut(users); } catch (e) { console.error('[Dexie] saveUsers failed:', e); }
+  try {
+    await db.transaction('rw', db.users, async () => {
+      await db.users.clear();
+      await db.users.bulkPut(users);
+    });
+  } catch (e) { console.error('[Dexie] saveUsers failed:', e); }
 }
 
 export async function getCachedUsers<T = Record<string, unknown>>() {

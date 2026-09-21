@@ -43,6 +43,7 @@ export default function POSClient() {
   const { user } = useCurrentUser();
   const [fallbackProducts, setProducts] = useState<Product[]>([]);
   const cachedProducts = useLiveQuery(() => offlineCache.products.toArray(), []) as unknown as Product[] | undefined;
+  const [productsLoading, setProductsLoading] = useState(true);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [search, setSearch] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'gcash' | 'credit'>('cash');
@@ -90,7 +91,8 @@ export default function POSClient() {
   }
 
   const refresh = useCallback(async () => {
-    getProducts().then(setProducts);
+    setProductsLoading(true);
+    getProducts().then(setProducts).catch(() => {}).finally(() => setProductsLoading(false));
     getSettings<StoreSettings>().then(setSettings);
     loadShiftData();
     getCustomersLight().then(setCustomers).catch(() => {});
@@ -98,6 +100,7 @@ export default function POSClient() {
   }, []);
 
   const products = cachedProducts?.length ? cachedProducts : fallbackProducts;
+  const isLoadingProducts = productsLoading && cachedProducts === undefined && fallbackProducts.length === 0;
 
   useRealtime({
     products: refresh,
@@ -456,7 +459,15 @@ export default function POSClient() {
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {filteredProducts.length === 0 ? (
+            {isLoadingProducts ? (
+              <p className="col-span-full text-center text-gray-400 py-8">
+                Loading products…
+              </p>
+            ) : filteredProducts.length === 0 && products.length === 0 && !navigator.onLine ? (
+              <p className="col-span-full text-center text-gray-400 py-8">
+                No products available offline. Please go online to load products.
+              </p>
+            ) : filteredProducts.length === 0 ? (
               <p className="col-span-full text-center text-gray-400 py-8">
                 No products found matching &quot;{search}&quot;
               </p>
