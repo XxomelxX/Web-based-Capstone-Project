@@ -55,28 +55,71 @@ interface Activity {
   note?: string | null;
 }
 
+function num(v: unknown): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function safeTime(v: unknown, fallback = ''): number {
+  if (!v) return NaN;
+  const t = new Date(v as string).getTime();
+  return Number.isFinite(t) ? t : NaN;
+}
+
 export default function CreditClient() {
   const liveUtang = useLiveQuery(() => db.utang.toArray());
-  const [fallbackEntries, setEntries] = useState<UtangEntry[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<number | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | 'unpaid' | 'partial' | 'paid'>('all');
   const [isCached, setIsCached] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const entries: UtangEntry[] = (liveUtang ?? []) as any;
+  const entries: UtangEntry[] = useMemo(() => ((liveUtang ?? []) as any[]).filter((e) => e && typeof e === 'object' && e.id != null) as UtangEntry[], [liveUtang]);
 
   const refresh = useCallback(async () => {
     const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
     setIsOffline(offlineNow);
     if (offlineNow) {
-      const cached = await getCachedUtangEntries<UtangEntry>();
-      if (cached?.length) setIsCached(true);
+      try {
+        const cached = await getCachedUtangEntries<UtangEntry>();
+        setIsCached(!cached?.length ? true : false);
+      } catch {
+        setIsCached(true);
+      }
       return;
     }
     try {
       const data = await getUtangEntries<UtangEntry>();
-      await db.utang.bulkPut(data as unknown as Record<string, unknown>[]);
+      const normalized = (Array.isArray(data) ? data : []).map((e) => {
+        const entry = e as unknown as Record<string, unknown>;
+        const items = Array.isArray(entry.items) ? (entry.items as Record<string, unknown>[]).map((i) => ({
+          ...i,
+          quantity: num(i.quantity),
+          unitPrice: num(i.unitPrice),
+          lineTotal: num(i.lineTotal),
+          product: { name: (i.product as { name?: string } | null)?.name ?? 'Unknown' },
+        })) : [];
+        const paymentAllocations = Array.isArray(entry.paymentAllocations) ? (entry.paymentAllocations as Record<string, unknown>[]).map((a) => ({
+          ...a,
+          amountApplied: num(a.amountApplied),
+        })) : [];
+        return {
+          ...entry,
+          totalAmount: num(entry.totalAmount),
+          amountPaid: num(entry.amountPaid),
+          remainingBalance: num(entry.remainingBalance),
+          items,
+          paymentAllocations,
+        } as unknown as Record<string, unknown>;
+      });
+      if (normalized.length > 0) {
+        try {
+          await db.utang.clear();
+          await db.utang.bulkPut(normalized);
+        } catch {
+          // Cache write must never crash render; live data still renders.
+        }
+      }
       setIsCached(false);
     } catch {
       setIsCached(true);
@@ -95,19 +138,22 @@ export default function CreditClient() {
   const customerSummaries = useMemo(() => {
     const map = new Map<number, { id: number; name: string; totalOutstanding: number; entryCount: number; lastActivity: string }>();
     for (const e of entries) {
-      if (e.status === 'paid') continue;
-      const existing = map.get(e.customerId);
+      if (!e || e.status === 'paid') continue;
+      const cid = num(e.customerId);
+      if (!cid) continue;
+      const bal = num(e.remainingBalance);
+      const existing = map.get(cid);
       if (existing) {
-        existing.totalOutstanding += e.remainingBalance;
+        existing.totalOutstanding += bal;
         existing.entryCount += 1;
-        if (e.createdAt > existing.lastActivity) existing.lastActivity = e.createdAt;
+        if ((e.createdAt ?? '') > existing.lastActivity) existing.lastActivity = e.createdAt ?? '';
       } else {
-        map.set(e.customerId, {
-          id: e.customerId,
+        map.set(cid, {
+          id: cid,
           name: e.customer?.name ?? 'Unknown',
-          totalOutstanding: e.remainingBalance,
+          totalOutstanding: bal,
           entryCount: 1,
-          lastActivity: e.createdAt,
+          lastActivity: e.createdAt ?? '',
         });
       }
     }
@@ -125,51 +171,61 @@ export default function CreditClient() {
   const activity = useMemo<Activity[]>(() => {
     const feed: Activity[] = [];
     for (const e of entries) {
-      if (selectedCustomer && e.customerId !== selectedCustomer) continue;
+      if (!e || e.id == null) continue;
+      if (selectedCustomer && num(e.customerId) !== selectedCustomer) continue;
       feed.push({
         id: `sale-${e.id}`,
         type: 'sale',
-        customerId: e.customerId,
+        customerId: num(e.customerId),
         customerName: e.customer?.name ?? 'Unknown',
-        amount: e.totalAmount,
-        date: e.createdAt,
-        status: e.status,
-        entryId: e.id,
-        items: e.items,
-        note: e.note,
+        amount: num(e.totalAmount),
+        date: e.createdAt ?? new Date().toISOString(),
+        status: e.status ?? 'unpaid',
+        entryId: num(e.id),
+        items: Array.isArray(e.items) ? e.items : [],
+        note: e.note ?? null,
       });
       for (const alloc of e.paymentAllocations ?? []) {
-        if (selectedCustomer && e.customerId !== selectedCustomer) continue;
+        if (!alloc) continue;
+        if (selectedCustomer && num(e.customerId) !== selectedCustomer) continue;
         feed.push({
-          id: `payment-${alloc.id}`,
+          id: `payment-${alloc.id ?? `${e.id}-${feed.length}`}`,
           type: 'payment',
-          customerId: e.customerId,
+          customerId: num(e.customerId),
           customerName: e.customer?.name ?? 'Unknown',
-          amount: alloc.amountApplied,
-          date: alloc.payment?.createdAt ?? alloc.createdAt,
-          entryId: e.id,
-          note: alloc.payment?.note,
+          amount: num(alloc.amountApplied),
+          date: alloc.payment?.createdAt ?? alloc.createdAt ?? e.createdAt ?? new Date().toISOString(),
+          entryId: num(e.id),
+          note: alloc.payment?.note ?? null,
         });
       }
     }
-    return feed.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return feed.sort((a, b) => {
+      const tb = safeTime(b.date);
+      const ta = safeTime(a.date);
+      if (Number.isNaN(tb) && Number.isNaN(ta)) return 0;
+      if (Number.isNaN(tb)) return -1;
+      if (Number.isNaN(ta)) return 1;
+      return tb - ta;
+    });
   }, [entries, selectedCustomer]);
 
   const totalOutstanding = useMemo(
-    () => entries.filter((e) => e.status !== 'paid').reduce((s, e) => s + e.remainingBalance, 0),
+    () => entries.filter((e) => e?.status !== 'paid').reduce((s, e) => s + num(e?.remainingBalance), 0),
     [entries]
   );
   const customersWithDebt = customerSummaries.length;
-  const activeEntries = entries.filter((e) => e.status !== 'paid').length;
+  const activeEntries = entries.filter((e) => e?.status !== 'paid').length;
   const now = new Date();
   const collectedThisMonth = useMemo(() => {
     return entries.reduce((sum, e) => {
-      return sum + (e.paymentAllocations ?? [])
+      return sum + (e?.paymentAllocations ?? [])
         .filter((a) => {
-          const d = new Date(a.payment?.createdAt ?? a.createdAt);
+          const d = new Date(a?.payment?.createdAt ?? a?.createdAt ?? '');
+          if (Number.isNaN(d.getTime())) return false;
           return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
         })
-        .reduce((s, a) => s + a.amountApplied, 0);
+        .reduce((s, a) => s + num(a?.amountApplied), 0);
     }, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entries]);
@@ -190,7 +246,7 @@ export default function CreditClient() {
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <StatCard
           label="Total Outstanding"
-          value={`₱${totalOutstanding.toFixed(2)}`}
+          value={`₱${num(totalOutstanding).toFixed(2)}`}
           accent="text-amber-400"
           icon={<Wallet size={20} className="text-amber-400" />}
         />
@@ -202,7 +258,7 @@ export default function CreditClient() {
         />
         <StatCard
           label="Collected This Month"
-          value={`₱${collectedThisMonth.toFixed(2)}`}
+          value={`₱${num(collectedThisMonth).toFixed(2)}`}
           accent="text-emerald-400"
           icon={<TrendingUp size={20} className="text-emerald-400" />}
         />
@@ -258,7 +314,7 @@ export default function CreditClient() {
                   >
                     <div className="flex justify-between items-center">
                       <span className="font-medium truncate">{c.name}</span>
-                      <span className="text-amber-400 font-bold">₱{c.totalOutstanding.toFixed(2)}</span>
+                      <span className="text-amber-400 font-bold">₱{num(c.totalOutstanding).toFixed(2)}</span>
                     </div>
                     <div className="text-xs text-slate-500 mt-0.5">
                       {c.entryCount} {c.entryCount === 1 ? 'entry' : 'entries'}
@@ -323,7 +379,7 @@ export default function CreditClient() {
                           </p>
                           {a.items && a.items.length > 0 && (
                             <p className="text-xs text-slate-500 mt-0.5">
-                              {a.items.map((i) => `${i.product.name} ×${i.quantity}`).join(', ')}
+                              {a.items.map((i) => `${i.product?.name ?? 'Item'} ×${num(i.quantity)}`).join(', ')}
                             </p>
                           )}
                           {a.note && (
@@ -333,10 +389,10 @@ export default function CreditClient() {
                       </div>
                       <div className="text-right shrink-0">
                         <p className={`font-bold ${a.type === 'sale' ? 'text-amber-400' : 'text-emerald-400'}`}>
-                          {a.type === 'sale' ? '+' : '-'}₱{a.amount.toFixed(2)}
+                          {a.type === 'sale' ? '+' : '-'}₱{num(a.amount).toFixed(2)}
                         </p>
                         <p className="text-[10px] text-slate-500 mt-0.5">
-                          {new Date(a.date).toLocaleDateString()}
+                          {(() => { const t = safeTime(a.date); return Number.isNaN(t) ? '' : new Date(t).toLocaleDateString(); })()}
                         </p>
                       </div>
                     </div>
