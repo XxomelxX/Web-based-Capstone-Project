@@ -76,6 +76,13 @@ export function OnlineProvider({ children }: { children: React.ReactNode }) {
     // also gets the 10s delay instead of flashing Offline instantly.
     if (!navigator.onLine) handleConnectivityResult(false);
     void verify();
+    // Initial sync pull to populate Dexie cache on first load
+    void (async () => {
+      try {
+        const { performSync } = await import('@/lib/client/sync-engine');
+        await performSync();
+      } catch { /* non-critical */ }
+    })();
     // Browser says offline → start confirmation timer. Browser says online →
     // verify against /api/health before showing Online (captive portals
     // and dead routers still fire 'online').

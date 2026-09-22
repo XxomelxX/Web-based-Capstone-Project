@@ -188,9 +188,16 @@ export default function POSClient() {
       const existing = customers.find((c) => c.name.toLowerCase() === name.toLowerCase());
       if (!existing) {
         if (navigator.onLine) {
-          const { addCustomer } = await import('@/lib/client/api/inventory');
-          const result = await addCustomer({ name });
-          setCustomers((prev) => [...prev, { id: result.id, name }]);
+          try {
+            const { addCustomer } = await import('@/lib/client/api/inventory');
+            const result = await addCustomer({ name });
+            setCustomers((prev) => [...prev, { id: result.id, name }]);
+          } catch {
+            const cached = await getCachedCustomers<Record<string, unknown>>();
+            const newId = Date.now();
+            await saveCachedCustomers([...cached, { id: newId, name, createdAt: new Date().toISOString() }]);
+            setCustomers((prev) => [...prev, { id: newId, name }]);
+          }
         } else {
           const cached = await getCachedCustomers<Record<string, unknown>>();
           const newId = Date.now();

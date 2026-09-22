@@ -232,7 +232,7 @@ export async function checkoutOffline(
     createdAt: new Date().toISOString(),
   };
 
-  if (!isOnline()) {
+  if (!isOnline() || !navigator.onLine) {
     await queueSale({
       items,
       paymentMethod,
@@ -319,7 +319,7 @@ export async function addUtangOffline(
     items,
   };
 
-  if (!isOnline()) {
+  if (!isOnline() || !navigator.onLine) {
     await queueAddUtang({ customerName, items, note });
     await updateCachedProductStock(items);
     return { ...fallbackEntry, offline: true };
