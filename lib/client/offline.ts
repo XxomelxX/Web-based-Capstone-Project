@@ -211,6 +211,7 @@ const PAGES_TO_CACHE = [
   '/dashboard', '/pos', '/orders', '/credit',
   '/products', '/categories', '/users', '/lowstock',
   '/transaction-log', '/item-log', '/expenses', '/reports', '/settings',
+  '/offline',
 ];
 
 // Static brand assets that must be available offline (navbar logo, PWA icons).

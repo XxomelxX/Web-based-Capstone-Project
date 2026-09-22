@@ -53,7 +53,7 @@ export default function RootLayout({
               if(!navigator.onLine)return;
               function warm(){
                 if(!navigator.serviceWorker.controller)return void setTimeout(warm,2000);
-                var pages=['/login','/pos','/dashboard','/orders','/credit','/products','/categories','/expenses','/reports','/users','/settings','/lowstock','/transaction-log','/item-log'];
+                var pages=['/login','/pos','/dashboard','/orders','/credit','/products','/categories','/expenses','/reports','/users','/settings','/lowstock','/transaction-log','/item-log','/offline'];
                 caches.open('pages-cache-v2').then(function(cache){
                   pages.forEach(function(url){
                     cache.match(url,{ignoreVary:true}).then(function(hit){
