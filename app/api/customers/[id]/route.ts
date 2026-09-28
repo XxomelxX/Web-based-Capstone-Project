@@ -14,7 +14,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const id = Number(idParam);
     const data = await request.json();
 
-    if (data.name !== undefined && typeof data.name !== 'string') {
+    if (data.name !== undefined && (typeof data.name !== 'string' || !data.name.trim())) {
       return NextResponse.json({ error: 'Invalid customer name' }, { status: 400 });
     }
 
@@ -46,10 +46,16 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
     const { id: idParam } = await params;
     const id = Number(idParam);
-    const { adminUsername, adminPassword, force } = await request.json();
+    let body: { adminUsername?: string; adminPassword?: string; force?: boolean };
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: 'Request body with admin credentials is required.' }, { status: 400 });
+    }
+    const { adminUsername, adminPassword, force } = body;
 
     if (!adminUsername || !adminPassword) {
-      return NextResponse.json({ error: 'Admin credentials are required to delete a customer.' }, { status: 403 });
+      return NextResponse.json({ error: 'Admin credentials are required to delete a customer.' }, { status: 400 });
     }
 
     const adminUser = await prisma.user.findUnique({
@@ -68,15 +74,20 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
     const customer = await prisma.customer.findUnique({
       where: { id },
-      include: { utangEntries: { where: { status: { in: ['unpaid', 'partial'] } } } },
+      include: { utangEntries: true },
     });
 
     if (!customer) {
       return NextResponse.json({ error: 'Customer not found.' }, { status: 404 });
     }
 
-    if (customer.utangEntries.length > 0 && !force) {
+    const outstanding = customer.utangEntries.filter((e) => e.status !== 'paid');
+    if (outstanding.length > 0) {
       return NextResponse.json({ error: 'Cannot delete customer with outstanding utang. Collect all payments first, or use force delete.', hasOutstanding: true }, { status: 400 });
+    }
+
+    if (customer.utangEntries.length > 0 && !force) {
+      return NextResponse.json({ error: 'Customer has credit history. Use force delete to purge history, or keep the record.', hasHistory: true }, { status: 400 });
     }
 
     await prisma.$transaction(async (tx) => {
@@ -93,11 +104,13 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
       await tx.utangEntryItem.deleteMany({
         where: { utangEntry: { customerId: id } },
       });
+      // Non-force path only reaches here when no outstanding balance remains,
+      // but paid history is preserved. Force path purges all history.
       if (force) {
         await tx.utangEntry.deleteMany({ where: { customerId: id } });
-      } else {
-        await tx.utangEntry.deleteMany({ where: { customerId: id } });
       }
+      // Detach completed sales so the customer row can be removed.
+      await tx.transaction.updateMany({ where: { customerId: id }, data: { customerId: null } });
       await tx.customer.delete({ where: { id } });
     });
 

@@ -24,8 +24,20 @@ export async function PATCH(request: Request) {
   if ('storeName' in raw) data.storeName = String(raw.storeName);
   if ('currency' in raw) data.currency = String(raw.currency);
   if ('address' in raw) data.address = String(raw.address);
-  if ('taxRate' in raw) data.taxRate = Number(raw.taxRate);
-  if ('lowStockThreshold' in raw) data.lowStockThreshold = Number(raw.lowStockThreshold);
+  if ('taxRate' in raw) {
+    const v = Number(raw.taxRate);
+    if (!Number.isFinite(v) || v < 0 || v > 100) {
+      return NextResponse.json({ error: 'taxRate must be between 0 and 100' }, { status: 400 });
+    }
+    data.taxRate = v;
+  }
+  if ('lowStockThreshold' in raw) {
+    const v = Number(raw.lowStockThreshold);
+    if (!Number.isInteger(v) || v < 0) {
+      return NextResponse.json({ error: 'lowStockThreshold must be a non-negative integer' }, { status: 400 });
+    }
+    data.lowStockThreshold = v;
+  }
 
   const existing = await prisma.settings.findFirst();
 

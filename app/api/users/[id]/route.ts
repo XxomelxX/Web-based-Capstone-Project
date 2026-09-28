@@ -1,8 +1,12 @@
 ﻿import { NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/server/prisma';
 import { requireRole } from '@/lib/server/require-role';
 import { broadcastRealtime } from '@/lib/server/realtime';
 import { hash } from 'bcryptjs';
+
+const VALID_ROLES = ['admin', 'cashier'];
+const VALID_STATUSES = ['active', 'inactive'];
 
 // PATCH /api/users/:id — update user fields (e.g. status: 'inactive' for deactivation)
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -14,6 +18,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const id = Number(idParam);
     const data = await request.json();
 
+    if (data.role !== undefined && !VALID_ROLES.includes(data.role)) {
+      return NextResponse.json({ error: 'Invalid role' }, { status: 400 });
+    }
+    if (data.status !== undefined && !VALID_STATUSES.includes(data.status)) {
+      return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
+    }
+    if (data.email !== undefined && (typeof data.email !== 'string' || !data.email.includes('@'))) {
+      return NextResponse.json({ error: 'Invalid email' }, { status: 400 });
+    }
+
     const updateData: Record<string, unknown> = {
       ...(data.fullName !== undefined && { fullName: data.fullName }),
       ...(data.email !== undefined && { email: data.email }),
@@ -22,6 +36,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     };
 
     if (data.newPassword) {
+      if (typeof data.newPassword !== 'string' || data.newPassword.length < 6) {
+        return NextResponse.json({ error: 'Password must be at least 6 characters.' }, { status: 400 });
+      }
       updateData.passwordHash = await hash(data.newPassword, 10);
     }
 
@@ -38,8 +55,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     broadcastRealtime('users', { action: 'updated', user });
     return NextResponse.json(user);
   } catch (err) {
-    if (err instanceof Error && err.message.includes('Record to update not found')) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      return NextResponse.json({ error: 'Email or username already in use' }, { status: 409 });
     }
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Server error' }, { status: 500 });
   }
@@ -71,7 +91,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     broadcastRealtime('users', { action: 'deleted', id });
     return NextResponse.json({ success: true });
   } catch (err) {
-    if (err instanceof Error && err.message.includes('Record to delete does not exist')) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Server error' }, { status: 500 });

@@ -27,6 +27,16 @@ if (!fs.existsSync(swPath)) {
 let content = fs.readFileSync(swPath, 'utf-8');
 let changed = false;
 
+// "/" is a per-session 307 redirect (session-aware page.tsx). Never cache it
+// in start-url: a cached /login redirect would be served to a logged-in user
+// offline (and vice versa). NetworkOnly + fallback handles offline correctly.
+const startUrlNetworkFirst = 'e.registerRoute("/",new e.NetworkFirst(';
+if (content.includes(startUrlNetworkFirst)) {
+  content = content.replace(startUrlNetworkFirst, 'e.registerRoute("/",new e.NetworkOnly(');
+  changed = true;
+  console.log('[patch-sw] Forced start-url (/) to NetworkOnly (per-session redirect, must not cache).');
+}
+
 // If setCatchHandler was accidentally removed by an older build, re-inject it.
 // We look for the last e.registerRoute(...) call and append setCatchHandler after it.
 if (!content.includes('setCatchHandler')) {

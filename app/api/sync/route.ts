@@ -42,11 +42,13 @@ export async function POST(request: Request) {
           const ids = items.map((i) => i.productId);
           const products = await tx.product.findMany({ where: { id: { in: ids } } });
           const map = new Map(products.map((x) => [x.id, x]));
-          for (const item of items) {
+          const priced = items.map((item) => {
             const prod = map.get(item.productId);
             if (!prod) throw new Error(`Product #${item.productId} not found`);
             if (prod.stock < item.quantity) throw new Error(`Insufficient stock for ${prod.name}`);
-          }
+            return { ...item, unitPrice: prod.price };
+          });
+          const subtotal = priced.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
           const txn = await tx.transaction.create({
             data: {
               clientUuid: action.clientUuid, cashierId,
@@ -55,7 +57,7 @@ export async function POST(request: Request) {
               tendered, change: Number((tendered - subtotal).toFixed(2)), status: 'complete',
             },
           });
-          for (const item of items) {
+          for (const item of priced) {
             await tx.transactionItem.create({
               data: { transactionId: txn.id, productId: item.productId, quantity: item.quantity, unitPrice: item.unitPrice, lineTotal: Number((item.quantity * item.unitPrice).toFixed(2)) },
             });
@@ -64,10 +66,17 @@ export async function POST(request: Request) {
           }
           return txn;
         }, { maxWait: 15000, timeout: 25000 });
+        // Offline prices may be stale: compare client-expected vs server total.
+        const priceConflict = p.expectedSubtotal !== undefined
+          && Math.abs(Number(p.expectedSubtotal) - Number(created.total)) > 0.009;
         broadcastRealtime('transactions', { action: 'created' });
         broadcastRealtime('products', { action: 'stock-updated' });
         broadcastRealtime('itemlog', { action: 'created' });
-        results.push({ clientUuid: action.clientUuid, ok: true, serverId: created.id });
+        results.push({
+          clientUuid: action.clientUuid, ok: true, serverId: created.id,
+          conflict: priceConflict || undefined,
+          error: priceConflict ? 'Prices changed while offline — server prices applied (server-wins)' : undefined,
+        });
       } else if (action.type === 'add_utang') {
         if (!p.customerName || !p.items?.length) throw new Error('customerName and items required');
         const existing = await prisma.utangEntry.findUnique({ where: { clientUuid: action.clientUuid } });
@@ -81,12 +90,15 @@ export async function POST(request: Request) {
             where: { name: { equals: customerName, mode: 'insensitive' } },
           });
           if (!customer) customer = await tx.customer.create({ data: { name: customerName } });
-          for (const item of p.items!) {
-            const prod = await tx.product.findUnique({ where: { id: item.productId } });
+          const dbProducts = await tx.product.findMany({ where: { id: { in: p.items!.map((i) => i.productId) } } });
+          const dbMap = new Map(dbProducts.map((x) => [x.id, x]));
+          const pricedUtang = p.items!.map((item) => {
+            const prod = dbMap.get(item.productId);
             if (!prod) throw new Error(`Product #${item.productId} not found`);
             if (prod.stock < item.quantity) throw new Error(`Insufficient stock for ${prod.name}`);
-          }
-          const totalAmount = p.items!.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+            return { ...item, unitPrice: prod.price };
+          });
+          const totalAmount = pricedUtang.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
           const entry = await tx.utangEntry.create({
             data: {
               clientUuid: action.clientUuid, customerId: customer.id,
@@ -94,7 +106,7 @@ export async function POST(request: Request) {
               note: p.note ?? null, status: 'unpaid',
             },
           });
-          for (const item of p.items!) {
+          for (const item of pricedUtang) {
             await tx.utangEntryItem.create({
               data: { utangEntryId: entry.id, productId: item.productId, quantity: item.quantity, unitPrice: item.unitPrice, lineTotal: item.quantity * item.unitPrice },
             });
@@ -117,7 +129,7 @@ export async function POST(request: Request) {
             },
           });
 
-          for (const item of p.items!) {
+          for (const item of pricedUtang) {
             await tx.transactionItem.create({
               data: {
                 transactionId: txn.id,
@@ -131,11 +143,17 @@ export async function POST(request: Request) {
 
           return entry;
         }, { maxWait: 15000, timeout: 25000 });
+        const utangPriceConflict = p.expectedSubtotal !== undefined
+          && Math.abs(Number(p.expectedSubtotal) - created.totalAmount) > 0.009;
         broadcastRealtime('utang', { action: 'created' });
         broadcastRealtime('transactions', { action: 'created' });
         broadcastRealtime('products', { action: 'stock-updated' });
         broadcastRealtime('itemlog', { action: 'created' });
-        results.push({ clientUuid: action.clientUuid, ok: true, serverId: created.id });
+        results.push({
+          clientUuid: action.clientUuid, ok: true, serverId: created.id,
+          conflict: utangPriceConflict || undefined,
+          error: utangPriceConflict ? 'Prices changed while offline — server prices applied (server-wins)' : undefined,
+        });
       } else if (action.type === 'record_payment') {
         if (!p.customerName || !p.amount || p.amount <= 0) throw new Error('customerName and positive amount required');
         const existing = await prisma.payment.findUnique({ where: { clientUuid: action.clientUuid } });
@@ -241,6 +259,11 @@ export async function POST(request: Request) {
         results.push({ clientUuid: action.clientUuid, ok: true, serverId: closed.id });
       }
     } catch (e) {
+      // P2002 race on clientUuid: return the winner's row.
+      if (typeof e === 'object' && e !== null && 'code' in e && (e as { code: string }).code === 'P2002') {
+        results.push({ clientUuid: action.clientUuid, ok: true, conflict: true, error: 'Duplicate replay absorbed (idempotent)' });
+        continue;
+      }
       results.push({ clientUuid: action.clientUuid, ok: false, error: e instanceof Error ? e.message : String(e) });
     }
   }

@@ -6,7 +6,10 @@ import { prisma } from '@/lib/server/prisma';
 // GET /api/shift/active-shifts — Admin Spot check monitoring of all open cash drawers (X-Read)
 export async function GET() {
   const session = await getServerSession(authOptions);
-  if (!session?.user || session.user.role !== 'admin') {
+  if (!session?.user) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+  if (session.user.role !== 'admin') {
     return NextResponse.json({ error: 'Unauthorized. Admin access required.' }, { status: 403 });
   }
 

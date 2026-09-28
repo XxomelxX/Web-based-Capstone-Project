@@ -1,4 +1,5 @@
 ﻿import { NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/server/prisma';
 import { requireRole } from '@/lib/server/require-role';
 import { requireSession } from '@/lib/server/require-session';
@@ -20,9 +21,24 @@ export async function POST(request: Request) {
   if (guard) return guard;
 
   const { name, description } = await request.json();
-  if (!name) return NextResponse.json({ error: 'Name is required' }, { status: 400 });
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    return NextResponse.json({ error: 'Name is required' }, { status: 400 });
+  }
 
-  const category = await prisma.category.create({ data: { name, description } });
-  broadcastRealtime('categories', { action: 'created', category });
-  return NextResponse.json(category, { status: 201 });
+  try {
+    const existing = await prisma.category.findFirst({
+      where: { name: { equals: name.trim(), mode: 'insensitive' } },
+    });
+    if (existing) {
+      return NextResponse.json({ error: 'Category already exists' }, { status: 409 });
+    }
+    const category = await prisma.category.create({ data: { name: name.trim(), description } });
+    broadcastRealtime('categories', { action: 'created', category });
+    return NextResponse.json(category, { status: 201 });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      return NextResponse.json({ error: 'Category already exists' }, { status: 409 });
+    }
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Server error' }, { status: 500 });
+  }
 }

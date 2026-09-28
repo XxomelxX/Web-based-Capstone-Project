@@ -221,7 +221,11 @@ async function main() {
     console.log('Seeded admin account -> username: admin / password: admin123 (change this after first login)');
   }
 
-  // Always wipe and reseed products/categories/customers
+  // Always wipe and reseed products/categories/customers (dev only — never in production)
+  if (process.env.ALLOW_DESTRUCTIVE_SEED !== 'true' && process.env.NODE_ENV === 'production') {
+    console.log('Skipping destructive reseed in production. Set ALLOW_DESTRUCTIVE_SEED=true to force.');
+    return;
+  }
   await seedProductsAndCategories();
 }
 

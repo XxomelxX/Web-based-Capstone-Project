@@ -1,4 +1,5 @@
 ﻿import { NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/server/prisma';
 import { requireRole } from '@/lib/server/require-role';
 import { hash } from 'bcryptjs';
@@ -35,9 +36,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 });
     }
 
+    if (typeof email !== 'string' || !email.includes('@')) {
+      return NextResponse.json({ error: 'Valid email is required' }, { status: 400 });
+    }
+
     const existing = await prisma.user.findUnique({ where: { username } });
     if (existing) {
       return NextResponse.json({ error: 'Username already taken' }, { status: 409 });
+    }
+
+    const existingEmail = await prisma.user.findUnique({ where: { email } });
+    if (existingEmail) {
+      return NextResponse.json({ error: 'Email already in use' }, { status: 409 });
     }
 
     const passwordHash = await hash(password, 10);
@@ -49,6 +59,9 @@ export async function POST(request: Request) {
     broadcastRealtime('users', { action: 'created', user });
     return NextResponse.json(user, { status: 201 });
   } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      return NextResponse.json({ error: 'Username or email already in use' }, { status: 409 });
+    }
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Server error' }, { status: 500 });
   }
 }

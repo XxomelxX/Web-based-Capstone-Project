@@ -19,9 +19,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Too many requests. Please try again later.' }, { status: 429 });
     }
 
+    const normEmail = email.trim().toLowerCase();
+
     const user = await prisma.user.findFirst({
       where: {
-        email,
+        email: { equals: normEmail, mode: 'insensitive' },
         resetToken: code,
         resetTokenExpiry: { gt: new Date() },
       },
@@ -32,7 +34,7 @@ export async function POST(request: Request) {
       // and explain that there is nothing to reset.
       const stray = await prisma.passwordResetCode.findFirst({
         where: {
-          email: email.trim().toLowerCase(),
+          email: normEmail,
           code,
           expiresAt: { gt: new Date() },
         },

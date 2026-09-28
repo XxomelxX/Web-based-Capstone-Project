@@ -52,10 +52,16 @@ export async function POST(request: Request) {
       const settings = await tx.settings.findFirst();
       const taxRate = settings?.taxRate ?? 12;
 
-      const subtotal = items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
+      // Server-side pricing: ignore client unitPrice, use DB price.
+      const priced = items.map((i) => {
+        const product = productMap.get(i.productId)!;
+        return { ...i, unitPrice: product.price };
+      });
+
+      const subtotal = priced.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
 
       let vat = 0;
-      for (const item of items) {
+      for (const item of priced) {
         const product = productMap.get(item.productId);
         if (product?.vatType === 'regular') {
           const lineTotal = item.quantity * item.unitPrice;
@@ -76,10 +82,13 @@ export async function POST(request: Request) {
 
       const change = Number((tendered - total).toFixed(2));
 
+      const cashierId = Number(session.user.id);
+      if (!Number.isFinite(cashierId)) throw new Error('Invalid session');
+
       const transaction = await tx.transaction.create({
         data: {
           clientUuid,
-          cashierId: Number(session.user.id),
+          cashierId,
           customerId,
           paymentMethod,
           subtotal,
@@ -94,7 +103,7 @@ export async function POST(request: Request) {
         },
       });
 
-      for (const item of items) {
+      for (const item of priced) {
         await tx.transactionItem.create({
           data: {
             transactionId: transaction.id,
@@ -132,6 +141,11 @@ export async function POST(request: Request) {
 
     return NextResponse.json(result, { status: 201 });
   } catch (err) {
+    // Unique-constraint race on clientUuid: return the winner's row.
+    if (clientUuid && typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === 'P2002') {
+      const existing = await prisma.transaction.findUnique({ where: { clientUuid } });
+      if (existing) return NextResponse.json(existing, { status: 200 });
+    }
     const message = err instanceof Error ? err.message : 'Checkout failed';
     return NextResponse.json({ error: message }, { status: 400 });
   }

@@ -57,16 +57,20 @@ export async function POST(request: Request) {
         customer = await tx.customer.create({ data: { name: customerName.trim() } });
       }
 
-      // validate stock
-      for (const item of items) {
-        const product = await tx.product.findUnique({ where: { id: item.productId } });
+      // validate stock + server-side pricing from DB
+      const productIds = items.map((i) => i.productId);
+      const allProducts = await tx.product.findMany({ where: { id: { in: productIds } } });
+      const productMap = new Map(allProducts.map((p) => [p.id, p]));
+      const priced = items.map((item) => {
+        const product = productMap.get(item.productId);
         if (!product) throw new Error(`Product ${item.productId} not found`);
         if (product.stock < item.quantity) {
           throw new Error(`Insufficient stock for ${product.name}`);
         }
-      }
+        return { ...item, unitPrice: product.price };
+      });
 
-      const totalAmount = items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
+      const totalAmount = priced.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
 
       const utangEntry = await tx.utangEntry.create({
         include: { customer: true, items: true },
@@ -81,7 +85,7 @@ export async function POST(request: Request) {
         },
       });
 
-      for (const item of items) {
+      for (const item of priced) {
         await tx.utangEntryItem.create({
           data: {
             utangEntryId: utangEntry.id,
@@ -122,7 +126,7 @@ export async function POST(request: Request) {
         },
       });
 
-      for (const item of items) {
+      for (const item of priced) {
         await tx.transactionItem.create({
           data: {
             transactionId: txn.id,
@@ -147,6 +151,13 @@ export async function POST(request: Request) {
 
     return NextResponse.json(result, { status: 201 });
   } catch (err) {
+    if (clientUuid && typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === 'P2002') {
+      const existing = await prisma.utangEntry.findUnique({
+        where: { clientUuid },
+        include: { customer: true, items: { include: { product: true } } },
+      });
+      if (existing) return NextResponse.json(existing, { status: 200 });
+    }
     const message = err instanceof Error ? err.message : 'Failed to add utang';
     return NextResponse.json({ error: message }, { status: 400 });
   }

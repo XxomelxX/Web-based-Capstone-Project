@@ -14,8 +14,8 @@ export async function requireRole(allowedRoles: Array<'admin' | 'cashier'>) {
   }
 
   if (!allowedRoles.includes(session.user.role)) {
-    return NextResponse.json({ error: 'Forbidden â€” insufficient role' }, { status: 403 });
+    return NextResponse.json({ error: 'Forbidden — insufficient role' }, { status: 403 });
   }
 
-  return null; // no error â€” caller proceeds
+  return null; // no error — caller proceeds
 }

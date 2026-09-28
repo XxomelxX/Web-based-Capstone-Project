@@ -71,7 +71,7 @@ model Transaction {
   cashierId     Int
   cashier       User      @relation(fields: [cashierId], references: [id])
   customerId    Int?
-  customer      Customer? @relation(fields: [customerId], references: [id])
+  customer      Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
   paymentMethod String    // "cash" | "gcash"
   subtotal      Float
   vat           Float

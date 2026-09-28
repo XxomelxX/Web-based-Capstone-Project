@@ -93,23 +93,35 @@ export async function POST(request: Request) {
       if (existingOpenShift) {
         return NextResponse.json(
           { error: 'You already have an active open shift', shift: existingOpenShift },
-          { status: 400 }
+          { status: 409 }
         );
       }
 
-      const floatAmount = Number(openingFloat) || 0;
+      const floatAmount = Number(openingFloat);
+      if (!Number.isFinite(floatAmount) || floatAmount < 0) {
+        return NextResponse.json({ error: 'openingFloat must be a non-negative number' }, { status: 400 });
+      }
 
-      const newShift = await prisma.shift.create({
-        data: {
-          clientUuid: clientUuid ?? undefined,
-          cashierId: userId,
-          openingFloat: floatAmount,
-          status: 'open',
-          notes: notes ?? null,
-        },
-      });
+      try {
+        const newShift = await prisma.shift.create({
+          data: {
+            clientUuid: clientUuid ?? undefined,
+            cashierId: userId,
+            openingFloat: floatAmount,
+            status: 'open',
+            notes: notes ?? null,
+          },
+        });
 
-      return NextResponse.json({ success: true, shift: newShift });
+        return NextResponse.json({ success: true, shift: newShift });
+      } catch (createErr) {
+        // Concurrent double-open race: return the winner instead of 500.
+        if (clientUuid && typeof createErr === 'object' && createErr !== null && 'code' in createErr && (createErr as { code: string }).code === 'P2002') {
+          const replayed = await prisma.shift.findUnique({ where: { clientUuid } });
+          if (replayed) return NextResponse.json({ success: true, shift: replayed });
+        }
+        throw createErr;
+      }
     }
 
     if (action === 'close') {
@@ -178,29 +190,45 @@ export async function POST(request: Request) {
         }
       }
 
-      const countCash = Number(closingCash) || 0;
+      const countCash = Number(closingCash);
+      if (!Number.isFinite(countCash) || countCash < 0) {
+        return NextResponse.json({ error: 'closingCash must be a non-negative number' }, { status: 400 });
+      }
       const expectedCash = activeShift.openingFloat + cashSales;
       const overageShortage = countCash - expectedCash;
 
-      const closedShift = await prisma.shift.update({
-        where: { id: activeShift.id },
-        data: {
-          clientUuid: clientUuid ?? undefined,
-          closingCash: countCash,
-          expectedCash,
-          cashSales,
-          gcashSales,
-          overageShortage,
-          status: 'closed',
-          closedAt: new Date(),
-          notes: notes ?? activeShift.notes,
-        },
-        include: {
-          cashier: {
-            select: { fullName: true, username: true },
+      // Guard against double-close from two devices: only close if still open.
+      let closedShift;
+      try {
+        closedShift = await prisma.shift.update({
+          where: { id: activeShift.id },
+          data: {
+            clientUuid: clientUuid ?? undefined,
+            closingCash: countCash,
+            expectedCash,
+            cashSales,
+            gcashSales,
+            overageShortage,
+            status: 'closed',
+            closedAt: new Date(),
+            notes: notes ?? activeShift.notes,
           },
-        },
-      });
+          include: {
+            cashier: {
+              select: { fullName: true, username: true },
+            },
+          },
+        });
+      } catch (updateErr) {
+        if (clientUuid && typeof updateErr === 'object' && updateErr !== null && 'code' in updateErr && (updateErr as { code: string }).code === 'P2002') {
+          const replayed = await prisma.shift.findUnique({
+            where: { clientUuid },
+            include: { cashier: { select: { fullName: true, username: true } } },
+          });
+          if (replayed) return NextResponse.json({ success: true, shift: replayed });
+        }
+        throw updateErr;
+      }
 
       return NextResponse.json({
         success: true,
@@ -245,6 +273,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
   } catch (err) {
+    if (typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === 'P2025') {
+      return NextResponse.json({ error: 'Shift not found' }, { status: 404 });
+    }
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Server error' }, { status: 500 });
   }
 }

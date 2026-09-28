@@ -18,16 +18,17 @@ export async function POST(request: Request) {
     if (guard) return guard;
 
     const { type, amount, period, note } = await request.json();
-    if (!type || !amount || !period) {
+    if (!type || typeof type !== 'string' || !type.trim() || !period || typeof period !== 'string' || !period.trim()) {
       return NextResponse.json({ error: 'type, amount, and period are required' }, { status: 400 });
     }
 
-    if (Number(amount) <= 0) {
+    const amt = Number(amount);
+    if (!Number.isFinite(amt) || amt <= 0) {
       return NextResponse.json({ error: 'Amount must be greater than zero' }, { status: 400 });
     }
 
     const expense = await prisma.expense.create({
-      data: { type, amount: Number(amount), period, note: note ?? null },
+      data: { type: type.trim(), amount: amt, period: period.trim(), note: note ?? null },
     });
 
     broadcastRealtime('expenses', { action: 'created', expense });

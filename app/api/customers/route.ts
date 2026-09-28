@@ -51,7 +51,7 @@ export async function POST(request: Request) {
     notes?: string;
   };
 
-  if (!name || typeof name !== 'string') {
+  if (!name || typeof name !== 'string' || !name.trim()) {
     return NextResponse.json({ error: 'Customer name is required' }, { status: 400 });
   }
 

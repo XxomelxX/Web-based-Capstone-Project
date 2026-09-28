@@ -19,6 +19,7 @@ export const queuedActionSchema = z.object({
     notes: z.string().max(500).optional(),
     amount: z.number().positive().optional(),
     expectedBalance: z.number().optional(),
+    expectedSubtotal: z.number().optional(),
     openingFloat: z.number().nonnegative().optional(),
     closingCash: z.number().nonnegative().optional(),
     openedAt: z.string().optional(),

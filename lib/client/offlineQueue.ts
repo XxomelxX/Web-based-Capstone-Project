@@ -25,6 +25,7 @@ export interface QueuedActionPayload {
   note?: string;
   amount?: number;
   expectedBalance?: number;
+  expectedSubtotal?: number;
 
   // Shift items
   openingFloat?: number;
@@ -81,10 +82,18 @@ function stampUuid(payload: QueuedActionPayload): QueuedActionPayload {
   return payload;
 }
 
+// Server accepts max 100 actions per push — refuse to grow past that so the
+// queue can always be flushed in a single sync (caller should prompt to sync).
+export const MAX_QUEUED_ACTIONS = 100;
+
 export async function queueCategory1Action(
   type: Category1ActionType,
   payload: QueuedActionPayload
 ): Promise<number> {
+  const pending = await db.queuedActions.where('synced').equals(0).count();
+  if (pending >= MAX_QUEUED_ACTIONS) {
+    throw new Error('Offline queue is full (100 actions). Reconnect and sync before queuing more.');
+  }
   const res = await db.queuedActions.add({
     type,
     payload: stampUuid(payload),
@@ -111,6 +120,7 @@ export async function queueSale(sale: {
       paymentMethod: sale.paymentMethod,
       tendered: sale.tendered,
       customerId: sale.customerId ?? null,
+      expectedSubtotal: sale.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0),
       clientUuid: sale.clientUuid,
     }),
     createdAt: sale.createdAt || new Date().toISOString(),
@@ -131,6 +141,7 @@ export async function queueAddUtang(utang: {
     customerName: utang.customerName,
     items: utang.items,
     note: utang.note,
+    expectedSubtotal: utang.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0),
     clientUuid: utang.clientUuid,
   });
 }

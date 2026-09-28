@@ -11,8 +11,16 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const since = searchParams.get('since');
 
+  let sinceDate: Date | undefined;
+  if (since) {
+    sinceDate = new Date(since);
+    if (Number.isNaN(sinceDate.getTime())) {
+      return NextResponse.json({ error: 'Invalid since parameter' }, { status: 400 });
+    }
+  }
+
   // Products: delta sync using updatedAt
-  const productWhere = since ? { updatedAt: { gt: new Date(since) } } : {};
+  const productWhere = sinceDate ? { updatedAt: { gt: sinceDate } } : {};
   const products = await prisma.product.findMany({ where: productWhere, take: 500, include: { category: true } });
 
   // Categories, Customers, Settings: always pull all (small tables, no updatedAt)

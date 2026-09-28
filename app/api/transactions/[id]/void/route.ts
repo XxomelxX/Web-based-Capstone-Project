@@ -54,6 +54,23 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       if (!transaction) throw new Error('Transaction not found');
       if (transaction.status === 'voided') throw new Error('Transaction already voided');
 
+      // Credit-sale void: reverse the linked utang entry to keep the ledger consistent.
+      // The mirror transaction for a credit sale carries clientUuid `utang-{entryUuid}`.
+      if (transaction.paymentMethod === 'credit' && transaction.clientUuid?.startsWith('utang-')) {
+        const entryUuid = transaction.clientUuid.slice('utang-'.length);
+        const linked = await tx.utangEntry.findUnique({
+          where: { clientUuid: entryUuid },
+          include: { paymentAllocations: true, items: true },
+        });
+        if (linked) {
+          if (linked.paymentAllocations.length > 0 || linked.amountPaid > 0) {
+            throw new Error('Cannot void: payments have been recorded against this credit sale. Reverse the payments first.');
+          }
+          await tx.utangEntryItem.deleteMany({ where: { utangEntryId: linked.id } });
+          await tx.utangEntry.delete({ where: { id: linked.id } });
+        }
+      }
+
       // Restore stock for every item in this sale
       for (const item of transaction.items) {
         await tx.product.update({
@@ -93,6 +110,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     return NextResponse.json(result);
   } catch (err) {
+    if (err instanceof Error && err.message === 'Transaction not found') {
+      return NextResponse.json({ error: err.message }, { status: 404 });
+    }
     const message = err instanceof Error ? err.message : 'Void failed';
     return NextResponse.json({ error: message }, { status: 400 });
   }

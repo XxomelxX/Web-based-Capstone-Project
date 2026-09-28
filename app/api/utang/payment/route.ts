@@ -91,6 +91,21 @@ export async function POST(request: Request) {
     broadcastRealtime('utang', { action: 'payment', result });
     return NextResponse.json(result, { status: 201 });
   } catch (err) {
+    if (clientUuid && typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === 'P2002') {
+      const existing = await prisma.payment.findUnique({
+        where: { clientUuid },
+        include: { allocations: true },
+      });
+      if (existing) {
+        const applied = existing.allocations.reduce((s, a) => s + a.amountApplied, 0);
+        return NextResponse.json({
+          payment: existing,
+          allocations: existing.allocations,
+          unallocatedRemainder: Math.max(0, existing.amount - applied),
+          replayed: true,
+        }, { status: 200 });
+      }
+    }
     const message = err instanceof Error ? err.message : 'Payment failed';
     return NextResponse.json({ error: message }, { status: 400 });
   }
