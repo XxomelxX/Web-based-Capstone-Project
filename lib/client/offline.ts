@@ -293,6 +293,16 @@ export async function saveProducts(products: Record<string, unknown>[]) {
   } catch (e) { console.error('[Dexie] saveProducts failed:', e); }
 }
 
+/**
+ * Merge products into the cache WITHOUT clearing (upsert by primary key).
+ * Use for partial lists (e.g. archived-only) so the other subset is preserved.
+ */
+export async function mergeProducts(products: Record<string, unknown>[]) {
+  try {
+    await db.products.bulkPut(products);
+  } catch (e) { console.error('[Dexie] mergeProducts failed:', e); }
+}
+
 export async function getCachedProducts<T = Record<string, unknown>>() {
   return db.products.toArray() as Promise<T[]>;
 }

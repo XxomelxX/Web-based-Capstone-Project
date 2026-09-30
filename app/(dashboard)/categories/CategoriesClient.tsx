@@ -4,16 +4,28 @@ import { useEffect, useState, useCallback } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/client/offline';
 import { getCategories, addCategory, updateCategory, Category } from '@/lib/client/api/categories';
-import { getProducts, Product } from '@/lib/client/api/products';
+import { getActiveProducts, Product } from '@/lib/client/api/products';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
+import { ArchivedSection } from '@/components/ArchivedSection';
+import { SearchInput } from '@/components/SearchInput';
+
+function useDebouncedValue(value: string, delayMs: number): string {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(t);
+  }, [value, delayMs]);
+  return debounced;
+}
 
 export default function CategoriesClient() {
   const liveCategories = useLiveQuery(() => db.categories.toArray());
   const liveProducts = useLiveQuery(() => db.products.toArray());
   const [showModal, setShowModal] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [search, setSearch] = useState('');
   const [form, setForm] = useState({ name: '', description: '', archived: false });
   const [error, setError] = useState('');
   const [isCached, setIsCached] = useState(false);
@@ -30,7 +42,8 @@ export default function CategoriesClient() {
     if (offlineNow) return;
 
     try {
-      const [cats, prods] = await Promise.all([getCategories(), getProducts()]);
+      // getActiveProducts() merges without clearing, so archived rows survive.
+      const [cats, prods] = await Promise.all([getCategories(), getActiveProducts()]);
       await db.categories.bulkPut(cats as unknown as Record<string, unknown>[]);
       await db.products.bulkPut(prods as unknown as Record<string, unknown>[]);
       setIsCached(false);
@@ -96,8 +109,42 @@ export default function CategoriesClient() {
     }
   }
 
-  const activeCategories = categories.filter((c) => !c.archived);
-  const archivedCategories = categories.filter((c) => c.archived);
+  const debouncedSearch = useDebouncedValue(search, 200).trim().toLowerCase();
+
+  function categoryMatches(c: Category): boolean {
+    if (!debouncedSearch) return true;
+    return (
+      c.name.toLowerCase().includes(debouncedSearch) ||
+      (c.description ?? '').toLowerCase().includes(debouncedSearch)
+    );
+  }
+
+  const activeCategories = categories.filter((c) => !c.archived && categoryMatches(c));
+  const archivedCategories = categories.filter((c) => c.archived && categoryMatches(c));
+
+  async function handleArchive(id: number) {
+    if (!checkOnlineOrSetError()) return;
+    try {
+      await db.categories.update(id, { archived: true });
+      await updateCategory(id, { archived: true });
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to archive category');
+      await refresh();
+    }
+  }
+
+  async function handleUnarchive(id: number) {
+    if (!checkOnlineOrSetError()) return;
+    try {
+      await db.categories.update(id, { archived: false });
+      await updateCategory(id, { archived: false });
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to unarchive category');
+      await refresh();
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -123,6 +170,13 @@ export default function CategoriesClient() {
 
       {error && <p className="text-sm text-rose-400 bg-rose-950/40 border border-rose-800/50 rounded-md px-3 py-2">{error}</p>}
 
+      <SearchInput
+        value={search}
+        onChange={setSearch}
+        placeholder="Search categories..."
+        ariaLabel="Search categories"
+      />
+
       <div className="bg-slate-950/80 border border-slate-800 rounded-xl shadow overflow-hidden overflow-x-auto">
         <table className="min-w-[500px] w-full text-sm">
           <thead className="bg-slate-900 text-left text-slate-400">
@@ -135,7 +189,7 @@ export default function CategoriesClient() {
           </thead>
           <tbody className="divide-y divide-slate-800 text-slate-200">
             {activeCategories.length === 0 ? (
-              <tr><td colSpan={4} className="p-6 text-center text-slate-500">No categories yet.</td></tr>
+              <tr><td colSpan={4} className="p-6 text-center text-slate-500">{debouncedSearch ? <>No categories found for &quot;{search.trim()}&quot;</> : 'No categories yet.'}</td></tr>
             ) : (
               activeCategories.map((c) => {
                 const count = allProducts.filter((p) => p.categoryId === c.id).length;
@@ -158,6 +212,16 @@ export default function CategoriesClient() {
                             <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                           </svg>
                         </button>
+                        <button
+                          onClick={() => handleArchive(c.id)}
+                          disabled={isOffline}
+                          className="text-slate-400 hover:text-amber-400 disabled:opacity-40 transition cursor-pointer"
+                          title={isOffline ? 'This action requires an internet connection' : 'Archive category'}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                          </svg>
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -168,32 +232,23 @@ export default function CategoriesClient() {
         </table>
       </div>
 
-      {archivedCategories.length > 0 && (
-        <div className="bg-slate-950/80 border border-slate-800 rounded-xl shadow overflow-hidden overflow-x-auto">
-          <div className="bg-amber-950/30 px-4 py-2 border-b border-slate-800">
-            <h2 className="text-sm font-semibold text-amber-400">Archived Categories ({archivedCategories.length})</h2>
-          </div>
-          <table className="min-w-full text-sm">
-            <tbody className="divide-y divide-slate-800 text-slate-400">
-              {archivedCategories.map((c) => (
-                <tr key={c.id} className="hover:bg-slate-900/50">
-                  <td className="p-3 font-medium text-slate-400">{c.name}</td>
-                  <td className="p-3 text-slate-500">{c.description || '—'}</td>
-                  <td className="p-3">
-                    <button
-                      onClick={() => openEdit(c)}
-                      disabled={isOffline}
-                      className="text-xs text-emerald-400 font-medium hover:underline disabled:opacity-40 cursor-pointer"
-                    >
-                      ↩ Unarchive (Edit)
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <ArchivedSection title="Archived Categories" count={archivedCategories.length}>
+        {archivedCategories.map((c) => (
+          <tr key={c.id} className="hover:bg-slate-900/50">
+            <td className="p-3 font-medium text-slate-400">{c.name}</td>
+            <td className="p-3 text-slate-500">{c.description || '—'}</td>
+            <td className="p-3">
+              <button
+                onClick={() => handleUnarchive(c.id)}
+                disabled={isOffline}
+                className="text-xs text-emerald-400 font-medium hover:underline disabled:opacity-40 cursor-pointer"
+              >
+                ↩ Unarchive (Edit)
+              </button>
+            </td>
+          </tr>
+        ))}
+      </ArchivedSection>
 
       {showModal && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4">

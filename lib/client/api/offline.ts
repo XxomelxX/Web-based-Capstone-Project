@@ -1,6 +1,7 @@
 ﻿import {
   getCachedProducts,
   saveProducts,
+  mergeProducts,
   getCachedCategories,
   saveCategories,
   getCachedSettings,
@@ -79,10 +80,11 @@ export async function getArchivedProductsOffline<T = Record<string, unknown>>():
       const res = await fetch('/api/products?archived=true');
       if (!res.ok) throw new Error('Failed to load archived products');
       const data = (await res.json()) as T[];
-      await saveProducts(data as Record<string, unknown>[]);
+      // Merge (no clear): this is a partial list and must not wipe active rows.
+      await mergeProducts(data as Record<string, unknown>[]);
       return data;
     },
-    saveProducts as (value: T[]) => Promise<void>
+    mergeProducts as (value: T[]) => Promise<void>
   );
 }
 
@@ -202,14 +204,15 @@ export async function getLowStockOffline() {
       const res = await fetch('/api/lowstock');
       if (!res.ok) throw new Error('Failed to load low stock');
       const data = await res.json();
-      await saveProducts(data.products);
+      // Partial (active-only) list: merge, never replace the whole table.
+      await mergeProducts(data.products);
       if (data.threshold !== undefined) {
         await saveSettings({ ...((await getCachedSettings()) ?? {}), lowStockThreshold: data.threshold });
       }
       return data;
     },
     async (data) => {
-      await saveProducts(data.products);
+      await mergeProducts(data.products);
     }
   );
 }

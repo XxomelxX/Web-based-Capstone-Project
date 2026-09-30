@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
 import { formatTime, formatDateTime } from '@/lib/client/timeUtils';
-import { getProducts, Product } from '@/lib/client/api/products';
+import { getActiveProducts, Product } from '@/lib/client/api/products';
 import { checkout, CheckoutResult } from '@/lib/client/api/pos';
 import { getSettings, getCustomersLight, recordUtangPayment } from '@/lib/client/api/inventory';
 import { addUtangOffline } from '@/lib/client/api/offline';
@@ -92,14 +92,16 @@ export default function POSClient() {
 
   const refresh = useCallback(async () => {
     setProductsLoading(true);
-    getProducts().then(setProducts).catch(() => {}).finally(() => setProductsLoading(false));
+    // getActiveProducts() merges without clearing, so archived rows survive.
+    getActiveProducts().then(setProducts).catch(() => {}).finally(() => setProductsLoading(false));
     getSettings<StoreSettings>().then(setSettings);
     loadShiftData();
     getCustomersLight().then(setCustomers).catch(() => {});
     getCachedUtangEntries<{ customerId: number; remainingBalance: number; status: string }>().then(setUtangEntries).catch(() => {});
   }, []);
 
-  const products = cachedProducts?.length ? cachedProducts : fallbackProducts;
+  const cachedActiveProducts = cachedProducts?.filter((p) => !p.archived);
+  const products = cachedActiveProducts?.length ? cachedActiveProducts : fallbackProducts;
   const isLoadingProducts = productsLoading && cachedProducts === undefined && fallbackProducts.length === 0;
 
   useRealtime({
@@ -253,7 +255,7 @@ export default function POSClient() {
         setSelectedCustomerId(0);
         setNewCustomerName('');
         setShowNewCustomer(false);
-        void getProducts().then(setProducts).catch(() => {});
+        void getActiveProducts().then(setProducts).catch(() => {});
         if ((result as Record<string, unknown>).offline && activeShift) {
           const updatedShift = applyOfflineSaleToShift(activeShift, result.totalAmount, 'cash');
           cacheActiveShift(updatedShift);
@@ -273,7 +275,7 @@ export default function POSClient() {
         setReceipt(result);
         setCart([]);
         setTendered(0);
-        void getProducts().then(setProducts).catch(() => {});
+        void getActiveProducts().then(setProducts).catch(() => {});
 
         if (result.offline && activeShift) {
           const updatedShift = applyOfflineSaleToShift(activeShift, result.total, paymentMethod);

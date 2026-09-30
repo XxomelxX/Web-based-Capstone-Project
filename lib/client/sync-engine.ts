@@ -1,7 +1,7 @@
 // Sync engine: push pending batch → pull delta → merge (blog §10).
 // Server-wins conflicts; exponential backoff 1s→2s→4s→8s→16s, max 5.
 import { getPendingActions, markActionSynced, markActionFailed, offlineDb } from '@/lib/client/offlineQueue';
-import { saveProducts, saveCategories, saveCachedCustomers, saveSettings, saveUtangEntries, getLastSyncedAt, setLastSyncedAt } from '@/lib/client/offline';
+import { mergeProducts, saveCategories, saveCachedCustomers, saveSettings, saveUtangEntries, getLastSyncedAt, setLastSyncedAt } from '@/lib/client/offline';
 
 let retryCount = 0;
 const MAX_RETRIES = 5;
@@ -91,7 +91,9 @@ export async function performSync(): Promise<SyncResult> {
         settings: Record<string, unknown> | null;
         syncedAt: string;
       };
-      if (pull.products) await saveProducts(pull.products);
+      // Delta pull: upsert only — the delta is a partial list and must never
+      // replace (clear) the whole products table.
+      if (pull.products) await mergeProducts(pull.products);
       if (pull.categories) await saveCategories(pull.categories);
       if (pull.customers) await saveCachedCustomers(pull.customers);
       if (pull.utang) await saveUtangEntries(pull.utang);

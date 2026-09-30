@@ -1,11 +1,11 @@
 ﻿'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/client/offline';
 import {
-  getProducts,
-  getArchivedProducts,
+  fetchActiveProductsOnline,
+  fetchArchivedProductsOnline,
   addProduct,
   updateProduct,
   archiveProduct,
@@ -16,7 +16,18 @@ import { getCategories, Category } from '@/lib/client/api/categories';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
+import { ArchivedSection } from '@/components/ArchivedSection';
+import { SearchInput } from '@/components/SearchInput';
 import { formatDate } from '@/lib/client/timeUtils';
+
+function useDebouncedValue(value: string, delayMs: number): string {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(t);
+  }, [value, delayMs]);
+  return debounced;
+}
 
 const GOODS_BADGE: Record<string, string> = {
   perishable: 'bg-orange-100 text-orange-700',
@@ -51,7 +62,7 @@ export default function ProductsClient() {
   const liveCategories = useLiveQuery(() => db.categories.toArray());
   const [showModal, setShowModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [tab, setTab] = useState<'active' | 'archived'>('active');
+  const [search, setSearch] = useState('');
   const [form, setForm] = useState({
     name: '',
     categoryId: '',
@@ -70,26 +81,60 @@ export default function ProductsClient() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const categories: Category[] = (liveCategories ?? []) as any;
 
-  const products = tab === 'active'
-    ? allProducts.filter((p) => !p.archived)
-    : allProducts.filter((p) => p.archived);
+  const debouncedSearch = useDebouncedValue(search, 200).trim().toLowerCase();
+
+  function productMatches(p: Product): boolean {
+    if (!debouncedSearch) return true;
+    const categoryName =
+      p.category?.name ?? categories.find((c) => c.id === p.categoryId)?.name ?? '';
+    return (
+      p.name.toLowerCase().includes(debouncedSearch) ||
+      (p.barcode ?? '').toLowerCase().includes(debouncedSearch) ||
+      categoryName.toLowerCase().includes(debouncedSearch)
+    );
+  }
+
+  const activeProducts = allProducts.filter((p) => !p.archived && productMatches(p));
+  const archivedProducts = allProducts.filter((p) => p.archived && productMatches(p));
+
+  // In-flight guard: archive triggers both an explicit refresh() and an
+  // SSE-triggered refresh(); coalesce overlaps so concurrent runs can't
+  // interleave partial writes.
+  const refreshPromiseRef = useRef<Promise<void> | null>(null);
 
   const refresh = useCallback(async () => {
-    const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
-    setIsOffline(offlineNow);
-    if (offlineNow) return;
+    if (refreshPromiseRef.current) {
+      await refreshPromiseRef.current.catch(() => {});
+      return;
+    }
+    const run = (async () => {
+      const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
+      setIsOffline(offlineNow);
+      if (offlineNow) return;
 
+      try {
+        // Side-effect-free fetches: no intermediate Dexie writes, so overlapping
+        // refreshes can't wipe each other's subset. Single authoritative write below.
+        const [activeProds, archivedProds, cats] = await Promise.all([
+          fetchActiveProductsOnline(),
+          fetchArchivedProductsOnline(),
+          getCategories(),
+        ]);
+        await db.transaction('rw', db.products, async () => {
+          await db.products.clear();
+          await db.products.bulkPut([...activeProds, ...archivedProds] as unknown as Record<string, unknown>[]);
+        });
+        await db.categories.bulkPut(cats as unknown as Record<string, unknown>[]);
+        setIsCached(false);
+      } catch {
+        setIsCached(true);
+      }
+    })();
+    refreshPromiseRef.current = run;
     try {
-      const [activeProds, archivedProds, cats] = await Promise.all([
-        getProducts(),
-        getArchivedProducts(),
-        getCategories(),
-      ]);
-      await db.products.bulkPut([...activeProds, ...archivedProds] as unknown as Record<string, unknown>[]);
-      await db.categories.bulkPut(cats as unknown as Record<string, unknown>[]);
-      setIsCached(false);
-    } catch {
-      setIsCached(true);
+      await run;
+    } finally {
+      refreshPromiseRef.current = null;
     }
   }, []);
 
@@ -174,20 +219,25 @@ export default function ProductsClient() {
   async function handleArchive(id: number) {
     if (!checkOnlineOrSetError()) return;
     try {
+      // Optimistic Dexie update so the row moves immediately without a reload.
+      await db.products.update(id, { archived: true });
       await archiveProduct(id);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to archive product');
+      await refresh();
     }
   }
 
   async function handleUnarchive(id: number) {
     if (!checkOnlineOrSetError()) return;
     try {
+      await db.products.update(id, { archived: false });
       await unarchiveProduct(id);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to unarchive product');
+      await refresh();
     }
   }
 
@@ -210,20 +260,12 @@ export default function ProductsClient() {
         </button>
       </div>
 
-      <div className="flex gap-1 bg-slate-900 rounded-lg p-1 w-fit border border-slate-800">
-        <button
-          onClick={() => setTab('active')}
-          className={`px-4 py-1.5 rounded-md text-sm font-medium transition cursor-pointer ${tab === 'active' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
-        >
-          Active
-        </button>
-        <button
-          onClick={() => setTab('archived')}
-          className={`px-4 py-1.5 rounded-md text-sm font-medium transition cursor-pointer ${tab === 'archived' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
-        >
-          Archived
-        </button>
-      </div>
+      <SearchInput
+        value={search}
+        onChange={setSearch}
+        placeholder="Search products..."
+        ariaLabel="Search products"
+      />
 
       {error && <p className="text-sm text-rose-400 bg-rose-950/40 border border-rose-800/50 rounded-md px-3 py-2">{error}</p>}
 
@@ -242,14 +284,16 @@ export default function ProductsClient() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800 text-slate-200">
-            {products.length === 0 ? (
+            {activeProducts.length === 0 ? (
               <tr>
                 <td colSpan={8} className="p-6 text-center text-slate-500">
-                  {tab === 'active' ? 'No active products.' : 'No archived products.'}
+                  {debouncedSearch
+                    ? <>No products found for &quot;{search.trim()}&quot;</>
+                    : 'No active products.'}
                 </td>
               </tr>
             ) : (
-              products.map((p) => (
+              activeProducts.map((p) => (
                 <tr key={p.id} className="hover:bg-slate-900/50">
                   <td className="p-3 font-medium text-slate-100">{p.name}</td>
                   <td className="p-3 text-slate-400">{p.category?.name || 'Uncategorized'}</td>
@@ -279,39 +323,26 @@ export default function ProductsClient() {
                   </td>
                   <td className="p-3">
                     <div className="flex items-center gap-2">
-                      {tab === 'active' ? (
-                        <>
-                          <button
-                            onClick={() => openEdit(p)}
-                            disabled={isOffline}
-                            className="text-slate-400 hover:text-cyan-400 disabled:opacity-40 transition cursor-pointer"
-                            title={isOffline ? 'This action requires an internet connection' : 'Edit product'}
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={() => handleArchive(p.id)}
-                            disabled={isOffline}
-                            className="text-slate-400 hover:text-amber-400 disabled:opacity-40 transition cursor-pointer"
-                            title={isOffline ? 'This action requires an internet connection' : 'Archive product'}
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-                            </svg>
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          onClick={() => handleUnarchive(p.id)}
-                          disabled={isOffline}
-                          className="text-xs text-emerald-400 font-medium hover:underline disabled:opacity-40 cursor-pointer"
-                          title={isOffline ? 'This action requires an internet connection' : 'Unarchive product'}
-                        >
-                          Unarchive
-                        </button>
-                      )}
+                      <button
+                        onClick={() => openEdit(p)}
+                        disabled={isOffline}
+                        className="text-slate-400 hover:text-cyan-400 disabled:opacity-40 transition cursor-pointer"
+                        title={isOffline ? 'This action requires an internet connection' : 'Edit product'}
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => handleArchive(p.id)}
+                        disabled={isOffline}
+                        className="text-slate-400 hover:text-amber-400 disabled:opacity-40 transition cursor-pointer"
+                        title={isOffline ? 'This action requires an internet connection' : 'Archive product'}
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                        </svg>
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -320,6 +351,32 @@ export default function ProductsClient() {
           </tbody>
         </table>
       </div>
+
+      <ArchivedSection title="Archived Products" count={archivedProducts.length}>
+        {archivedProducts.map((p) => (
+          <tr key={p.id} className="hover:bg-slate-900/50">
+            <td className="p-3 font-medium text-slate-400">{p.name}</td>
+            <td className="p-3 text-slate-500">
+              {p.category?.name
+                ?? categories.find((c) => c.id === p.categoryId)?.name
+                ?? 'Uncategorized'}
+              {' · '}₱{p.price}
+              {' · '}Stock: {p.stock}
+              {p.barcode ? ` · ${p.barcode}` : ''}
+            </td>
+            <td className="p-3">
+              <button
+                onClick={() => handleUnarchive(p.id)}
+                disabled={isOffline}
+                className="text-xs text-emerald-400 font-medium hover:underline disabled:opacity-40 cursor-pointer"
+                title={isOffline ? 'This action requires an internet connection' : 'Unarchive product'}
+              >
+                ↩ Unarchive (Edit)
+              </button>
+            </td>
+          </tr>
+        ))}
+      </ArchivedSection>
 
       {showModal && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4">

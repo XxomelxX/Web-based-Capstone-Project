@@ -1,4 +1,5 @@
-﻿import { getProductsOffline } from '@/lib/client/api/offline';
+﻿import { getProductsOffline, getArchivedProductsOffline } from '@/lib/client/api/offline';
+import { getCachedProducts, mergeProducts } from '@/lib/client/offline';
 
 export interface Product {
   id: number;
@@ -23,7 +24,41 @@ export async function getProducts(): Promise<Product[]> {
 }
 
 export async function getArchivedProducts(): Promise<Product[]> {
-  return getProductsOffline<Product>().then((prods) => prods.filter((p) => p.archived));
+  return getArchivedProductsOffline<Product>();
+}
+
+/**
+ * Raw online fetch of active products with NO Dexie side effects.
+ * Use when the caller performs its own authoritative cache write
+ * (e.g. Products page merges active + archived atomically).
+ */
+export async function fetchActiveProductsOnline(): Promise<Product[]> {
+  const res = await fetch('/api/products', { cache: 'no-store' });
+  if (!res.ok) throw new Error('Failed to load products');
+  return res.json();
+}
+
+/**
+ * Raw online fetch of archived products with NO Dexie side effects.
+ */
+export async function fetchArchivedProductsOnline(): Promise<Product[]> {
+  const res = await fetch('/api/products?archived=true', { cache: 'no-store' });
+  if (!res.ok) throw new Error('Failed to load archived products');
+  return res.json();
+}
+
+/**
+ * Active-only product list that NEVER wipes archived rows from Dexie.
+ * Online: fetches active list and upserts (merge). Offline: reads cache.
+ * Use for sale lists (POS) that only need active products.
+ */
+export async function getActiveProducts(): Promise<Product[]> {
+  if (typeof window !== 'undefined' && !navigator.onLine) {
+    return (await getCachedProducts<Product>()).filter((p) => !p.archived);
+  }
+  const active = await fetchActiveProductsOnline();
+  await mergeProducts(active as unknown as Record<string, unknown>[]);
+  return active;
 }
 
 function checkOnlineOrThrow() {
