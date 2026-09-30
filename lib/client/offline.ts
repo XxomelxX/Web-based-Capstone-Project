@@ -245,10 +245,22 @@ export async function warmStaticAssets() {
   if (!canUseWindow() || !navigator.onLine) return;
   try {
     const cache = await caches.open('static-assets-v1');
+    const origin = window.location.origin;
+    // NOTE: el.href / el.src return ABSOLUTE URLs, so match on pathname,
+    // not startsWith('/_next/') (which never matches an absolute URL and
+    // previously caused zero CSS files to be warmed).
+    const isLocalNextAsset = (absoluteUrl: string) => {
+      try {
+        const u = new URL(absoluteUrl);
+        return u.origin === origin && u.pathname.startsWith('/_next/');
+      } catch {
+        return false;
+      }
+    };
     // Collect CSS <link> tags currently in the DOM (guaranteed current hash)
     const cssLinks = Array.from(document.querySelectorAll('link[rel="stylesheet"]'))
       .map((el) => (el as HTMLLinkElement).href)
-      .filter((href) => href.startsWith('/_next/'));
+      .filter(isLocalNextAsset);
     // Also grab critical JS chunks from script tags
     const jsSrcs = Array.from(document.querySelectorAll('script[src]'))
       .map((el) => (el as HTMLScriptElement).src)
