@@ -3,8 +3,8 @@ import withPWAInit from '@ducanh2912/next-pwa';
 
 const withPWA = withPWAInit({
   dest: 'public',
-  cacheOnFrontEndNav: false,
-  aggressiveFrontEndNavCaching: false,
+  cacheOnFrontEndNav: true,
+  aggressiveFrontEndNavCaching: true,
   reloadOnOnline: true,
   disable: process.env.NODE_ENV === 'development',
   workboxOptions: {
@@ -58,6 +58,18 @@ const withPWA = withPWAInit({
           cacheName: 'api-cache-v1',
           networkTimeoutSeconds: 3,
           expiration: { maxEntries: 50, maxAgeSeconds: 86400 },
+        },
+      },
+      {
+        // Next.js App Router RSC payloads (/_next/data + ?_rsc=). Without
+        // this, an offline hard refresh can fail the RSC request and render
+        // the "__next_error__ / This page couldn't load" screen even when
+        // the HTML shell is cached.
+        urlPattern: /\/_next\/data\//,
+        handler: 'NetworkFirst',
+        options: {
+          cacheName: 'pages-cache-v2',
+          networkTimeoutSeconds: 3,
         },
       },
       {
