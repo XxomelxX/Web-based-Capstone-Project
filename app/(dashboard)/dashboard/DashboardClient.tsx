@@ -42,13 +42,30 @@ export default function DashboardClient() {
   const [isCached, setIsCached] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
   const [chartData, setChartData] = useState<ChartData | null>(null);
+  const [slowLoad, setSlowLoad] = useState(false);
+
+  const withTimeout = useCallback(async <T,>(promise: Promise<T>, ms = 20000, label = 'Request'): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((_, reject) => {
+          timer = setTimeout(() => reject(new Error(`${label} timed out. Please retry.`)), ms);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }, []);
 
   const loadReports = useCallback(async (selectedRange: 'today' | 'week' | 'month' | 'year' | 'all') => {
     setLoading(true);
+    setSlowLoad(false);
     setError('');
     const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
     setIsOffline(offlineNow);
 
+    const slowTimer = setTimeout(() => setSlowLoad(true), 8000);
     try {
       if (offlineNow) {
         const cached = getCategory2Cache<ReportData>(`dashboard_${selectedRange}`);
@@ -60,7 +77,7 @@ export default function DashboardClient() {
           setData(null);
         }
       } else {
-        const reportData = await getReports<ReportData>(selectedRange);
+        const reportData = await withTimeout(getReports<ReportData>(selectedRange), 25000, 'Dashboard report');
         setData(reportData);
         saveCategory2Cache(`dashboard_${selectedRange}`, reportData);
         setIsCached(false);
@@ -77,9 +94,11 @@ export default function DashboardClient() {
         setData(null);
       }
     } finally {
+      clearTimeout(slowTimer);
+      setSlowLoad(false);
       setLoading(false);
     }
-  }, []);
+  }, [withTimeout]);
 
   const loadChartData = useCallback(async (selectedRange: 'today' | 'week' | 'month' | 'year' | 'all') => {
     const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
@@ -89,11 +108,20 @@ export default function DashboardClient() {
       return;
     }
     try {
-      const res = await fetch(`/api/reports/chart-data?range=${selectedRange}`);
-      if (res.ok) {
-        const data = await res.json();
-        setChartData(data);
-        saveCategory2Cache(`chart_${selectedRange}`, data);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 25000);
+      try {
+        const res = await fetch(`/api/reports/chart-data?range=${selectedRange}`, { signal: controller.signal });
+        if (res.ok) {
+          const data = await res.json();
+          setChartData(data);
+          saveCategory2Cache(`chart_${selectedRange}`, data);
+        }
+      } catch {
+        const cached = getCategory2Cache<ChartData>(`chart_${selectedRange}`);
+        if (cached.data) setChartData(cached.data);
+      } finally {
+        clearTimeout(timer);
       }
     } catch {
       const cached = getCategory2Cache<ChartData>(`chart_${selectedRange}`);
@@ -170,6 +198,18 @@ export default function DashboardClient() {
       {loading ? (
         <div className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-8 ">
           <p className="text-slate-400">Loading dashboard analytics…</p>
+          {slowLoad && (
+            <div className="mt-4 flex flex-col gap-2">
+              <p className="text-sm text-amber-300">This is taking longer than usual. You can wait or retry.</p>
+              <button
+                type="button"
+                onClick={() => loadReports(range)}
+                className="inline-flex w-fit items-center rounded-3xl bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 cursor-pointer"
+              >
+                Retry now
+              </button>
+            </div>
+          )}
         </div>
       ) : error ? (
         <div className="rounded-[2rem] border border-rose-500/20 bg-rose-500/5 p-6 text-rose-100 ">

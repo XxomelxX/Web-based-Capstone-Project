@@ -13,13 +13,38 @@ export function MobileTopBar() {
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [logoOk, setLogoOk] = useState(true);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     const confirmed = window.confirm('Are you sure you want to log out?');
     if (!confirmed) return;
-    if (typeof window !== 'undefined') {
-      sessionStorage.removeItem('offlineSession');
+    try {
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('offlineSession');
+        if ('caches' in window) {
+          try {
+            const names = await caches.keys();
+            await Promise.all(
+              names
+                .filter((n) => n.startsWith('pages'))
+                .map(async (n) => {
+                  const cache = await caches.open(n);
+                  const keys = await cache.keys();
+                  await Promise.all(
+                    keys
+                      .filter((r) => {
+                        const url = new URL(r.url, window.location.origin);
+                        return url.pathname !== '/login' && url.pathname !== '/offline';
+                      })
+                      .map((r) => cache.delete(r))
+                  );
+                })
+            );
+          } catch { /* cache eviction best-effort */ }
+        }
+      }
+      await signOut({ callbackUrl: '/login' });
+    } catch {
+      window.location.href = '/login';
     }
-    signOut({ callbackUrl: '/login' });
   };
 
   return (

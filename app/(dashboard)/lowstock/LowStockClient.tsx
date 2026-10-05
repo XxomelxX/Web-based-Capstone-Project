@@ -6,6 +6,7 @@ import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { getCategory2Cache, saveCategory2Cache } from '@/lib/client/localStorageCache';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
 import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
+import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
 
 interface LowStockProduct {
   id: number;
@@ -22,6 +23,8 @@ interface LowStockResponse {
 }
 
 export default function LowStockClient() {
+  const { user } = useCurrentUser();
+  const isAdmin = user?.role === 'admin';
   const [products, setProducts] = useState<LowStockProduct[]>([]);
   const [threshold, setThreshold] = useState(20);
   const [search, setSearch] = useState('');
@@ -66,6 +69,8 @@ export default function LowStockClient() {
   useRealtime({
     restock: refresh,
     products: refresh,
+    lowstock: refresh,
+    settings: refresh,
   });
 
   /* eslint-disable react-hooks/set-state-in-effect */
@@ -87,10 +92,16 @@ export default function LowStockClient() {
   }, [refresh]);
 
   const filtered = products.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()));
-  const critical = products.filter((p) => p.stock < 10).length;
-  const warning = products.filter((p) => p.stock >= 10 && p.stock < threshold).length;
+  const criticalCutoff = Math.floor(threshold / 2);
+  const isCritical = (stock: number) => stock < criticalCutoff;
+  const critical = products.filter((p) => isCritical(p.stock)).length;
+  const warning = products.filter((p) => p.stock >= criticalCutoff && p.stock < threshold).length;
 
   function openRestockModal(p: LowStockProduct) {
+    if (!isAdmin) {
+      setError('Only admins can restock products');
+      return;
+    }
     if (typeof window !== 'undefined' && !navigator.onLine) {
       setError('This action requires an internet connection');
       return;
@@ -102,6 +113,10 @@ export default function LowStockClient() {
   async function handleRestock(e: React.FormEvent) {
     e.preventDefault();
     if (!restockTarget) return;
+    if (!isAdmin) {
+      setError('Only admins can restock products');
+      return;
+    }
     if (typeof window !== 'undefined' && !navigator.onLine) {
       setError('This action requires an internet connection');
       return;
@@ -133,8 +148,8 @@ export default function LowStockClient() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-        <StatCard label={`Critical (<10)`} value={critical} accent="text-rose-400" />
-        <StatCard label="Warning (10-19)" value={warning} accent="text-amber-400" />
+        <StatCard label={`Critical (<${criticalCutoff})`} value={critical} accent="text-rose-400" />
+        <StatCard label={`Warning (${criticalCutoff}-${threshold - 1})`} value={warning} accent="text-amber-400" />
         <StatCard label="Total Restock Needed" value={products.length} accent="text-cyan-400" />
       </div>
 
@@ -156,7 +171,7 @@ export default function LowStockClient() {
               <th className="p-3">Price</th>
               <th className="p-3">Current Stock</th>
               <th className="p-3">Status</th>
-              <th className="p-3">Actions</th>
+              {isAdmin && <th className="p-3">Actions</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800 text-slate-200">
@@ -169,30 +184,32 @@ export default function LowStockClient() {
                   <span className="bg-rose-500/20 text-rose-300 border border-rose-500/30 rounded-full px-2.5 py-0.5 text-xs font-semibold">{p.stock}</span>
                 </td>
                 <td className="p-3">
-                  <span className={`text-xs font-bold px-2 py-1 rounded ${p.stock < 10 ? 'bg-rose-600 text-white' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'}`}>
-                    {p.stock < 10 ? 'CRITICAL' : 'WARNING'}
+                  <span className={`text-xs font-bold px-2 py-1 rounded ${isCritical(p.stock) ? 'bg-rose-600 text-white' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'}`}>
+                    {isCritical(p.stock) ? 'CRITICAL' : 'WARNING'}
                   </span>
                 </td>
-                <td className="p-3">
-                  <button
-                    onClick={() => openRestockModal(p)}
-                    disabled={isOffline}
-                    className="text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded px-3 py-1 font-semibold transition cursor-pointer"
-                    title={isOffline ? 'This action requires an internet connection' : 'Restock product'}
-                  >
-                    Restock
-                  </button>
-                </td>
+                {isAdmin && (
+                  <td className="p-3">
+                    <button
+                      onClick={() => openRestockModal(p)}
+                      disabled={isOffline}
+                      className="text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded px-3 py-1 font-semibold transition cursor-pointer"
+                      title={isOffline ? 'This action requires an internet connection' : 'Restock product'}
+                    >
+                      Restock
+                    </button>
+                  </td>
+                )}
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><td colSpan={6} className="p-6 text-center text-slate-500">No low stock items</td></tr>
+              <tr><td colSpan={isAdmin ? 6 : 5} className="p-6 text-center text-slate-500">No low stock items</td></tr>
             )}
           </tbody>
         </table>
       </div>
 
-      {restockTarget && (
+      {isAdmin && restockTarget && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <form onSubmit={handleRestock} className="bg-slate-900 border border-slate-700 rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">

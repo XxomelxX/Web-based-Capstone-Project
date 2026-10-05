@@ -73,6 +73,12 @@ const withPWA = withPWAInit({
         },
       },
       {
+        // Auth-gated app pages must NEVER be served from cache to a
+        // logged-out user: always go to network (middleware redirects to /login).
+        urlPattern: /\/(dashboard|pos|products|categories|orders|credit|expenses|reports|users|settings|lowstock|transaction-log|item-log)/,
+        handler: 'NetworkOnly',
+      },
+      {
         urlPattern: /.*/,
         handler: 'NetworkFirst',
         options: {

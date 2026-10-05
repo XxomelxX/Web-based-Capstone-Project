@@ -57,20 +57,54 @@ export function TopNavbar() {
 
   useEffect(() => {
     if (!moreOpen && !menuOpen) return;
-    const handler = () => { setMoreOpen(false); setMenuOpen(false); };
-    document.addEventListener('click', handler);
-    return () => document.removeEventListener('click', handler);
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest?.('[data-navbar-menu]')) return;
+      setMoreOpen(false); setMenuOpen(false);
+    };
+    // pointerdown fires before click, and toggle buttons stopPropagation,
+    // so opening clicks never reach this handler.
+    document.addEventListener('pointerdown', handler);
+    return () => document.removeEventListener('pointerdown', handler);
   }, [moreOpen, menuOpen]);
 
+  // useCurrentUser() returns null until after mount (SSR-safe), so the first
+  // client render matches the server HTML — no hydration mismatch.
   const role = user?.role ?? 'cashier';
   const links = role === 'admin' ? ADMIN_LINKS : CASHIER_LINKS;
   const moreLinks = role === 'admin' ? ADMIN_MORE : CASHIER_MORE;
 
-  const handleLogout = () => {
-    if (typeof window !== 'undefined') {
-      sessionStorage.removeItem('offlineSession');
+  const handleLogout = async () => {
+    try {
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('offlineSession');
+        // Evict cached app-shell HTML so Back button can't resurrect dashboard after logout.
+        if ('caches' in window) {
+          try {
+            const names = await caches.keys();
+            await Promise.all(
+              names
+                .filter((n) => n.startsWith('pages'))
+                .map(async (n) => {
+                  const cache = await caches.open(n);
+                  const keys = await cache.keys();
+                  await Promise.all(
+                    keys
+                      .filter((r) => {
+                        const url = new URL(r.url, window.location.origin);
+                        return url.pathname !== '/login' && url.pathname !== '/offline';
+                      })
+                      .map((r) => cache.delete(r))
+                  );
+                })
+            );
+          } catch { /* cache eviction best-effort */ }
+        }
+      }
+      await signOut({ callbackUrl: '/login' });
+    } catch {
+      if (typeof window !== 'undefined') window.location.href = '/login';
     }
-    signOut({ callbackUrl: '/login' });
   };
 
   return (
@@ -105,9 +139,9 @@ export function TopNavbar() {
           </Link>
         ))}
 
-        <div className="relative">
+        <div className="relative" data-navbar-menu>
           <button
-            onClick={() => setMoreOpen(!moreOpen)}
+            onClick={(e) => { e.stopPropagation(); setMoreOpen(!moreOpen); }}
             className={`nav-link flex items-center gap-1 px-2 py-1 rounded cursor-pointer ${moreOpen ? 'active text-white' : 'text-green-100'}`}
           >
             More <ChevronDown size={16} />
@@ -136,9 +170,9 @@ export function TopNavbar() {
           {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
         </button>
 
-        <div className="relative">
+        <div className="relative" data-navbar-menu>
           <button
-            onClick={() => setMenuOpen((o) => !o)}
+            onClick={(e) => { e.stopPropagation(); setMenuOpen((o) => !o); }}
             className="flex items-center gap-2 cursor-pointer"
             aria-label="User menu"
           >

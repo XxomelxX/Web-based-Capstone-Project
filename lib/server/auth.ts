@@ -18,10 +18,6 @@ export const authOptions: NextAuthOptions = {
         try {
           if (!credentials?.username || !credentials?.password) return null;
 
-if (process.env.NODE_ENV !== 'production') {
-        console.log('[AUTH] authorize credentials:', credentials);
-      }
-
       const user = await prisma.user.findUnique({
         where: { username: credentials.username },
       });

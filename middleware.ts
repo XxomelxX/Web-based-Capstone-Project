@@ -2,7 +2,13 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 
-const CSP = "script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; frame-ancestors 'none';";
+const CSP =
+  process.env.NODE_ENV === 'production'
+    ? "script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; frame-ancestors 'none';"
+    : // Development: Next.js React Refresh / HMR evaluates strings at runtime and
+      // requires 'unsafe-eval'. Without it the dev runtime throws EvalError and
+      // client interactivity (login submit, etc.) silently dies.
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' ws:; worker-src 'self' blob:; frame-ancestors 'none';";
 
 // Paths that should NOT get CSP headers (SW assets, APIs, static files)
 const CSP_EXEMPT = [
@@ -61,6 +67,7 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
+    '/',
     '/login',
     '/forgot-password',
     '/dashboard/:path*',

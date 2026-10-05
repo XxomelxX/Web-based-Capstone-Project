@@ -1,7 +1,7 @@
 'use client';
 
 import { useSession } from 'next-auth/react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 export interface CurrentUser {
   id: number | string;
@@ -25,7 +25,21 @@ function readOfflineSession(): CurrentUser | null {
 
 export function useCurrentUser(): { user: CurrentUser | null; status: 'loading' | 'authenticated' | 'unauthenticated' } {
   const { data: session, status: sessionStatus } = useSession();
-  const [offlineUser] = useState<CurrentUser | null>(readOfflineSession);
+  // sessionStorage doesn't exist during SSR/prerender, and reading it during the
+  // first client render produces HTML that differs from the server (hydration
+  // mismatch). Defer all user resolution until after mount so the first client
+  // render is identical to the server render (user: null).
+  const [mounted, setMounted] = useState(false);
+  const [offlineUser, setOfflineUser] = useState<CurrentUser | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+    setOfflineUser(readOfflineSession());
+  }, []);
+
+  if (!mounted) {
+    return { user: null, status: 'loading' };
+  }
 
   // 1. Prefer real NextAuth session if available
   if (session?.user) {
@@ -41,7 +55,7 @@ export function useCurrentUser(): { user: CurrentUser | null; status: 'loading' 
     };
   }
 
-  // 2. Fall back to local offline session storage (available on first render)
+  // 2. Fall back to local offline session storage
   if (offlineUser) {
     return {
       user: offlineUser,
