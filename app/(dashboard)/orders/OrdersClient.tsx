@@ -65,10 +65,6 @@ export default function OrdersClient() {
   const totalItems = completeOrders.reduce((s, o) => s + o.items.reduce((si, i) => si + i.quantity, 0), 0);
 
   function openVoidModal(o: Order) {
-    if (typeof window !== 'undefined' && !navigator.onLine) {
-      setError('This action requires an internet connection');
-      return;
-    }
     setError('');
     setVoiding(o);
   }
@@ -76,10 +72,6 @@ export default function OrdersClient() {
   async function handleVoid(e: React.FormEvent) {
     e.preventDefault();
     if (!voiding) return;
-    if (typeof window !== 'undefined' && !navigator.onLine) {
-      setError('This action requires an internet connection');
-      return;
-    }
     setError('');
     try {
       await voidTransaction(voiding.id, reason, adminUsername, adminPassword);
@@ -151,9 +143,7 @@ export default function OrdersClient() {
                   {o.status === 'complete' && (
                     <button
                       onClick={() => openVoidModal(o)}
-                      disabled={isOffline}
-                      className="text-xs text-rose-400 hover:underline disabled:opacity-40 cursor-pointer"
-                      title={isOffline ? 'This action requires an internet connection' : 'Void order'}
+                      className="text-xs text-cyan-400 hover:underline cursor-pointer"
                     >
                       Void
                     </button>
@@ -191,7 +181,7 @@ export default function OrdersClient() {
             <p className="text-xs text-slate-400">Total: ₱{voiding.total.toFixed(2)} · This will restore stock for all items.</p>
             {isOffline && (
               <p className="text-xs text-amber-400 bg-amber-950/40 p-2 rounded border border-amber-800/40">
-                This action requires an internet connection.
+                Offline — void will queue and sync on reconnect.
               </p>
             )}
             {error && <p className="text-sm text-rose-400">{error}</p>}
@@ -233,7 +223,7 @@ export default function OrdersClient() {
 
             <div className="flex gap-2 justify-end pt-2">
               <button type="button" onClick={() => setVoiding(null)} className="border border-slate-700 rounded-xl px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 cursor-pointer">Cancel</button>
-              <button type="submit" disabled={isOffline} className="bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold cursor-pointer">Void Order</button>
+              <button type="submit" className="bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold cursor-pointer">{isOffline ? 'Queue Void' : 'Void Order'}</button>
             </div>
           </form>
         </div>

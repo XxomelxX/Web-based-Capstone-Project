@@ -78,6 +78,13 @@ export function TopNavbar() {
     try {
       if (typeof window !== 'undefined') {
         sessionStorage.removeItem('offlineSession');
+        // Wipe cached business data so a cached offline shell can never show
+        // this user's data to the next user on a shared device. Queued
+        // (unsynced) actions are preserved for the next sync.
+        try {
+          const { wipeOfflineData } = await import('@/lib/client/offline');
+          await wipeOfflineData();
+        } catch { /* wipe best-effort */ }
         // Evict cached app-shell HTML so Back button can't resurrect dashboard after logout.
         if ('caches' in window) {
           try {

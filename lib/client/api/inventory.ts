@@ -10,10 +10,8 @@
   saveUsers,
   cachedGet,
 } from '@/lib/client/api/offline';
-import { saveUtangEntries, saveCachedCustomers, getCachedCustomers } from '@/lib/client/offline';
-import { queueAddUtang, queueUtangPayment } from '@/lib/client/offlineQueue';
-import { updateCachedProductStock } from '@/lib/client/offline';
-
+import { saveUtangEntries, saveCachedCustomers, getCachedCustomers, saveExpenses, getCachedExpenses, saveSettings, getCachedSettings, updateCachedProductStock, db, mergeProducts } from '@/lib/client/offline';
+import { queueAddUtang, queueUtangPayment, queueExpenseAdd, queueSettingsUpdate, queueCustomerAdd, queueVoidSale, queueRestock } from '@/lib/client/offlineQueue';
 interface Expense {
   id: number;
   type: string;
@@ -33,10 +31,8 @@ interface InventoryUser {
   deleted?: boolean;
 }
 
-function checkOnlineOrThrow() {
-  if (typeof window !== 'undefined' && !navigator.onLine) {
-    throw new Error('This action requires an internet connection');
-  }
+function isOffline() {
+  return typeof window !== 'undefined' && !navigator.onLine;
 }
 
 // Low Stock (Category 2)
@@ -44,14 +40,22 @@ export async function getLowStock() {
   return getLowStockOffline();
 }
 
-// Restock (Category 3 - Blocked offline)
+// Restock (Category 2 — queued offline, admin only enforced at sync)
 export async function restockProduct(data: {
   productId: number;
   quantity: number;
   supplier?: string;
   costPerUnit?: number;
 }) {
-  checkOnlineOrThrow();
+  if (isOffline()) {
+    const product = await db.products.get(data.productId);
+    if (product) {
+      const stock = typeof product.stock === 'number' ? product.stock : 0;
+      await db.products.put({ ...product, stock: stock + data.quantity });
+    }
+    await queueRestock(data.productId, data.quantity, data.supplier ?? null, data.costPerUnit ?? null);
+    return { offline: true, productId: data.productId, quantity: data.quantity };
+  }
   const res = await fetch('/api/restock', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -97,7 +101,7 @@ export async function addCustomer(data: {
 }) {
   if (typeof window !== 'undefined' && !navigator.onLine) {
     const offlineCustomer = {
-      id: Date.now(),
+      id: -Date.now(),
       name: data.name,
       phone: data.phone,
       email: data.email,
@@ -107,6 +111,7 @@ export async function addCustomer(data: {
     };
     const cached = await getCachedCustomers<Record<string, unknown>>();
     await saveCachedCustomers([...cached, offlineCustomer]);
+    await queueCustomerAdd(data as unknown as Record<string, unknown>, offlineCustomer.id);
     return offlineCustomer;
   }
   const res = await fetch('/api/customers', {
@@ -127,7 +132,27 @@ export async function updateCustomer(id: number, data: {
   email?: string;
   notes?: string;
 }) {
-  checkOnlineOrThrow();
+  if (typeof window !== 'undefined' && !navigator.onLine) {
+    const cached = await getCachedCustomers<Record<string, unknown>>();
+    const existing = cached.findIndex((c) => (c as { id: number }).id === id);
+    if (existing >= 0) {
+      await db.customers.put({ ...cached[existing], ...data } as unknown as Record<string, unknown>);
+    } else {
+      const offlineCustomer = {
+        id,
+        name: data.name ?? '',
+        phone: data.phone,
+        email: data.email,
+        notes: data.notes,
+        createdAt: new Date().toISOString(),
+        offline: true,
+      };
+      const cached = await getCachedCustomers<Record<string, unknown>>();
+      await saveCachedCustomers([...cached, offlineCustomer] as unknown as Record<string, unknown>[]);
+    }
+    await queueCustomerAdd(data as unknown as Record<string, unknown>, id);
+    return { offline: true, id };
+  }
   const res = await fetch(`/api/customers/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -141,7 +166,10 @@ export async function updateCustomer(id: number, data: {
 }
 
 export async function deleteCustomer(id: number, adminUsername: string, adminPassword: string, force?: boolean) {
-  checkOnlineOrThrow();
+  if (typeof window !== 'undefined' && !navigator.onLine) {
+    await queueVoidSale(id, 'Deleted offline');
+    return { offline: true, id, status: 'voided' };
+  }
   const res = await fetch(`/api/customers/${id}`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
@@ -154,9 +182,22 @@ export async function deleteCustomer(id: number, adminUsername: string, adminPas
   return res.json();
 }
 
-// Void Order (Category 3 - Blocked offline)
+// Void Order (Category 2 — queued offline; admin sessions only, since
+// cashier voids require supervisor password verification server-side)
 export async function voidTransaction(id: number, reason: string, adminUsername?: string, adminPassword?: string) {
-  checkOnlineOrThrow();
+  if (isOffline()) {
+    let role: string | null = null;
+    try {
+      const raw = sessionStorage.getItem('offlineSession');
+      role = raw ? (JSON.parse(raw) as { role?: string }).role ?? null : null;
+    } catch { role = null; }
+    if (role !== 'admin') {
+      throw new Error('Voiding offline requires an admin session (cashier voids need supervisor approval online)');
+    }
+    await db.transactions.update(id, { status: 'voided', voidReason: reason } as Record<string, unknown>);
+    await queueVoidSale(id, reason);
+    return { offline: true, id, status: 'voided' };
+  }
   const res = await fetch(`/api/transactions/${id}/void`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -306,7 +347,24 @@ export async function addUser(data: {
   password: string;
   role: 'admin' | 'cashier';
 }): Promise<InventoryUser> {
-  checkOnlineOrThrow();
+  if (typeof window !== 'undefined' && !navigator.onLine) {
+    const tempId = -Date.now();
+    const offlineUser = {
+      id: tempId,
+      fullName: data.fullName,
+      username: data.username,
+      email: data.email,
+      password: data.password,
+      role: data.role,
+      status: 'active',
+      createdAt: new Date().toISOString(),
+      offline: true,
+    };
+    const cached = await getCachedUsers<Record<string, unknown>>();
+    await saveUsers([...cached, offlineUser] as unknown as Record<string, unknown>[]);
+    await queueCustomerAdd(data as unknown as Record<string, unknown>, offlineUser.id);
+    return { ...offlineUser, offline: true } as unknown as InventoryUser;
+  }
   const res = await fetch('/api/users', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -326,7 +384,16 @@ export async function updateUser(id: number, data: {
   status?: string;
   newPassword?: string;
 }): Promise<InventoryUser> {
-  checkOnlineOrThrow();
+  if (typeof window !== 'undefined' && !navigator.onLine) {
+    const cached = await getCachedUsers<Record<string, unknown>>();
+    const existing = cached.findIndex((c) => (c as { id: number }).id === id);
+    if (existing >= 0) {
+      const updated = { ...cached[existing], ...data } as unknown as Record<string, unknown>;
+      await db.users.put(updated);
+      await queueCustomerAdd(data as unknown as Record<string, unknown>, id);
+    }
+    return { offline: true, id } as unknown as InventoryUser;
+  }
   const res = await fetch(`/api/users/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -340,7 +407,10 @@ export async function updateUser(id: number, data: {
 }
 
 export async function deleteUser(id: number): Promise<void> {
-  checkOnlineOrThrow();
+  if (typeof window !== 'undefined' && !navigator.onLine) {
+    await db.users.delete(id);
+    return;
+  }
   const res = await fetch(`/api/users/${id}`, { method: 'DELETE' });
   if (!res.ok) {
     const errData = await res.json().catch(() => ({}));
@@ -358,7 +428,13 @@ export async function getSettings<T = Record<string, unknown>>(): Promise<T> {
 }
 
 export async function updateSettings(data: object) {
-  checkOnlineOrThrow();
+  if (isOffline()) {
+    const current = (await getCachedSettings<Record<string, unknown>>()) ?? {};
+    const merged = { ...current, ...(data as Record<string, unknown>) };
+    await saveSettings(merged);
+    await queueSettingsUpdate(data as unknown as Record<string, unknown>);
+    return { ...merged, offline: true };
+  }
   const res = await fetch('/api/settings', {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -377,7 +453,14 @@ export async function getExpenses(): Promise<Expense[]> {
 }
 
 export async function addExpense(data: { type: string; amount: number; period: string; note?: string }) {
-  checkOnlineOrThrow();
+  if (isOffline()) {
+    const tempId = -Date.now();
+    const temp = { id: tempId, ...data, createdAt: new Date().toISOString(), offline: true };
+    const cached = await getCachedExpenses<Record<string, unknown>>();
+    await saveExpenses([...cached, temp as unknown as Record<string, unknown>]);
+    await queueExpenseAdd(data as unknown as Record<string, unknown>, tempId);
+    return temp;
+  }
   const res = await fetch('/api/expenses', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

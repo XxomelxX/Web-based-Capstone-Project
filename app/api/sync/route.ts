@@ -19,6 +19,14 @@ export async function POST(request: Request) {
   }
 
   const cashierId = Number(session.user.id);
+  const role = (session.user as { role?: string }).role ?? 'cashier';
+  const requireAdmin = (clientUuid: string) => {
+    if (role !== 'admin') {
+      results.push({ clientUuid, ok: false, error: 'Admin only — queued offline action needs an admin to sync' });
+      return true;
+    }
+    return false;
+  };
   const results: { clientUuid: string; ok: boolean; serverId?: number; conflict?: boolean; error?: string }[] = [];
 
   for (const action of parsed.data.actions) {
@@ -257,6 +265,141 @@ export async function POST(request: Request) {
           },
         });
         results.push({ clientUuid: action.clientUuid, ok: true, serverId: closed.id });
+      } else if (action.type === 'product_upsert') {
+        if (requireAdmin(action.clientUuid)) continue;
+        const d = (p.data ?? {}) as Record<string, unknown>;
+        if (p.entityId) {
+          const updated = await prisma.product.update({ where: { id: p.entityId }, data: {
+            ...(typeof d.name === 'string' ? { name: d.name } : {}),
+            ...(typeof d.price === 'number' ? { price: d.price } : {}),
+            ...(typeof d.cost === 'number' ? { cost: d.cost } : {}),
+            ...(typeof d.stock === 'number' ? { stock: d.stock } : {}),
+            ...(typeof d.categoryId === 'number' ? { categoryId: d.categoryId } : {}),
+            ...(typeof d.barcode === 'string' || d.barcode === null ? { barcode: d.barcode as string | null } : {}),
+            ...(typeof d.archived === 'boolean' ? { archived: d.archived } : {}),
+            ...(typeof d.goodsType === 'string' ? { goodsType: d.goodsType } : {}),
+            ...(typeof d.vatType === 'string' ? { vatType: d.vatType } : {}),
+          } });
+          broadcastRealtime('products', { action: 'updated' });
+          results.push({ clientUuid: action.clientUuid, ok: true, serverId: updated.id, conflict: true, error: 'Applied over current server state (server-wins)' });
+        } else {
+          if (typeof d.name !== 'string' || typeof d.price !== 'number') throw new Error('name and price required');
+          const created = await prisma.product.create({ data: {
+            name: d.name, price: d.price,
+            cost: typeof d.cost === 'number' ? d.cost : 0,
+            stock: typeof d.stock === 'number' ? d.stock : 0,
+            categoryId: typeof d.categoryId === 'number' ? d.categoryId : (await prisma.category.findFirst())!.id,
+            barcode: typeof d.barcode === 'string' ? d.barcode : null,
+            archived: false,
+            goodsType: typeof d.goodsType === 'string' ? d.goodsType : 'non-perishable',
+            vatType: typeof d.vatType === 'string' ? d.vatType : 'exempt',
+          } });
+          broadcastRealtime('products', { action: 'created' });
+          results.push({ clientUuid: action.clientUuid, ok: true, serverId: created.id });
+        }
+      } else if (action.type === 'product_delete') {
+        if (requireAdmin(action.clientUuid)) continue;
+        if (!p.entityId) throw new Error('entityId required');
+        await prisma.product.delete({ where: { id: p.entityId } }).catch(async () => {
+          await prisma.product.update({ where: { id: p.entityId! }, data: { archived: true } });
+        });
+        broadcastRealtime('products', { action: 'deleted' });
+        results.push({ clientUuid: action.clientUuid, ok: true });
+      } else if (action.type === 'category_upsert') {
+        if (requireAdmin(action.clientUuid)) continue;
+        const d = (p.data ?? {}) as Record<string, unknown>;
+        if (p.entityId) {
+          const updated = await prisma.category.update({ where: { id: p.entityId }, data: {
+            ...(typeof d.name === 'string' ? { name: d.name } : {}),
+            ...(typeof d.description === 'string' || d.description === null ? { description: d.description as string | null } : {}),
+          } });
+          broadcastRealtime('categories', { action: 'updated' });
+          results.push({ clientUuid: action.clientUuid, ok: true, serverId: updated.id, conflict: true, error: 'Applied over current server state (server-wins)' });
+        } else {
+          if (typeof d.name !== 'string') throw new Error('name required');
+          const created = await prisma.category.create({ data: { name: d.name, description: typeof d.description === 'string' ? d.description : null } });
+          broadcastRealtime('categories', { action: 'created' });
+          results.push({ clientUuid: action.clientUuid, ok: true, serverId: created.id });
+        }
+      } else if (action.type === 'category_delete') {
+        if (requireAdmin(action.clientUuid)) continue;
+        if (!p.entityId) throw new Error('entityId required');
+        await prisma.category.delete({ where: { id: p.entityId } });
+        broadcastRealtime('categories', { action: 'deleted' });
+        results.push({ clientUuid: action.clientUuid, ok: true });
+      } else if (action.type === 'expense_add') {
+        const d = (p.data ?? {}) as Record<string, unknown>;
+        if (typeof d.type !== 'string' || typeof d.amount !== 'number' || typeof d.period !== 'string') throw new Error('type, amount, period required');
+        const created = await prisma.expense.create({ data: {
+          type: d.type, amount: d.amount, period: d.period,
+          note: typeof d.note === 'string' ? d.note : null,
+        } });
+        broadcastRealtime('expenses', { action: 'created' });
+        results.push({ clientUuid: action.clientUuid, ok: true, serverId: created.id });
+      } else if (action.type === 'settings_update') {
+        if (requireAdmin(action.clientUuid)) continue;
+        const d = (p.data ?? {}) as Record<string, unknown>;
+        const existing = await prisma.settings.findFirst();
+        const data = {
+          ...(typeof d.storeName === 'string' ? { storeName: d.storeName } : {}),
+          ...(typeof d.address === 'string' ? { address: d.address } : {}),
+          ...(typeof d.taxRate === 'number' ? { taxRate: d.taxRate } : {}),
+          ...(typeof d.lowStockThreshold === 'number' ? { lowStockThreshold: d.lowStockThreshold } : {}),
+          ...(typeof d.currency === 'string' ? { currency: d.currency } : {}),
+        };
+        const saved = existing
+          ? await prisma.settings.update({ where: { id: existing.id }, data })
+          : await prisma.settings.create({ data });
+        broadcastRealtime('settings', { action: 'updated' });
+        results.push({ clientUuid: action.clientUuid, ok: true, serverId: saved.id, conflict: true, error: 'Applied over current server state (server-wins)' });
+      } else if (action.type === 'customer_add') {
+        const d = (p.data ?? {}) as Record<string, unknown>;
+        if (typeof d.name !== 'string' || !d.name.trim()) throw new Error('name required');
+        const dupe = await prisma.customer.findFirst({ where: { name: { equals: d.name.trim(), mode: 'insensitive' } } });
+        if (dupe) {
+          results.push({ clientUuid: action.clientUuid, ok: true, serverId: dupe.id, conflict: true, error: 'Customer already exists — linked to existing record' });
+        } else {
+          const created = await prisma.customer.create({ data: {
+            name: d.name.trim(),
+            phone: typeof d.phone === 'string' ? d.phone : null,
+            email: typeof d.email === 'string' ? d.email : null,
+            notes: typeof d.notes === 'string' ? d.notes : null,
+          } });
+          results.push({ clientUuid: action.clientUuid, ok: true, serverId: created.id });
+        }
+      } else if (action.type === 'void_sale') {
+        if (requireAdmin(action.clientUuid)) continue;
+        if (!p.transactionId || !p.reason) throw new Error('transactionId and reason required');
+        const txn = await prisma.transaction.findUnique({ where: { id: p.transactionId }, include: { items: true } });
+        if (!txn) throw new Error('Transaction not found');
+        if (txn.status === 'voided') {
+          results.push({ clientUuid: action.clientUuid, ok: true, serverId: txn.id });
+        } else {
+          const updated = await prisma.$transaction(async (tx) => {
+            for (const item of txn.items) {
+              await tx.product.update({ where: { id: item.productId }, data: { stock: { increment: item.quantity } } });
+              await tx.itemLog.create({ data: { productId: item.productId, action: 'voided', quantity: item.quantity, performedBy: cashierId } });
+            }
+            return tx.transaction.update({ where: { id: txn.id }, data: { status: 'voided', voidReason: p.reason, voidedBy: cashierId, voidedAt: new Date() } });
+          }, { maxWait: 15000, timeout: 25000 });
+          broadcastRealtime('transactions', { action: 'voided' });
+          broadcastRealtime('products', { action: 'stock-updated' });
+          results.push({ clientUuid: action.clientUuid, ok: true, serverId: updated.id });
+        }
+      } else if (action.type === 'restock') {
+        if (requireAdmin(action.clientUuid)) continue;
+        if (!p.productId || !p.quantity || p.quantity <= 0) throw new Error('productId and positive quantity required');
+        await prisma.$transaction(async (tx) => {
+          await tx.stockBatch.create({ data: {
+            productId: p.productId!, quantityReceived: p.quantity!, quantityRemaining: p.quantity!,
+            supplier: p.supplier ?? null, costPerUnit: p.costPerUnit ?? null,
+          } });
+          await tx.product.update({ where: { id: p.productId! }, data: { stock: { increment: p.quantity! } } });
+          await tx.itemLog.create({ data: { productId: p.productId!, action: 'restocked', quantity: p.quantity!, performedBy: cashierId } });
+        });
+        broadcastRealtime('restock', { action: 'created' });
+        broadcastRealtime('products', { action: 'updated' });
+        results.push({ clientUuid: action.clientUuid, ok: true });
       }
     } catch (e) {
       // P2002 race on clientUuid: return the winner's row.

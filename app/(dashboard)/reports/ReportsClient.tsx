@@ -99,7 +99,7 @@ export default function ReportsClient() {
       {isOffline && (
         <div className="flex items-center gap-2 text-sm text-amber-200 bg-amber-950/60 border border-amber-800/40 rounded-xl px-4 py-2.5">
           <WifiOff className="h-4 w-4 shrink-0" />
-          <span>This page requires an internet connection. Data may be outdated.</span>
+          <span>Offline — showing cached report data. Sync on reconnect.</span>
         </div>
       )}
 
@@ -383,10 +383,6 @@ function ShiftHistoryTable() {
   async function handleVerifySubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!verifyingShift) return;
-    if (typeof window !== 'undefined' && !navigator.onLine) {
-      setAuditError('This action requires an internet connection');
-      return;
-    }
     setAuditError('');
     setSubmittingAudit(true);
     try {
@@ -409,7 +405,19 @@ function ShiftHistoryTable() {
         setAuditError(errData.error || 'Audit sign-off failed');
       }
     } catch (err) {
-      setAuditError(err instanceof Error ? err.message : 'Audit sign-off failed');
+      const message = err instanceof Error ? err.message : String(err);
+      const isNetworkError =
+        typeof window !== 'undefined' && (/failed to fetch|network|offline/i.test(message));
+      if (isNetworkError) {
+        await saveCategory2Cache('shift_audit_queue', {
+          shiftId: verifyingShift.id,
+          verificationStatus: verifyStatus,
+          verificationNotes: auditNotes,
+        });
+        setAuditError('');
+      } else {
+        setAuditError(err instanceof Error ? err.message : 'Audit sign-off failed');
+      }
     } finally {
       setSubmittingAudit(false);
     }

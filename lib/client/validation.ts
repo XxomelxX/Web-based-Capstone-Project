@@ -8,7 +8,9 @@ export const saleItemSchema = z.object({
 
 export const queuedActionSchema = z.object({
   clientUuid: z.string().uuid(),
-  type: z.enum(['pos_sale', 'add_utang', 'record_payment', 'open_shift', 'close_shift']),
+  type: z.enum(['pos_sale', 'add_utang', 'record_payment', 'open_shift', 'close_shift',
+    'product_upsert', 'product_delete', 'category_upsert', 'category_delete',
+    'expense_add', 'settings_update', 'customer_add', 'void_sale', 'restock']),
   payload: z.object({
     items: z.array(saleItemSchema).optional(),
     paymentMethod: z.string().optional(),
@@ -24,6 +26,17 @@ export const queuedActionSchema = z.object({
     closingCash: z.number().nonnegative().optional(),
     openedAt: z.string().optional(),
     closedAt: z.string().optional(),
+    // Category-2 entity mutations (server-wins, last-write-wins on fields)
+    entityId: z.number().int().positive().optional(),
+    data: z.record(z.string(), z.unknown()).optional(),
+    transactionId: z.number().int().positive().optional(),
+    productId: z.number().int().positive().optional(),
+    quantity: z.number().int().positive().optional(),
+    supplier: z.string().max(200).nullish(),
+    costPerUnit: z.number().nonnegative().nullish(),
+    reason: z.string().max(500).optional(),
+    tempId: z.number().int().optional(),
+    table: z.enum(['products', 'categories', 'expenses', 'customers']).optional(),
   }),
   createdAt: z.string(),
 });

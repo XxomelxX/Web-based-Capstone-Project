@@ -84,6 +84,34 @@ export const db = new SariSariPOSOfflineDB();
 export const canUseWindow = () => typeof window !== 'undefined' && typeof navigator !== 'undefined';
 export const isOnline = () => (canUseWindow() ? navigator.onLine : true);
 
+/**
+ * Wipe all locally cached business data (Dexie tables + localStorage snapshots).
+ * Call on logout and on login-as-different-user so a cached offline shell can
+ * never show one user's data to another user on a shared device.
+ * Queued (unsynced) actions are PRESERVED — they belong to the signed-in
+ * cashier and must still sync. Credential cache is preserved for offline login.
+ */
+export async function wipeOfflineData(): Promise<void> {
+  if (!canUseWindow()) return;
+  try {
+    await Promise.all([
+      db.products.clear(), db.categories.clear(), db.expenses.clear(),
+      db.transactions.clear(), db.utang.clear(), db.customers.clear(),
+      db.itemlog.clear(), db.users.clear(), db.settings.clear(),
+      db.reportCache.clear(), db.syncMeta.clear(),
+    ]);
+  } catch (e) { console.error('[Dexie] wipeOfflineData failed:', e); }
+  try {
+    const doomed: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('sari_pos_cache_')) doomed.push(k);
+    }
+    doomed.forEach((k) => localStorage.removeItem(k));
+    sessionStorage.removeItem('offlineSession');
+  } catch { /* storage wipe best-effort */ }
+}
+
 export async function unregisterServiceWorker() {
   if (!canUseWindow() || !('serviceWorker' in navigator)) return false;
 
@@ -376,6 +404,15 @@ export async function getCachedItemLog<T = Record<string, unknown>>() {
   return db.itemlog.toArray() as Promise<T[]>;
 }
 
+/**
+ * Merge item-log rows WITHOUT clearing (upsert by primary key).
+ */
+export async function mergeItemLog(itemLog: Record<string, unknown>[]) {
+  try {
+    await db.itemlog.bulkPut(itemLog);
+  } catch (e) { console.error('[Dexie] mergeItemLog failed:', e); }
+}
+
 export async function saveTransactions(transactions: Record<string, unknown>[]) {
   try {
     await db.transaction('rw', db.transactions, async () => {
@@ -387,6 +424,16 @@ export async function saveTransactions(transactions: Record<string, unknown>[]) 
 
 export async function getCachedTransactions<T = Record<string, unknown>>() {
   return db.transactions.toArray() as Promise<T[]>;
+}
+
+/**
+ * Merge transactions WITHOUT clearing (upsert by primary key).
+ * Pull returns only recent rows — must never wipe older cached history.
+ */
+export async function mergeTransactions(transactions: Record<string, unknown>[]) {
+  try {
+    await db.transactions.bulkPut(transactions);
+  } catch (e) { console.error('[Dexie] mergeTransactions failed:', e); }
 }
 
 export async function saveUtangEntries(entries: Record<string, unknown>[]) {

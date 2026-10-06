@@ -49,14 +49,14 @@ export default function SettingsClient() {
 
   async function handleSave() {
     if (!settings) return;
-    if (typeof window !== 'undefined' && !navigator.onLine) {
-      setError('This action requires an internet connection');
-      return;
-    }
     setError('');
     try {
-      await updateSettings(settings);
-      setSaved(true);
+      const savedSettings = await updateSettings(settings);
+      if ((savedSettings as { offline?: boolean }).offline) {
+        setSaved(true);
+      } else {
+        setSaved(true);
+      }
       if (savedTimeoutRef.current) clearTimeout(savedTimeoutRef.current);
       savedTimeoutRef.current = setTimeout(() => setSaved(false), 2000);
     } catch (err) {
@@ -83,7 +83,7 @@ export default function SettingsClient() {
       {isOffline && (
         <div className="flex items-center gap-2 text-sm text-amber-200 bg-amber-950/60 border border-amber-800/40 rounded-xl px-4 py-2.5">
           <WifiOff className="h-4 w-4 shrink-0" />
-          <span>This page requires an internet connection. Data may be outdated.</span>
+          <span>Offline — showing saved settings. Changes queue and sync on reconnect.</span>
         </div>
       )}
 
@@ -99,17 +99,17 @@ export default function SettingsClient() {
 
         <div>
           <label className="text-sm font-medium text-slate-300">Store name</label>
-          <input disabled={!isAdmin || isOffline} value={settings.storeName} onChange={(e) => setSettings({ ...settings, storeName: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-cyan-500 mt-1 disabled:opacity-50" />
+          <input disabled={!isAdmin} value={settings.storeName} onChange={(e) => setSettings({ ...settings, storeName: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-cyan-500 mt-1 disabled:opacity-50" />
         </div>
 
         <div>
           <label className="text-sm font-medium text-slate-300">Address</label>
-          <input disabled={!isAdmin || isOffline} value={settings.address ?? ''} onChange={(e) => setSettings({ ...settings, address: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-cyan-500 mt-1 disabled:opacity-50" />
+          <input disabled={!isAdmin} value={settings.address ?? ''} onChange={(e) => setSettings({ ...settings, address: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-cyan-500 mt-1 disabled:opacity-50" />
         </div>
 
         <div>
           <label className="text-sm font-medium text-slate-300">Low-stock threshold</label>
-          <input disabled={!isAdmin || isOffline} type="number" value={settings.lowStockThreshold} onChange={(e) => setSettings({ ...settings, lowStockThreshold: Number(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-cyan-500 mt-1 disabled:opacity-50" />
+          <input disabled={!isAdmin} type="number" value={settings.lowStockThreshold} onChange={(e) => setSettings({ ...settings, lowStockThreshold: Number(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-cyan-500 mt-1 disabled:opacity-50" />
         </div>
 
         <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4">
@@ -124,7 +124,7 @@ export default function SettingsClient() {
           <div className="flex justify-end gap-2 pt-2">
             {saved && <span className="text-sm text-emerald-400 self-center font-semibold">Saved</span>}
             <button type="button" onClick={refresh} className="border border-slate-700 rounded-xl px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 cursor-pointer">Reset</button>
-            <button onClick={handleSave} disabled={isOffline} className="bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold transition cursor-pointer">Save Changes</button>
+            <button onClick={handleSave} className="bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold transition cursor-pointer">{isOffline ? 'Save Offline' : 'Save Changes'}</button>
           </div>
         )}
       </div>

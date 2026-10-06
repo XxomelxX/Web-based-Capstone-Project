@@ -1,7 +1,7 @@
 // Sync engine: push pending batch → pull delta → merge (blog §10).
 // Server-wins conflicts; exponential backoff 1s→2s→4s→8s→16s, max 5.
 import { getPendingActions, markActionSynced, markActionFailed, offlineDb } from '@/lib/client/offlineQueue';
-import { mergeProducts, saveCategories, saveCachedCustomers, saveSettings, saveUtangEntries, getLastSyncedAt, setLastSyncedAt } from '@/lib/client/offline';
+import { mergeProducts, saveCategories, saveCachedCustomers, saveSettings, saveUtangEntries, saveExpenses, mergeTransactions, mergeItemLog, getLastSyncedAt, setLastSyncedAt, db as offlineCache } from '@/lib/client/offline';
 
 let retryCount = 0;
 const MAX_RETRIES = 5;
@@ -69,6 +69,15 @@ export async function performSync(): Promise<SyncResult> {
           await markActionSynced(action.id);
           synced++;
           if (r.conflict) conflicts++;
+          // Drop the optimistic temp row (negative id) — the real server row
+          // arrives via pull/merge in this same sync.
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const pl = (action as any)?.payload as { tempId?: number; table?: string } | undefined;
+            if (pl?.tempId && pl?.table && (offlineCache as unknown as Record<string, { delete?: (k: number) => Promise<void> }>)[pl.table]?.delete) {
+              await (offlineCache as unknown as Record<string, { delete: (k: number) => Promise<void> }>)[pl.table].delete(pl.tempId);
+            }
+          } catch { /* temp cleanup best-effort */ }
         } else {
           await markActionFailed(action.id, r?.error ?? 'Sync rejected');
           if (r?.conflict) conflicts++;
@@ -88,15 +97,21 @@ export async function performSync(): Promise<SyncResult> {
         categories: Record<string, unknown>[];
         customers: Record<string, unknown>[];
         utang: Record<string, unknown>[];
+        expenses?: Record<string, unknown>[];
+        transactions?: Record<string, unknown>[];
+        itemlog?: Record<string, unknown>[];
         settings: Record<string, unknown> | null;
         syncedAt: string;
       };
-      // Delta pull: upsert only — the delta is a partial list and must never
-      // replace (clear) the whole products table.
+      // Delta pull: upsert only — partial lists must never
+      // replace (clear) the whole table.
       if (pull.products) await mergeProducts(pull.products);
       if (pull.categories) await saveCategories(pull.categories);
       if (pull.customers) await saveCachedCustomers(pull.customers);
       if (pull.utang) await saveUtangEntries(pull.utang);
+      if (pull.expenses) await saveExpenses(pull.expenses);
+      if (pull.transactions) await mergeTransactions(pull.transactions);
+      if (pull.itemlog) await mergeItemLog(pull.itemlog);
       if (pull.settings) await saveSettings(pull.settings);
       await setLastSyncedAt(pull.syncedAt ?? syncedAt);
     }

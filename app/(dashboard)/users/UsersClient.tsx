@@ -52,21 +52,19 @@ export default function UsersClient() {
 
   function checkOnlineOrSetError(setErrFn: (msg: string) => void): boolean {
     if (typeof window !== 'undefined' && !navigator.onLine) {
-      setErrFn('This action requires an internet connection');
-      return false;
+      setErrFn('');
+      return true;
     }
     return true;
   }
 
   function openAdd() {
-    if (!checkOnlineOrSetError(setError)) return;
     setError('');
     setShowModal(true);
   }
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
-    if (!checkOnlineOrSetError(setError)) return;
     setError('');
     try {
       await addUser(form);
@@ -80,7 +78,6 @@ export default function UsersClient() {
 
   async function handleEdit() {
     if (!editTarget) return;
-    if (!checkOnlineOrSetError(setEditError)) return;
     setEditError('');
     try {
       await updateUser(editTarget.id, { fullName: editName, newPassword: newPassword || undefined });
@@ -96,7 +93,6 @@ export default function UsersClient() {
   }
 
   function openEdit(u: User) {
-    if (!checkOnlineOrSetError(setError)) return;
     setEditTarget(u);
     setEditName(u.fullName);
     setNewPassword('');
@@ -104,7 +100,6 @@ export default function UsersClient() {
   }
 
   function openDelete(u: User) {
-    if (!checkOnlineOrSetError(setError)) return;
     setDeleteTarget(u);
     setDeleteError('');
     setCanDeactivate(false);
@@ -112,7 +107,6 @@ export default function UsersClient() {
 
   async function handleDelete() {
     if (!deleteTarget) return;
-    if (!checkOnlineOrSetError(setDeleteError)) return;
     setDeleteError('');
     setCanDeactivate(false);
     try {
@@ -130,7 +124,6 @@ export default function UsersClient() {
 
   async function handleDeactivate() {
     if (!deleteTarget) return;
-    if (!checkOnlineOrSetError(setDeleteError)) return;
     try {
       await deactivateUser(deleteTarget.id);
       setDeleteTarget(null);
@@ -157,7 +150,7 @@ export default function UsersClient() {
       {isOffline && (
         <div className="flex items-center gap-2 text-sm text-amber-200 bg-amber-950/60 border border-amber-800/40 rounded-xl px-4 py-2.5">
           <WifiOff className="h-4 w-4 shrink-0" />
-          <span>This page requires an internet connection. Data may be outdated.</span>
+          <span>Offline — users cached locally. Will sync on reconnect.</span>
         </div>
       )}
 

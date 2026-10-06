@@ -97,11 +97,18 @@ const withPWA = withPWAInit({
         },
       },
       {
-        // Auth-gated app pages must NEVER be served from cache to a
-        // logged-out user: always go to network (middleware redirects to /login).
-        // NOTE: /pos is intentionally excluded (see NetworkFirst rule above).
+        // Full-offline app shells: every module renders offline from cache.
+        // Online behavior unchanged (NetworkFirst always revalidates; 3s timeout).
+        // Logged-out users are protected by the client session gate +
+        // Dexie/cache wipe on logout (see TopNavbar/MobileTopBar) — a cached
+        // shell without a session renders the login prompt, never data.
+        // MUST come before the catch-all below.
         urlPattern: /\/(dashboard|products|categories|orders|credit|expenses|reports|users|settings|lowstock|transaction-log|item-log)/,
-        handler: 'NetworkOnly',
+        handler: 'NetworkFirst',
+        options: {
+          cacheName: 'pages-cache-v2',
+          networkTimeoutSeconds: 3,
+        },
       },
       {
         urlPattern: /.*/,

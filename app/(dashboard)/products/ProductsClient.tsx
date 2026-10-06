@@ -151,11 +151,9 @@ export default function ProductsClient() {
     return () => window.removeEventListener(RECONNECT_EVENT_NAME, handleReconnect);
   }, [refresh]);
 
+  // Offline-capable: mutations apply to the local Dexie cache immediately and
+  // queue for sync (server-wins). Never block on connectivity.
   function checkOnlineOrSetError(): boolean {
-    if (typeof window !== 'undefined' && !navigator.onLine) {
-      setError('This action requires an internet connection');
-      return false;
-    }
     return true;
   }
 
@@ -253,7 +251,6 @@ export default function ProductsClient() {
         <h1 className="text-2xl font-bold">Products</h1>
         <button
           onClick={openAdd}
-          disabled={isOffline}
           className="bg-green-700 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-md px-4 py-2 text-sm font-medium transition cursor-pointer"
         >
           + Add Product
@@ -325,9 +322,8 @@ export default function ProductsClient() {
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => openEdit(p)}
-                        disabled={isOffline}
                         className="text-slate-400 hover:text-cyan-400 disabled:opacity-40 transition cursor-pointer"
-                        title={isOffline ? 'This action requires an internet connection' : 'Edit product'}
+                        title="Edit product"
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -335,9 +331,8 @@ export default function ProductsClient() {
                       </button>
                       <button
                         onClick={() => handleArchive(p.id)}
-                        disabled={isOffline}
                         className="text-slate-400 hover:text-amber-400 disabled:opacity-40 transition cursor-pointer"
-                        title={isOffline ? 'This action requires an internet connection' : 'Archive product'}
+                        title="Archive product"
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
@@ -367,9 +362,8 @@ export default function ProductsClient() {
             <td className="p-3">
               <button
                 onClick={() => handleUnarchive(p.id)}
-                disabled={isOffline}
                 className="text-xs text-emerald-400 font-medium hover:underline disabled:opacity-40 cursor-pointer"
-                title={isOffline ? 'This action requires an internet connection' : 'Unarchive product'}
+                title="Unarchive product"
               >
                 ↩ Unarchive (Edit)
               </button>
@@ -386,7 +380,7 @@ export default function ProductsClient() {
             </h2>
             {isOffline && (
               <p className="text-xs text-amber-400 bg-amber-950/40 p-2 rounded border border-amber-800/40">
-                This action requires an internet connection.
+                Offline — changes save locally and sync when you reconnect.
               </p>
             )}
             <form onSubmit={handleSubmit} className="space-y-3 text-sm">
@@ -488,10 +482,9 @@ export default function ProductsClient() {
                 </button>
                 <button
                   type="submit"
-                  disabled={isOffline}
                   className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded-xl font-semibold cursor-pointer"
                 >
-                  Save Product
+                  {isOffline ? 'Save Offline' : 'Save Product'}
                 </button>
               </div>
             </form>

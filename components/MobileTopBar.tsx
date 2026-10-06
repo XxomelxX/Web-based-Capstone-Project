@@ -19,6 +19,10 @@ export function MobileTopBar() {
     try {
       if (typeof window !== 'undefined') {
         sessionStorage.removeItem('offlineSession');
+        try {
+          const { wipeOfflineData } = await import('@/lib/client/offline');
+          await wipeOfflineData();
+        } catch { /* wipe best-effort */ }
         if ('caches' in window) {
           try {
             const names = await caches.keys();

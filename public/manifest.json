@@ -1,7 +1,7 @@
 {
   "name": "J & J Merchandise Store",
   "short_name": "J & J Merchandise Store",
-  "start_url": "/dashboard",
+  "start_url": "/pos",
   "scope": "/",
   "display": "standalone",
   "background_color": "#0f1a12",

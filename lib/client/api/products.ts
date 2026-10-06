@@ -1,5 +1,6 @@
 ﻿import { getProductsOffline, getArchivedProductsOffline } from '@/lib/client/api/offline';
-import { getCachedProducts, mergeProducts } from '@/lib/client/offline';
+import { getCachedProducts, mergeProducts, db } from '@/lib/client/offline';
+import { queueProductUpsert, queueProductDelete } from '@/lib/client/offlineQueue';
 
 export interface Product {
   id: number;
@@ -61,14 +62,33 @@ export async function getActiveProducts(): Promise<Product[]> {
   return active;
 }
 
-function checkOnlineOrThrow() {
-  if (typeof window !== 'undefined' && !navigator.onLine) {
-    throw new Error('This action requires an internet connection');
-  }
+function isOffline() {
+  return typeof window !== 'undefined' && !navigator.onLine;
 }
 
 export async function addProduct(data: Partial<Product>): Promise<Product> {
-  checkOnlineOrThrow();
+  if (isOffline()) {
+    // Optimistic create: negative temp id, queued for sync (server-wins).
+    const tempId = -Date.now();
+    const temp = {
+      id: tempId,
+      name: data.name ?? 'Untitled product',
+      categoryId: data.categoryId ?? 0,
+      price: data.price ?? 0,
+      cost: data.cost ?? 0,
+      stock: data.stock ?? 0,
+      packSize: data.packSize ?? null,
+      unit: data.unit ?? null,
+      barcode: data.barcode ?? null,
+      archived: false,
+      goodsType: data.goodsType ?? 'non-perishable',
+      vatType: data.vatType ?? 'exempt',
+      expiryDate: data.expiryDate ?? null,
+    } as unknown as Record<string, unknown>;
+    await mergeProducts([temp]);
+    await queueProductUpsert({ ...data, name: temp.name, price: temp.price }, undefined, tempId);
+    return { ...temp, offline: true } as unknown as Product;
+  }
   const res = await fetch('/api/products', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -82,7 +102,12 @@ export async function addProduct(data: Partial<Product>): Promise<Product> {
 }
 
 export async function updateProduct(id: number, data: Partial<Product>): Promise<Product> {
-  checkOnlineOrThrow();
+  if (isOffline()) {
+    const existing = await db.products.get(id);
+    await mergeProducts([{ ...(existing ?? { id }), ...data, id } as unknown as Record<string, unknown>]);
+    await queueProductUpsert(data as unknown as Record<string, unknown>, id > 0 ? id : undefined, id < 0 ? id : undefined);
+    return { ...((existing ?? {}) as object), ...data, id, offline: true } as unknown as Product;
+  }
   const res = await fetch(`/api/products/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -104,7 +129,11 @@ export async function unarchiveProduct(id: number): Promise<Product> {
 }
 
 export async function deleteProduct(id: number): Promise<void> {
-  checkOnlineOrThrow();
+  if (isOffline()) {
+    await db.products.delete(id);
+    if (id > 0) await queueProductDelete(id);
+    return;
+  }
   const res = await fetch(`/api/products/${id}`, { method: 'DELETE' });
   if (!res.ok) {
     const errData = await res.json().catch(() => ({}));

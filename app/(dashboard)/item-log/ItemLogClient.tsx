@@ -93,7 +93,7 @@ export default function ItemLogClient() {
       {isOffline && (
         <div className="flex items-center gap-2 text-sm text-amber-200 bg-amber-950/60 border border-amber-800/40 rounded-xl px-4 py-2.5">
           <WifiOff className="h-4 w-4 shrink-0" />
-          <span>This page requires an internet connection. Data may be outdated.</span>
+          <span>Offline — showing cached item log. Sync on reconnect.</span>
         </div>
       )}
       <div>

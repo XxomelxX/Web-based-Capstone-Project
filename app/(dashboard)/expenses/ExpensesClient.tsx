@@ -60,26 +60,21 @@ export default function ExpensesClient() {
   }, [refresh]);
 
   function openAddModal() {
-    if (typeof window !== 'undefined' && !navigator.onLine) {
-      setError('This action requires an internet connection');
-      return;
-    }
     setError('');
     setShowModal(true);
   }
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
-    if (typeof window !== 'undefined' && !navigator.onLine) {
-      setError('This action requires an internet connection');
-      return;
-    }
     setError('');
     try {
-      await addExpense({ type: form.type, amount: Number(form.amount), period: form.period, note: form.note });
+      const saved = await addExpense({ type: form.type, amount: Number(form.amount), period: form.period, note: form.note });
       setShowModal(false);
       setForm({ type: '', amount: '', period: '', note: '' });
       refresh();
+      if ((saved as { offline?: boolean }).offline) {
+        setError('');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add expense');
     }
@@ -111,7 +106,7 @@ export default function ExpensesClient() {
       {isOffline && (
         <div className="flex items-center gap-2 text-sm text-amber-200 bg-amber-950/60 border border-amber-800/40 rounded-xl px-4 py-2.5">
           <WifiOff className="h-4 w-4 shrink-0" />
-          <span>This page requires an internet connection. Data may be outdated.</span>
+          <span>Offline — showing saved expenses. New entries queue and sync on reconnect.</span>
         </div>
       )}
 
@@ -123,10 +118,9 @@ export default function ExpensesClient() {
         <div className="flex gap-2">
           <button
             onClick={openAddModal}
-            disabled={isOffline}
             className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold transition cursor-pointer"
           >
-            + Add Expense
+            {isOffline ? '+ Add Expense (Offline)' : '+ Add Expense'}
           </button>
         </div>
       </div>
@@ -183,7 +177,7 @@ export default function ExpensesClient() {
             </div>
             {isOffline && (
               <p className="text-xs text-amber-400 bg-amber-950/40 p-2 rounded border border-amber-800/40">
-                This action requires an internet connection.
+                Offline — this expense will queue and sync when you reconnect.
               </p>
             )}
             {error && <p className="text-sm text-rose-400">{error}</p>}
@@ -205,7 +199,7 @@ export default function ExpensesClient() {
             </div>
             <div className="flex gap-2 justify-end pt-2">
               <button type="button" onClick={() => setShowModal(false)} className="border border-slate-700 rounded-xl px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 cursor-pointer">Cancel</button>
-              <button type="submit" disabled={isOffline} className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold cursor-pointer">Add Expense</button>
+              <button type="submit" className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold cursor-pointer">{isOffline ? 'Queue Offline' : 'Add Expense'}</button>
             </div>
           </form>
         </div>

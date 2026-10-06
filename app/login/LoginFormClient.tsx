@@ -61,6 +61,19 @@ export default function LoginFormClient() {
           return;
         }
 
+        // Shared-device safety: only wipe cached business data when the user
+        // differs from the previous session owner. Same user keeps cache.
+        let prevUsername: string | null = null;
+        try {
+          const prevRaw = sessionStorage.getItem('offlineSession');
+          prevUsername = prevRaw ? ((JSON.parse(prevRaw) as { username?: string }).username ?? null) : null;
+        } catch { prevUsername = null; }
+        if (prevUsername && prevUsername !== cached.username) {
+          try {
+            const { wipeOfflineData } = await import('@/lib/client/offline');
+            await wipeOfflineData();
+          } catch { /* wipe best-effort */ }
+        }
         sessionStorage.setItem(
           'offlineSession',
           JSON.stringify({
@@ -101,6 +114,17 @@ export default function LoginFormClient() {
       try {
         const session = await getSession();
         if (session?.user) {
+          // Different user on a shared device: wipe the previous user's cached
+          // business data BEFORE writing the new session, so cached offline
+          // shells can never leak data across users.
+          try {
+            const prevRaw = sessionStorage.getItem('offlineSession');
+            const prevUser = prevRaw ? (JSON.parse(prevRaw) as { username?: string }) : null;
+            if (!prevUser || prevUser.username !== cleanUsername) {
+              const { wipeOfflineData } = await import('@/lib/client/offline');
+              await wipeOfflineData();
+            }
+          } catch { /* wipe best-effort */ }
           sessionStorage.setItem('offlineSession', JSON.stringify({
             id: Number(session.user.id || 0),
             name: session.user.name || username,

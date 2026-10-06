@@ -102,10 +102,6 @@ export default function LowStockClient() {
       setError('Only admins can restock products');
       return;
     }
-    if (typeof window !== 'undefined' && !navigator.onLine) {
-      setError('This action requires an internet connection');
-      return;
-    }
     setError('');
     setRestockTarget(p);
   }
@@ -117,15 +113,14 @@ export default function LowStockClient() {
       setError('Only admins can restock products');
       return;
     }
-    if (typeof window !== 'undefined' && !navigator.onLine) {
-      setError('This action requires an internet connection');
-      return;
-    }
     setError('');
     try {
-      await restockProduct({ productId: restockTarget.id, quantity: Number(quantity) });
+      const result = await restockProduct({ productId: restockTarget.id, quantity: Number(quantity) });
       setRestockTarget(null);
       setQuantity('');
+      if ((result as { offline?: boolean }).offline) {
+        setError('');
+      }
       refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Restock failed');
@@ -192,9 +187,8 @@ export default function LowStockClient() {
                   <td className="p-3">
                     <button
                       onClick={() => openRestockModal(p)}
-                      disabled={isOffline}
                       className="text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded px-3 py-1 font-semibold transition cursor-pointer"
-                      title={isOffline ? 'This action requires an internet connection' : 'Restock product'}
+                      title="Restock product"
                     >
                       Restock
                     </button>
@@ -218,7 +212,7 @@ export default function LowStockClient() {
             </div>
             {isOffline && (
               <p className="text-xs text-amber-400 bg-amber-950/40 p-2 rounded border border-amber-800/40">
-                This action requires an internet connection.
+                Offline — stock updates locally and syncs when you reconnect.
               </p>
             )}
             {error && <p className="text-sm text-rose-400">{error}</p>}
@@ -238,7 +232,7 @@ export default function LowStockClient() {
             </p>
             <div className="flex gap-2 justify-end pt-2">
               <button type="button" onClick={() => setRestockTarget(null)} className="border border-slate-700 rounded-xl px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 cursor-pointer">Cancel</button>
-              <button type="submit" disabled={isOffline} className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold cursor-pointer">Add Stock</button>
+              <button type="submit" className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold cursor-pointer">{isOffline ? 'Queue Restock' : 'Add Stock'}</button>
             </div>
           </form>
         </div>

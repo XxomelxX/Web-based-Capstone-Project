@@ -24,11 +24,14 @@ export async function GET(request: Request) {
   const products = await prisma.product.findMany({ where: productWhere, take: 500, include: { category: true } });
 
   // Categories, Customers, Settings: always pull all (small tables, no updatedAt)
-  const [categories, customers, settings, utang] = await Promise.all([
+  const [categories, customers, settings, utang, expenses, transactions, itemlog] = await Promise.all([
     prisma.category.findMany({ take: 200 }),
     prisma.customer.findMany({ take: 1000 }),
     prisma.settings.findFirst(),
     prisma.utangEntry.findMany({ take: 1000, include: { customer: true, items: true, paymentAllocations: true } }),
+    prisma.expense.findMany({ take: 500, orderBy: { createdAt: 'desc' } }),
+    prisma.transaction.findMany({ take: 500, orderBy: { createdAt: 'desc' } }),
+    prisma.itemLog.findMany({ take: 500, orderBy: { createdAt: 'desc' } }),
   ]);
 
   return NextResponse.json({
@@ -36,6 +39,9 @@ export async function GET(request: Request) {
     categories,
     customers,
     utang,
+    expenses,
+    transactions,
+    itemlog,
     settings: settings ?? null,
     syncedAt: new Date().toISOString(),
   }, { headers: { 'Cache-Control': 'no-store' } });

@@ -8,6 +8,19 @@ export type Category1ActionType =
   | 'open_shift'
   | 'close_shift';
 
+export type Category2ActionType =
+  | 'product_upsert'
+  | 'product_delete'
+  | 'category_upsert'
+  | 'category_delete'
+  | 'expense_add'
+  | 'settings_update'
+  | 'customer_add'
+  | 'void_sale'
+  | 'restock';
+
+export type QueuedActionType = Category1ActionType | Category2ActionType;
+
 export interface QueuedSaleItem {
   productId: number;
   quantity: number;
@@ -33,11 +46,25 @@ export interface QueuedActionPayload {
   notes?: string;
   openedAt?: string;
   closedAt?: string;
+
+  // Category-2 entity mutations (server-wins)
+  entityId?: number;
+  data?: Record<string, unknown>;
+  transactionId?: number;
+  productId?: number;
+  quantity?: number;
+  supplier?: string | null;
+  costPerUnit?: number | null;
+  reason?: string;
+  // Optimistic temp-row bookkeeping: negative Dexie id + table to delete
+  // once the server row arrives via pull.
+  tempId?: number;
+  table?: 'products' | 'categories' | 'expenses' | 'customers';
 }
 
 export interface QueuedCategory1Action {
   id?: number;
-  type: Category1ActionType;
+  type: QueuedActionType;
   payload: QueuedActionPayload;
   createdAt: string;
   synced: boolean;
@@ -87,7 +114,7 @@ function stampUuid(payload: QueuedActionPayload): QueuedActionPayload {
 export const MAX_QUEUED_ACTIONS = 100;
 
 export async function queueCategory1Action(
-  type: Category1ActionType,
+  type: QueuedActionType,
   payload: QueuedActionPayload
 ): Promise<number> {
   const pending = await db.queuedActions.where('synced').equals(0).count();
@@ -188,6 +215,36 @@ export async function queueCloseShift(shift: {
     closedAt: shift.closedAt || new Date().toISOString(),
     clientUuid: shift.clientUuid,
   });
+}
+
+// Category 2 queue helpers — offline entity mutations (server-wins on sync).
+// Every action is stamped with a permanent clientUuid for idempotent replay.
+export async function queueProductUpsert(data: Record<string, unknown>, entityId?: number, tempId?: number) {
+  return queueCategory1Action('product_upsert', { entityId, data, tempId, table: tempId ? 'products' : undefined });
+}
+export async function queueProductDelete(entityId: number) {
+  return queueCategory1Action('product_delete', { entityId });
+}
+export async function queueCategoryUpsert(data: Record<string, unknown>, entityId?: number, tempId?: number) {
+  return queueCategory1Action('category_upsert', { entityId, data, tempId, table: tempId ? 'categories' : undefined });
+}
+export async function queueCategoryDelete(entityId: number) {
+  return queueCategory1Action('category_delete', { entityId });
+}
+export async function queueExpenseAdd(data: Record<string, unknown>, tempId?: number) {
+  return queueCategory1Action('expense_add', { data, tempId, table: tempId ? 'expenses' : undefined });
+}
+export async function queueSettingsUpdate(data: Record<string, unknown>) {
+  return queueCategory1Action('settings_update', { data });
+}
+export async function queueCustomerAdd(data: Record<string, unknown>, tempId?: number) {
+  return queueCategory1Action('customer_add', { data, tempId, table: tempId ? 'customers' : undefined });
+}
+export async function queueVoidSale(transactionId: number, reason: string) {
+  return queueCategory1Action('void_sale', { transactionId, reason });
+}
+export async function queueRestock(productId: number, quantity: number, supplier?: string | null, costPerUnit?: number | null) {
+  return queueCategory1Action('restock', { productId, quantity, supplier: supplier ?? null, costPerUnit: costPerUnit ?? null });
 }
 
 // Queries

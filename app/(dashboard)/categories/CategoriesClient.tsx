@@ -64,11 +64,9 @@ export default function CategoriesClient() {
     return () => window.removeEventListener(RECONNECT_EVENT_NAME, handleReconnect);
   }, [refresh]);
 
+  // Offline-capable: mutations apply to local Dexie immediately and queue
+  // for sync (server-wins). Never block on connectivity.
   function checkOnlineOrSetError(): boolean {
-    if (typeof window !== 'undefined' && !navigator.onLine) {
-      setError('This action requires an internet connection');
-      return false;
-    }
     return true;
   }
 
@@ -161,7 +159,6 @@ export default function CategoriesClient() {
         </div>
         <button
           onClick={openAdd}
-          disabled={isOffline}
           className="bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-md px-4 py-2 text-sm font-medium transition cursor-pointer"
         >
           + Add Category
@@ -204,9 +201,8 @@ export default function CategoriesClient() {
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => openEdit(c)}
-                          disabled={isOffline}
                           className="text-slate-400 hover:text-cyan-400 disabled:opacity-40 transition cursor-pointer"
-                          title={isOffline ? 'This action requires an internet connection' : 'Edit category'}
+                          title="Edit category"
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -214,9 +210,8 @@ export default function CategoriesClient() {
                         </button>
                         <button
                           onClick={() => handleArchive(c.id)}
-                          disabled={isOffline}
                           className="text-slate-400 hover:text-amber-400 disabled:opacity-40 transition cursor-pointer"
-                          title={isOffline ? 'This action requires an internet connection' : 'Archive category'}
+                          title="Archive category"
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
@@ -240,7 +235,6 @@ export default function CategoriesClient() {
             <td className="p-3">
               <button
                 onClick={() => handleUnarchive(c.id)}
-                disabled={isOffline}
                 className="text-xs text-emerald-400 font-medium hover:underline disabled:opacity-40 cursor-pointer"
               >
                 ↩ Unarchive (Edit)
@@ -259,7 +253,7 @@ export default function CategoriesClient() {
             </div>
             {isOffline && (
               <p className="text-xs text-amber-400 bg-amber-950/40 p-2 rounded border border-amber-800/40">
-                This action requires an internet connection.
+                Offline — changes save locally and sync when you reconnect.
               </p>
             )}
             {error && <p className="text-sm text-rose-400">{error}</p>}
@@ -284,8 +278,8 @@ export default function CategoriesClient() {
             )}
             <div className="flex gap-2 justify-end pt-2">
               <button type="button" onClick={() => setShowModal(false)} className="border border-slate-700 rounded-xl px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 cursor-pointer">Cancel</button>
-              <button type="submit" disabled={isOffline} className="bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold cursor-pointer">
-                {editingCategory ? 'Save Changes' : 'Add'}
+              <button type="submit" className="bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold cursor-pointer">
+                {isOffline ? (editingCategory ? 'Save Offline' : 'Add Offline') : (editingCategory ? 'Save Changes' : 'Add')}
               </button>
             </div>
           </form>
