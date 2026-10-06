@@ -73,9 +73,22 @@ const withPWA = withPWAInit({
         },
       },
       {
+        // POS must keep selling offline: serve cached shell when offline,
+        // sync queued sales on reconnect (Dexie queue + clientUuid idempotency).
+        // MUST come before the NetworkOnly auth block below.
+        // Matches /pos and /pos/* only — anchored to avoid prefix collisions.
+        urlPattern: /\/pos(\/|$|\?)/,
+        handler: 'NetworkFirst',
+        options: {
+          cacheName: 'pages-cache-v2',
+          networkTimeoutSeconds: 3,
+        },
+      },
+      {
         // Auth-gated app pages must NEVER be served from cache to a
         // logged-out user: always go to network (middleware redirects to /login).
-        urlPattern: /\/(dashboard|pos|products|categories|orders|credit|expenses|reports|users|settings|lowstock|transaction-log|item-log)/,
+        // NOTE: /pos is intentionally excluded (see NetworkFirst rule above).
+        urlPattern: /\/(dashboard|products|categories|orders|credit|expenses|reports|users|settings|lowstock|transaction-log|item-log)/,
         handler: 'NetworkOnly',
       },
       {

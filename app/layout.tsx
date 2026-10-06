@@ -51,9 +51,11 @@ export default function RootLayout({
                 });
               });
               if(!navigator.onLine)return;
+              var tries=0;
               function warm(){
-                if(!navigator.serviceWorker.controller)return void setTimeout(warm,2000);
-                var pages=['/login','/offline'];
+                tries++;
+                if(!navigator.serviceWorker.controller){if(tries<15)setTimeout(warm,2000);return;}
+                var pages=['/login','/offline','/pos'];
                 caches.open('pages-cache-v2').then(function(cache){
                   pages.forEach(function(url){
                     cache.match(url,{ignoreVary:true}).then(function(hit){
@@ -73,6 +75,7 @@ export default function RootLayout({
               }
               if(document.readyState==='complete')warm();
               else window.addEventListener('load',function(){setTimeout(warm,3000);});
+              window.addEventListener('online',function(){tries=0;warm();});
             })();`,
           }}
         />

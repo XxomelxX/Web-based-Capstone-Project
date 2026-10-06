@@ -59,3 +59,14 @@ if (changed) {
 } else {
   console.log('[patch-sw] sw.js is clean, no changes needed.');
 }
+
+// Post-build assertions: fail the build loudly if the offline contract broke.
+const failures = [];
+if (!content.includes('setCatchHandler')) failures.push('missing setCatchHandler');
+if (!content.includes('self.fallback')) failures.push('missing self.fallback (/offline)');
+if (!content.includes('/pos')) failures.push('missing /pos route (offline POS shell)');
+if (failures.length) {
+  console.error('[patch-sw] ASSERT FAILED: ' + failures.join(', '));
+  process.exit(1);
+}
+console.log('[patch-sw] ASSERT OK: fallback + /pos offline routing present.');

@@ -2,6 +2,8 @@
 
 import Link from 'next/link';
 
+export const dynamic = 'force-static';
+
 export default function OfflinePage() {
   return (
     <div
@@ -28,6 +30,12 @@ export default function OfflinePage() {
             >
               Try Again
             </button>
+            <Link
+              href="/pos"
+              className="rounded-xl bg-slate-800 border border-slate-700 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-slate-700"
+            >
+              Go to POS (works offline)
+            </Link>
             <Link
               href="/dashboard"
               className="rounded-xl border border-slate-700 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-slate-800"
