@@ -52,7 +52,7 @@ const withPWA = withPWAInit({
         },
       },
       {
-        urlPattern: /^\/api\/(products|categories|lowstock|reports)/,
+        urlPattern: /\/api\/(products|categories|lowstock|reports)/,
         handler: 'NetworkFirst',
         options: {
           cacheName: 'api-cache-v1',
@@ -66,6 +66,18 @@ const withPWA = withPWAInit({
         // the "__next_error__ / This page couldn't load" screen even when
         // the HTML shell is cached.
         urlPattern: /\/_next\/data\//,
+        handler: 'NetworkFirst',
+        options: {
+          cacheName: 'pages-cache-v2',
+          networkTimeoutSeconds: 3,
+        },
+      },
+      {
+        // Next.js App Router RSC payloads (?_rsc= query). Without this,
+        // offline navigations/refreshes fail their RSC fetches with
+        // ERR_FAILED console spam even when the HTML shell is served.
+        // Full-URL match (Workbox matches against the entire request URL).
+        urlPattern: /_rsc=/,
         handler: 'NetworkFirst',
         options: {
           cacheName: 'pages-cache-v2',

@@ -51,6 +51,17 @@ if (content.includes(bareAuthRoute)) {
   changed = true;
   console.log('[patch-sw] Attached fallback plugin to bare NetworkOnly auth route (offline navigations now serve /offline).');
 }
+// setCatchHandler safety net — GUARDED. A bare `e.setCatchHandler(...)` call
+// threw `TypeError: not a function` on some builds (minifier scope differences),
+// which killed the global fallback AND spammed the console. The guard makes a
+// miss impossible to throw; per-route handlerDidError plugins still cover
+// offline fallback even if the global handler can't attach.
+const guardedCatchHandler = '!function(){try{if(typeof e!=="undefined"&&e&&typeof e.setCatchHandler==="function"){e.setCatchHandler(self.fallback)}}catch(_){}}()';
+if (content.includes('e.setCatchHandler(self.fallback)')) {
+  content = content.replace('e.setCatchHandler(self.fallback)', guardedCatchHandler);
+  changed = true;
+  console.log('[patch-sw] Hardened setCatchHandler call with typeof+try guard (fixes "not a function" crash).');
+}
 // We look for the last e.registerRoute(...) call and append setCatchHandler after it.
 if (!content.includes('setCatchHandler')) {
   // Inject setCatchHandler right before the final semicolon / WB_DISABLE line
@@ -60,7 +71,7 @@ if (!content.includes('setCatchHandler')) {
   if (content.includes(marker)) {
     content = content.replace(
       marker,
-      'e.setCatchHandler(self.fallback),' + marker
+      guardedCatchHandler + ',' + marker
     );
     changed = true;
     console.log('[patch-sw] Injected setCatchHandler(self.fallback) as offline fallback safety net.');
@@ -78,6 +89,7 @@ const failures = [];
 if (!content.includes('setCatchHandler')) failures.push('missing setCatchHandler');
 if (!content.includes('self.fallback')) failures.push('missing self.fallback (/offline)');
 if (!content.includes('registerRoute(/\\/pos/')) failures.push('missing /pos route (offline POS shell)');
+if (!content.includes('_rsc=')) failures.push('missing _rsc rule (App Router RSC offline coverage)');
 if (!content.includes('/(dashboard|products|categories|orders|credit|expenses|reports|users|settings|lowstock|transaction-log|item-log)/,new e.NetworkOnly({plugins')) failures.push('auth NetworkOnly route missing fallback plugin');
 if (failures.length) {
   console.error('[patch-sw] ASSERT FAILED: ' + failures.join(', '));
