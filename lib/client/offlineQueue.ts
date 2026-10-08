@@ -17,6 +17,9 @@ export type Category2ActionType =
   | 'settings_update'
   | 'customer_add'
   | 'void_sale'
+  | 'void_request'
+  | 'void_request_cancel'
+  | 'void_review'
   | 'restock';
 
 export type QueuedActionType = Category1ActionType | Category2ActionType;
@@ -59,6 +62,10 @@ export interface QueuedActionPayload {
   supervisorUsername?: string;
   supervisorVerifiedAt?: string;
   cashierUsername?: string;
+  requestedBy?: number;
+  voidRequestId?: number;
+  approved?: boolean;
+  reviewNote?: string;
   // Optimistic temp-row bookkeeping: negative Dexie id + table to delete
   // once the server row arrives via pull.
   tempId?: number;
@@ -249,6 +256,17 @@ export async function queueVoidSale(
   approval?: { supervisorUsername?: string; supervisorVerifiedAt?: string; cashierUsername?: string }
 ) {
   return queueCategory1Action('void_sale', { transactionId, reason, ...approval });
+}
+// Cashier void-request flow: request (any role) → admin review (admin sync only).
+// Requests live in this preserved queue DB so they survive the user-switch wipe.
+export async function queueVoidRequest(transactionId: number, reason: string, requestedBy: number, clientUuid?: string) {
+  return queueCategory1Action('void_request', { transactionId, reason, requestedBy, clientUuid });
+}
+export async function queueVoidRequestCancel(voidRequestId: number, requestedBy: number) {
+  return queueCategory1Action('void_request_cancel', { voidRequestId, requestedBy });
+}
+export async function queueVoidReview(voidRequestId: number, approved: boolean, reviewNote?: string) {
+  return queueCategory1Action('void_review', { voidRequestId, approved, reviewNote });
 }
 export async function queueRestock(productId: number, quantity: number, supplier?: string | null, costPerUnit?: number | null) {
   return queueCategory1Action('restock', { productId, quantity, supplier: supplier ?? null, costPerUnit: costPerUnit ?? null });

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/server/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/server/auth';
 import { broadcastRealtime } from '@/lib/server/realtime';
+import { executeVoidTransaction } from '@/lib/server/void-transaction';
 
 // POST /api/transactions/:id/void   body: { reason: string, adminUsername?: string, adminPassword?: string }
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -45,64 +46,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   try {
-    const result = await prisma.$transaction(async (tx) => {
-      const transaction = await tx.transaction.findUnique({
-        where: { id: transactionId },
-        include: { items: true },
-      });
-
-      if (!transaction) throw new Error('Transaction not found');
-      if (transaction.status === 'voided') throw new Error('Transaction already voided');
-
-      // Credit-sale void: reverse the linked utang entry to keep the ledger consistent.
-      // The mirror transaction for a credit sale carries clientUuid `utang-{entryUuid}`.
-      if (transaction.paymentMethod === 'credit' && transaction.clientUuid?.startsWith('utang-')) {
-        const entryUuid = transaction.clientUuid.slice('utang-'.length);
-        const linked = await tx.utangEntry.findUnique({
-          where: { clientUuid: entryUuid },
-          include: { paymentAllocations: true, items: true },
-        });
-        if (linked) {
-          if (linked.paymentAllocations.length > 0 || linked.amountPaid > 0) {
-            throw new Error('Cannot void: payments have been recorded against this credit sale. Reverse the payments first.');
-          }
-          await tx.utangEntryItem.deleteMany({ where: { utangEntryId: linked.id } });
-          await tx.utangEntry.delete({ where: { id: linked.id } });
-        }
-      }
-
-      // Restore stock for every item in this sale
-      for (const item of transaction.items) {
-        await tx.product.update({
-          where: { id: item.productId },
-          data: { stock: { increment: item.quantity } },
-        });
-
-        await tx.itemLog.create({
-          data: {
-            productId: item.productId,
-            action: 'voided',
-            quantity: item.quantity,
-            performedBy: voidedByUserId,
-          },
-        });
-      }
-
-      const updated = await tx.transaction.update({
-        where: { id: transactionId },
-        data: {
-          status: 'voided',
-          voidReason: reason,
-          voidedBy: voidedByUserId,
-          voidedAt: new Date(),
-        },
-      });
-
-      return updated;
-    }, {
-      maxWait: 15000,
-      timeout: 25000,
-    });
+    const result = await executeVoidTransaction(transactionId, reason, voidedByUserId);
 
     broadcastRealtime('transactions', { action: 'voided', transaction: result });
     broadcastRealtime('products', { action: 'stock-updated' });

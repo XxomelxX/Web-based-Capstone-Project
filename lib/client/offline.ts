@@ -39,6 +39,7 @@ class SariSariPOSOfflineDB extends Dexie {
   cachedCredentials!: Dexie.Table<CachedCredential, string>;
   queuedActions!: Dexie.Table<Record<string, unknown>, number>;
   syncMeta!: Dexie.Table<OfflineCacheEntry, string>;
+  voidRequests!: Dexie.Table<Record<string, unknown>, number>;
 
   constructor() {
     super('SariSariPOSOffline');
@@ -76,6 +77,12 @@ class SariSariPOSOfflineDB extends Dexie {
       queuedActions: '++id, type, createdAt, synced, syncFailed, clientUuid',
       syncMeta: 'key',
     });
+    // v4: void-request mirror (pending approvals). Deliberately preserved
+    // across the user-switch wipe so an admin logging in after a cashier
+    // still sees offline-queued requests on the same shared device.
+    this.version(4).stores({
+      voidRequests: 'id, transactionId, status, clientUuid',
+    });
   }
 }
 
@@ -90,6 +97,8 @@ export const isOnline = () => (canUseWindow() ? navigator.onLine : true);
  * never show one user's data to another user on a shared device.
  * Queued (unsynced) actions are PRESERVED — they belong to the signed-in
  * cashier and must still sync. Credential cache is preserved for offline login.
+ * The voidRequests mirror is also PRESERVED — pending void approvals must
+ * survive the cashier→admin handoff on a shared device.
  */
 export async function wipeOfflineData(): Promise<void> {
   if (!canUseWindow()) return;
@@ -462,6 +471,38 @@ export async function mergeTransactions(transactions: Record<string, unknown>[])
   try {
     await db.transactions.bulkPut(transactions);
   } catch (e) { console.error('[Dexie] mergeTransactions failed:', e); }
+}
+
+export interface VoidRequestRow {
+  id: number;
+  clientUuid?: string;
+  transactionId: number;
+  reason: string;
+  requestedBy: number;
+  requestedAt: string;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  cashierName?: string;
+  orderTotal?: number;
+  pendingSync?: boolean;
+}
+
+/** Upsert void-request mirror rows (never cleared — survives user-switch wipe). */
+export async function mergeVoidRequests(rows: VoidRequestRow[]) {
+  try {
+    await db.voidRequests.bulkPut(rows as unknown as Record<string, unknown>[]);
+  } catch (e) { console.error('[Dexie] mergeVoidRequests failed:', e); }
+}
+
+export async function getCachedVoidRequests(): Promise<VoidRequestRow[]> {
+  try {
+    return (await db.voidRequests.toArray()) as unknown as VoidRequestRow[];
+  } catch {
+    return [];
+  }
+}
+
+export async function removeCachedVoidRequest(id: number) {
+  try { await db.voidRequests.delete(id); } catch { /* best-effort */ }
 }
 
 export async function saveUtangEntries(entries: Record<string, unknown>[]) {

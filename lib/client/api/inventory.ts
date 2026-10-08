@@ -10,8 +10,8 @@
   saveUsers,
   cachedGet,
 } from '@/lib/client/api/offline';
-import { saveUtangEntries, saveCachedCustomers, getCachedCustomers, saveExpenses, getCachedExpenses, saveSettings, getCachedSettings, updateCachedProductStock, db } from '@/lib/client/offline';
-import { queueAddUtang, queueUtangPayment, queueExpenseAdd, queueSettingsUpdate, queueCustomerAdd, queueVoidSale, queueRestock } from '@/lib/client/offlineQueue';
+import { saveUtangEntries, saveCachedCustomers, getCachedCustomers, saveExpenses, getCachedExpenses, saveSettings, getCachedSettings, updateCachedProductStock, db, mergeVoidRequests, getCachedVoidRequests, removeCachedVoidRequest, type VoidRequestRow } from '@/lib/client/offline';
+import { queueAddUtang, queueUtangPayment, queueExpenseAdd, queueSettingsUpdate, queueCustomerAdd, queueVoidSale, queueVoidRequest, queueVoidRequestCancel, queueVoidReview, queueRestock } from '@/lib/client/offlineQueue';
 interface Expense {
   id: number;
   type: string;
@@ -182,48 +182,12 @@ export async function deleteCustomer(id: number, adminUsername: string, adminPas
   return res.json();
 }
 
-// Void Order — online: supervisor check server-side. Offline: supervisor is
-// verified against the locally cached credential hash, then the void is queued
-// and synced when connectivity returns.
+// Direct void — admin only (online). Cashiers use requestVoid() → admin review.
+// Offline direct voids are not allowed: use the void-request flow so an admin
+// always presses approve, even on a shared offline device.
 export async function voidTransaction(id: number, reason: string, adminUsername?: string, adminPassword?: string) {
   if (isOffline()) {
-    let role: string | null = null;
-    let cashierUsername: string | undefined;
-    try {
-      const raw = sessionStorage.getItem('offlineSession');
-      const sess = raw ? (JSON.parse(raw) as { role?: string; username?: string }) : null;
-      role = sess?.role ?? null;
-      cashierUsername = sess?.username;
-    } catch { role = null; }
-
-    // Admin offline session: self-approved.
-    if (role === 'admin') {
-      await db.transactions.update(id, { status: 'voided', voidReason: reason, pendingSync: true } as unknown as Record<string, unknown>);
-      await queueVoidSale(id, reason, { supervisorUsername: cashierUsername, supervisorVerifiedAt: new Date().toISOString(), cashierUsername });
-      return { offline: true, id, status: 'voided' };
-    }
-
-    // Cashier offline: require supervisor credentials, verified locally.
-    if (!adminUsername || !adminPassword) {
-      throw new Error('Supervisor approval required — enter an admin username and password to void offline.');
-    }
-    const cleanSupervisor = adminUsername.trim().toLowerCase();
-    const cached = await db.cachedCredentials.get(cleanSupervisor);
-    if (!cached || (cached.role !== 'admin' && cached.role !== 'supervisor')) {
-      throw new Error('Supervisor not recognized on this device. The supervisor must log in online on this device at least once.');
-    }
-    const { compare } = await import('bcryptjs');
-    const ok = await compare(adminPassword, cached.passwordHash);
-    if (!ok) {
-      throw new Error('Invalid supervisor password.');
-    }
-    await db.transactions.update(id, { status: 'voided', voidReason: reason, pendingSync: true } as unknown as Record<string, unknown>);
-    await queueVoidSale(id, reason, {
-      supervisorUsername: cached.username,
-      supervisorVerifiedAt: new Date().toISOString(),
-      cashierUsername,
-    });
-    return { offline: true, id, status: 'voided' };
+    throw new Error('You are offline — submit a void request instead. An admin will approve it.');
   }
   const res = await fetch(`/api/transactions/${id}/void`, {
     method: 'POST',
@@ -235,6 +199,196 @@ export async function voidTransaction(id: number, reason: string, adminUsername?
     throw new Error(errData.error || 'Failed to void transaction');
   }
   return res.json();
+}
+
+export interface VoidRequest {
+  id: number;
+  clientUuid?: string;
+  transactionId: number;
+  reason: string;
+  requestedBy: number;
+  requestedAt: string;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  cashierName?: string;
+  orderTotal?: number;
+  pendingSync?: boolean;
+  transaction?: {
+    id: number;
+    total: number;
+    cashier?: { fullName: string };
+  };
+}
+
+function readSessionUser(): { id: number; username?: string; role?: string; name?: string } | null {
+  try {
+    const raw = sessionStorage.getItem('offlineSession');
+    if (!raw) return null;
+    const s = JSON.parse(raw) as { id?: unknown; username?: string; role?: string; name?: string };
+    const id = Number(s.id);
+    return { id: Number.isInteger(id) ? id : 0, username: s.username, role: s.role, name: s.name };
+  } catch {
+    return null;
+  }
+}
+
+function toRow(r: VoidRequest, pendingSync = false): VoidRequestRow {
+  return {
+    id: r.id,
+    clientUuid: r.clientUuid,
+    transactionId: r.transactionId,
+    reason: r.reason,
+    requestedBy: r.requestedBy,
+    requestedAt: r.requestedAt,
+    status: r.status,
+    cashierName: r.cashierName ?? r.transaction?.cashier?.fullName,
+    orderTotal: r.orderTotal ?? r.transaction?.total,
+    pendingSync,
+  };
+}
+
+// Cashier (or admin) requests a void. Works online AND offline: offline it is
+// mirrored locally + queued, then synced when connectivity returns.
+export async function requestVoid(transactionId: number, reason: string): Promise<VoidRequest> {
+  const me = readSessionUser();
+  const clientUuid = crypto.randomUUID();
+  if (isOffline()) {
+    await queueVoidRequest(transactionId, reason, me?.id ?? 0, clientUuid);
+    const temp: VoidRequestRow = {
+      id: -Date.now(),
+      clientUuid,
+      transactionId,
+      reason,
+      requestedBy: me?.id ?? 0,
+      requestedAt: new Date().toISOString(),
+      status: 'pending',
+      cashierName: me?.name,
+      pendingSync: true,
+    };
+    await mergeVoidRequests([temp]);
+    return { ...temp, status: 'pending' } as VoidRequest;
+  }
+  try {
+    const res = await fetch('/api/void-requests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transactionId, reason, clientUuid }),
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || 'Failed to submit void request');
+    }
+    const created = (await res.json()) as VoidRequest;
+    await mergeVoidRequests([toRow(created)]);
+    return created;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const isNetworkError =
+      error instanceof TypeError || /failed to fetch|network|offline/i.test(message);
+    if (isNetworkError) {
+      await queueVoidRequest(transactionId, reason, me?.id ?? 0, clientUuid);
+      const temp: VoidRequestRow = {
+        id: -Date.now(),
+        clientUuid,
+        transactionId,
+        reason,
+        requestedBy: me?.id ?? 0,
+        requestedAt: new Date().toISOString(),
+        status: 'pending',
+        cashierName: me?.name,
+        pendingSync: true,
+      };
+      await mergeVoidRequests([temp]);
+      return { ...temp, status: 'pending' } as VoidRequest;
+    }
+    throw error;
+  }
+}
+
+// Pending approve queue. Admin online: server list (merged to mirror).
+// Anyone offline: local mirror (survives the shared-device user-switch wipe).
+export async function getVoidRequests(): Promise<VoidRequest[]> {
+  if (isOffline()) {
+    const rows = await getCachedVoidRequests();
+    return rows
+      .filter((r) => r.status === 'pending')
+      .map((r) => ({ ...r }) as VoidRequest);
+  }
+  try {
+    const res = await fetch('/api/void-requests?status=pending');
+    if (!res.ok) throw new Error('Failed to load void requests');
+    const data = (await res.json()) as (VoidRequest & {
+      transaction?: { id: number; total: number; cashier?: { fullName: string } };
+    })[];
+    await mergeVoidRequests(data.map((r) => toRow(r)));
+    return data;
+  } catch {
+    const rows = await getCachedVoidRequests();
+    return rows
+      .filter((r) => r.status === 'pending')
+      .map((r) => ({ ...r }) as VoidRequest);
+  }
+}
+
+// Requester (or admin) cancels a pending request. Works offline via queue.
+export async function cancelVoidRequest(id: number): Promise<void> {
+  const me = readSessionUser();
+  if (isOffline()) {
+    await queueVoidRequestCancel(id, me?.id ?? 0);
+    await removeCachedVoidRequest(id);
+    return;
+  }
+  try {
+    const res = await fetch(`/api/void-requests/${id}/cancel`, { method: 'POST' });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || 'Failed to cancel void request');
+    }
+    await removeCachedVoidRequest(id);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (error instanceof TypeError || /failed to fetch|network|offline/i.test(message)) {
+      await queueVoidRequestCancel(id, me?.id ?? 0);
+      await removeCachedVoidRequest(id);
+      return;
+    }
+    throw error;
+  }
+}
+
+// Admin review. Offline approvals queue as void_review and finalize on sync
+// (sync requires an admin session to execute).
+export async function reviewVoidRequest(id: number, approved: boolean, note?: string): Promise<void> {
+  if (isOffline()) {
+    await queueVoidReview(id, approved, note);
+    if (approved) {
+      const rows = await getCachedVoidRequests();
+      const row = rows.find((r) => r.id === id);
+      if (row) await mergeVoidRequests([{ ...row, pendingSync: true }]);
+    } else {
+      await removeCachedVoidRequest(id);
+    }
+    return;
+  }
+  try {
+    const res = await fetch(`/api/void-requests/${id}/review`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ approved, note }),
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || 'Failed to review void request');
+    }
+    await removeCachedVoidRequest(id);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (error instanceof TypeError || /failed to fetch|network|offline/i.test(message)) {
+      await queueVoidReview(id, approved, note);
+      if (!approved) await removeCachedVoidRequest(id);
+      return;
+    }
+    throw error;
+  }
 }
 
 // Utang / Credit (Category 1 Full Offline Queue for Add & Pay)

@@ -397,6 +397,84 @@ export async function POST(request: Request) {
           broadcastRealtime('products', { action: 'stock-updated' });
           results.push({ clientUuid: action.clientUuid, ok: true, serverId: updated.id });
         }
+      } else if (action.type === 'void_request') {
+        // Cashier (or admin) queued a void request offline. Any role may push;
+        // the request itself grants no void — only an admin review executes it.
+        if (!p.transactionId || !p.reason) throw new Error('transactionId and reason required');
+        const replayed = await prisma.voidRequest.findUnique({ where: { clientUuid: action.clientUuid } });
+        if (replayed) {
+          results.push({ clientUuid: action.clientUuid, ok: true, serverId: replayed.id });
+        } else {
+          const txn = await prisma.transaction.findUnique({ where: { id: p.transactionId } });
+          if (!txn) throw new Error('Transaction not found');
+          if (txn.status === 'voided') {
+            results.push({ clientUuid: action.clientUuid, ok: true, conflict: true, error: 'Transaction already voided' });
+          } else {
+            const pending = await prisma.voidRequest.findFirst({
+              where: { transactionId: p.transactionId, status: 'pending' },
+            });
+            if (pending) {
+              results.push({ clientUuid: action.clientUuid, ok: true, serverId: pending.id, conflict: true, error: 'Void already requested — linked to existing request' });
+            } else {
+              // requestedBy arrives in payload (captured at queue time on the
+              // cashier's session); fall back to the syncing user.
+              const requestedBy = typeof p.requestedBy === 'number' && p.requestedBy > 0 ? p.requestedBy : cashierId;
+              const created = await prisma.voidRequest.create({
+                data: {
+                  clientUuid: action.clientUuid,
+                  transactionId: p.transactionId,
+                  reason: p.reason as string,
+                  requestedBy,
+                },
+              });
+              broadcastRealtime('transactions', { action: 'void-requested' });
+              results.push({ clientUuid: action.clientUuid, ok: true, serverId: created.id });
+            }
+          }
+        }
+      } else if (action.type === 'void_request_cancel') {
+        if (typeof p.voidRequestId !== 'number') throw new Error('voidRequestId required');
+        const existing = await prisma.voidRequest.findUnique({ where: { id: p.voidRequestId } });
+        if (!existing) throw new Error('Void request not found');
+        if (existing.status !== 'pending') {
+          results.push({ clientUuid: action.clientUuid, ok: true, conflict: true, error: `Request already ${existing.status}` });
+        } else {
+          const isOwner = typeof p.requestedBy === 'number' && existing.requestedBy === p.requestedBy;
+          if (!isOwner && role !== 'admin') {
+            results.push({ clientUuid: action.clientUuid, ok: false, error: 'Only the requester or an admin can cancel' });
+          } else {
+            await prisma.voidRequest.update({ where: { id: existing.id }, data: { status: 'cancelled', reviewedAt: new Date() } });
+            results.push({ clientUuid: action.clientUuid, ok: true, serverId: existing.id });
+          }
+        }
+      } else if (action.type === 'void_review') {
+        // Admin approval queued offline. The SYNCING user must be admin —
+        // cashiers can never finalize a void at sync time.
+        if (requireAdmin(action.clientUuid)) continue;
+        if (typeof p.voidRequestId !== 'number' || typeof p.approved !== 'boolean') {
+          throw new Error('voidRequestId and approved required');
+        }
+        const existing = await prisma.voidRequest.findUnique({ where: { id: p.voidRequestId } });
+        if (!existing) throw new Error('Void request not found');
+        if (existing.status !== 'pending') {
+          results.push({ clientUuid: action.clientUuid, ok: true, conflict: true, error: `Request already ${existing.status}` });
+        } else if (!p.approved) {
+          await prisma.voidRequest.update({
+            where: { id: existing.id },
+            data: { status: 'rejected', reviewedBy: cashierId, reviewedAt: new Date(), reviewNote: typeof p.reviewNote === 'string' ? p.reviewNote : null },
+          });
+          results.push({ clientUuid: action.clientUuid, ok: true, serverId: existing.id });
+        } else {
+          const { executeVoidTransaction } = await import('@/lib/server/void-transaction');
+          await executeVoidTransaction(existing.transactionId, existing.reason, cashierId);
+          await prisma.voidRequest.update({
+            where: { id: existing.id },
+            data: { status: 'approved', reviewedBy: cashierId, reviewedAt: new Date(), reviewNote: typeof p.reviewNote === 'string' ? p.reviewNote : null },
+          });
+          broadcastRealtime('transactions', { action: 'voided' });
+          broadcastRealtime('products', { action: 'stock-updated' });
+          results.push({ clientUuid: action.clientUuid, ok: true, serverId: existing.id });
+        }
       } else if (action.type === 'restock') {
         if (requireAdmin(action.clientUuid)) continue;
         if (!p.productId || !p.quantity || p.quantity <= 0) throw new Error('productId and positive quantity required');

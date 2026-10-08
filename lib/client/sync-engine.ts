@@ -1,7 +1,7 @@
 // Sync engine: push pending batch → pull delta → merge (blog §10).
 // Server-wins conflicts; exponential backoff 1s→2s→4s→8s→16s, max 5.
 import { getPendingActions, markActionSynced, markActionFailed, offlineDb } from '@/lib/client/offlineQueue';
-import { mergeProducts, saveCategories, saveCachedCustomers, saveSettings, saveUtangEntries, saveExpenses, mergeTransactions, mergeItemLog, getLastSyncedAt, setLastSyncedAt, db as offlineCache } from '@/lib/client/offline';
+import { mergeProducts, saveCategories, saveCachedCustomers, saveSettings, saveUtangEntries, saveExpenses, mergeTransactions, mergeItemLog, mergeVoidRequests, getCachedVoidRequests, removeCachedVoidRequest, getLastSyncedAt, setLastSyncedAt, db as offlineCache } from '@/lib/client/offline';
 
 let retryCount = 0;
 const MAX_RETRIES = 5;
@@ -77,6 +77,22 @@ export async function performSync(): Promise<SyncResult> {
             if (pl?.tempId && pl?.table && (offlineCache as unknown as Record<string, { delete?: (k: number) => Promise<void> }>)[pl.table]?.delete) {
               await (offlineCache as unknown as Record<string, { delete: (k: number) => Promise<void> }>)[pl.table].delete(pl.tempId);
             }
+            // Void-request temp mirror rows (negative ids keyed by clientUuid):
+            // the server row arrives via pull in this same sync.
+            if (action.type === 'void_request' && uuid) {
+              const local = await getCachedVoidRequests();
+              for (const row of local) {
+                if (row.id < 0 && row.clientUuid === uuid) {
+                  await removeCachedVoidRequest(row.id);
+                }
+              }
+            }
+            // Reviewed/cancelled requests leave the pending set — drop the mirror.
+            if ((action.type === 'void_review' || action.type === 'void_request_cancel') && action.id) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const vid = (action.payload as any)?.voidRequestId as number | undefined;
+              if (typeof vid === 'number') await removeCachedVoidRequest(vid);
+            }
           } catch { /* temp cleanup best-effort */ }
         } else {
           await markActionFailed(action.id, r?.error ?? 'Sync rejected');
@@ -100,6 +116,7 @@ export async function performSync(): Promise<SyncResult> {
         expenses?: Record<string, unknown>[];
         transactions?: Record<string, unknown>[];
         itemlog?: Record<string, unknown>[];
+        voidRequests?: Record<string, unknown>[];
         settings: Record<string, unknown> | null;
         syncedAt: string;
       };
@@ -113,6 +130,41 @@ export async function performSync(): Promise<SyncResult> {
       if (pull.transactions) await mergeTransactions(pull.transactions);
       if (pull.itemlog) await mergeItemLog(pull.itemlog);
       if (pull.settings) await saveSettings(pull.settings);
+      if (pull.voidRequests) {
+        // Server is truth for reviewed requests: drop local mirror rows that
+        // are no longer pending, then upsert the pending set.
+        try {
+          const serverIds = new Set(pull.voidRequests.map((r) => (r as { id?: unknown }).id));
+          const local = await getCachedVoidRequests();
+          for (const row of local) {
+            if (typeof row.id === 'number' && row.id > 0 && !serverIds.has(row.id) && !row.pendingSync) {
+              await removeCachedVoidRequest(row.id);
+            }
+          }
+        } catch { /* mirror cleanup best-effort */ }
+        await mergeVoidRequests(pull.voidRequests
+          .map((r) => {
+            const row = r as Record<string, unknown>;
+            const txn = (row.transaction ?? {}) as Record<string, unknown>;
+            const cashier = (txn.cashier ?? {}) as Record<string, unknown>;
+            const id = Number(row.id);
+            const transactionId = Number(row.transactionId);
+            if (!Number.isInteger(id) || !Number.isInteger(transactionId)) return null;
+            const st = row.status;
+            return {
+              id,
+              clientUuid: typeof row.clientUuid === 'string' ? row.clientUuid : undefined,
+              transactionId,
+              reason: typeof row.reason === 'string' ? row.reason : '',
+              requestedBy: Number(row.requestedBy) || 0,
+              requestedAt: typeof row.requestedAt === 'string' ? row.requestedAt : new Date().toISOString(),
+              status: (st === 'pending' || st === 'approved' || st === 'rejected' || st === 'cancelled' ? st : 'pending') as 'pending' | 'approved' | 'rejected' | 'cancelled',
+              cashierName: typeof cashier.fullName === 'string' ? cashier.fullName : undefined,
+              orderTotal: typeof txn.total === 'number' ? txn.total : undefined,
+            };
+          })
+          .filter((r): r is NonNullable<typeof r> => r !== null));
+      }
       await setLastSyncedAt(pull.syncedAt ?? syncedAt);
     }
 
