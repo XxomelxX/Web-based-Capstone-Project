@@ -31,6 +31,8 @@ export interface CheckoutResult {
   tendered: number;
   change: number;
   paymentMethod: 'cash' | 'gcash';
+  // GCash reference number — receipt display only, never persisted.
+  gcashRef?: string;
   createdAt: string;
 }
 

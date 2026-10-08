@@ -48,6 +48,9 @@ export default function POSClient() {
   const [search, setSearch] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'gcash' | 'credit'>('cash');
   const [tendered, setTendered] = useState(0);
+  // GCash reference number is a string identifier — never money. Kept separate
+  // from `tendered` so it can't leak into Tendered/Change math or the receipt.
+  const [gcashRef, setGcashRef] = useState('');
   const [receipt, setReceipt] = useState<CheckoutResult | null>(null);
   const [error, setError] = useState('');
   const [processing, setProcessing] = useState(false);
@@ -266,15 +269,28 @@ export default function POSClient() {
           });
         }
       } else {
-        const finalTendered = paymentMethod === 'gcash' ? (tendered >= total ? tendered : total) : tendered;
+        // GCash is exact payment: tendered = total, change = 0. The reference
+        // number is an identifier carried on the receipt only (never money).
+        const ref = paymentMethod === 'gcash' ? gcashRef.trim() : '';
+        if (paymentMethod === 'gcash' && !ref) {
+          setError('GCash reference number is required.');
+          setProcessing(false);
+          return;
+        }
+        const finalTendered = paymentMethod === 'gcash' ? total : tendered;
         const result = await checkout(
           cart.map((l) => ({ productId: l.product.id, quantity: l.quantity, unitPrice: l.product.price })),
           paymentMethod,
           finalTendered
         );
-        setReceipt(result);
+        setReceipt(
+          paymentMethod === 'gcash'
+            ? { ...result, tendered: result.total, change: 0, gcashRef: ref }
+            : result
+        );
         setCart([]);
         setTendered(0);
+        setGcashRef('');
         void getActiveProducts().then(setProducts).catch(() => {});
 
         if (result.offline && activeShift) {
@@ -617,37 +633,47 @@ export default function POSClient() {
             </div>
           )}
 
-          {!isCredit && (
+          {!isCredit && paymentMethod === 'cash' && (
             <>
               <div>
-                <label className="text-sm font-medium">
-                  {paymentMethod === 'cash' ? 'Cash Tendered' : 'GCash Reference #'}
-                </label>
+                <label className="text-sm font-medium">Cash Tendered</label>
                 <input
                   type="number"
                   value={tendered || ''}
                   onChange={(e) => setTendered(Number(e.target.value))}
                   className="w-full border rounded-md px-3 py-2 mt-1"
-                  placeholder={paymentMethod === 'cash' ? '0.00' : 'Reference Number'}
+                  placeholder="0.00"
                 />
               </div>
 
               <div className="flex justify-between text-sm">
                 <span>Change</span>
                 <span className="font-semibold">
-                  {paymentMethod === 'cash' && change > 0
-                    ? `₱${change.toFixed(2)}`
-                    : '₱0.00'}
+                  {change > 0 ? `₱${change.toFixed(2)}` : '₱0.00'}
                 </span>
               </div>
             </>
+          )}
+
+          {!isCredit && paymentMethod === 'gcash' && (
+            <div>
+              <label className="text-sm font-medium">GCash Reference #</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={gcashRef}
+                onChange={(e) => setGcashRef(e.target.value.replace(/[^0-9]/g, ''))}
+                className="w-full border rounded-md px-3 py-2 mt-1"
+                placeholder="Reference Number"
+              />
+            </div>
           )}
 
           {error && <p className="text-sm text-red-600 font-medium bg-red-50 p-2 rounded border border-red-200">{error}</p>}
 
           <button
             onClick={handleCompleteSale}
-            disabled={cart.length === 0 || (!isCredit && paymentMethod === 'cash' && tendered < total) || (isCredit && !selectedCustomerId && !showNewCustomer) || processing || !activeShift}
+            disabled={cart.length === 0 || (!isCredit && paymentMethod === 'cash' && tendered < total) || (!isCredit && paymentMethod === 'gcash' && !gcashRef.trim()) || (isCredit && !selectedCustomerId && !showNewCustomer) || processing || !activeShift}
             className={`w-full text-white rounded-md py-3 font-medium disabled:opacity-40 transition cursor-pointer ${isCredit ? 'bg-amber-600 hover:bg-amber-500' : 'bg-green-700 hover:bg-green-600'}`}
           >
             {processing ? 'Processing...' : !activeShift ? 'Open Shift to Complete Sale' : isCredit ? '✓ Record Credit Sale' : '✓ Complete Sale'}
@@ -979,11 +1005,14 @@ function ReceiptModal({
         <div className="flex justify-between"><span className="text-slate-400">Subtotal</span><span>₱{receipt.subtotal.toFixed(2)}</span></div>
         <div className="flex justify-between"><span className="text-slate-400">VAT</span><span>₱{receipt.vat.toFixed(2)}</span></div>
         <div className="flex justify-between font-bold text-sm text-slate-100"><span>Total</span><span className="text-emerald-400">₱{receipt.total.toFixed(2)}</span></div>
-        {receipt.paymentMethod !== 'credit' && (
+        {receipt.paymentMethod === 'cash' && (
           <>
             <div className="flex justify-between"><span className="text-slate-400">Tendered</span><span>₱{receipt.tendered.toFixed(2)}</span></div>
             <div className="flex justify-between font-bold text-cyan-300"><span>Change</span><span>₱{receipt.change.toFixed(2)}</span></div>
           </>
+        )}
+        {receipt.paymentMethod === 'gcash' && receipt.gcashRef && (
+          <div className="flex justify-between"><span className="text-slate-400">GCash Ref #</span><span className="font-bold text-cyan-300">{receipt.gcashRef}</span></div>
         )}
         {receipt.paymentMethod === 'credit' && (
           <div className="flex justify-between"><span className="text-slate-400">Amount Owed</span><span className="font-bold text-amber-400">₱{receipt.total.toFixed(2)}</span></div>
