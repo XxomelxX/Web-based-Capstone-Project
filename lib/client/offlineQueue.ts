@@ -20,6 +20,7 @@ export type Category2ActionType =
   | 'void_request'
   | 'void_request_cancel'
   | 'void_review'
+  | 'utang_update_deadline'
   | 'restock';
 
 export type QueuedActionType = Category1ActionType | Category2ActionType;
@@ -34,6 +35,8 @@ export interface QueuedActionPayload {
   clientUuid?: string;
   // POS Sale & Add Utang items
   items?: QueuedSaleItem[];
+  dueDate?: string;
+  utangEntryId?: number;
   paymentMethod?: 'cash' | 'gcash' | string;
   tendered?: number;
   customerId?: number | null;
@@ -173,6 +176,7 @@ export async function queueAddUtang(utang: {
   items: QueuedSaleItem[];
   note?: string;
   clientUuid?: string;
+  dueDate?: string;
 }): Promise<number> {
   return queueCategory1Action('add_utang', {
     customerName: utang.customerName,
@@ -180,6 +184,14 @@ export async function queueAddUtang(utang: {
     note: utang.note,
     expectedSubtotal: utang.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0),
     clientUuid: utang.clientUuid,
+    dueDate: utang.dueDate,
+  });
+}
+
+export async function queueUtangDeadlineUpdate(utangEntryId: number, dueDate: string | null) {
+  return queueCategory1Action('utang_update_deadline', {
+    utangEntryId,
+    ...(dueDate ? { dueDate } : {}),
   });
 }
 

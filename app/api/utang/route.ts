@@ -30,12 +30,26 @@ export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
-  const { customerName, items, note, clientUuid } = await request.json() as {
-    customerName: string; items: UtangItem[]; note?: string; clientUuid?: string;
+  const { customerName, items, note, clientUuid, dueDate: dueDateRaw } = await request.json() as {
+    customerName: string; items: UtangItem[]; note?: string; clientUuid?: string; dueDate?: string | null;
   };
 
   if (!customerName || !items || items.length === 0) {
     return NextResponse.json({ error: 'customerName and at least one item are required' }, { status: 400 });
+  }
+
+  // Optional custom deadline (datetime). Must be a valid date; past dates are
+  // rejected at creation (use edit to backdate a correction).
+  let dueDate: Date | null = null;
+  if (dueDateRaw !== undefined && dueDateRaw !== null && dueDateRaw !== '') {
+    const parsed = new Date(dueDateRaw);
+    if (Number.isNaN(parsed.getTime())) {
+      return NextResponse.json({ error: 'Invalid dueDate' }, { status: 400 });
+    }
+    if (parsed.getTime() < Date.now()) {
+      return NextResponse.json({ error: 'Deadline must be in the future' }, { status: 400 });
+    }
+    dueDate = parsed;
   }
 
   // Idempotency: replay of an already-synced offline action returns the original.
@@ -82,6 +96,7 @@ export async function POST(request: Request) {
           remainingBalance: totalAmount,
           note: note ?? null,
           status: 'unpaid',
+          dueDate,
         },
       });
 

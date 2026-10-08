@@ -410,9 +410,10 @@ export async function addUtang(data: {
   customerName: string;
   items: Array<{ productId: number; quantity: number; unitPrice: number }>;
   note?: string;
+  dueDate?: string | null;
 }) {
   if (typeof window !== 'undefined' && !navigator.onLine) {
-    await queueAddUtang(data);
+    await queueAddUtang({ ...data, dueDate: data.dueDate ?? undefined });
     await updateCachedProductStock(data.items);
     const totalAmount = data.items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
     return {
@@ -423,6 +424,7 @@ export async function addUtang(data: {
       remainingBalance: totalAmount,
       note: data.note ?? null,
       status: 'unpaid',
+      dueDate: data.dueDate ?? null,
       createdAt: new Date().toISOString(),
       offline: true,
     };
@@ -445,7 +447,7 @@ export async function addUtang(data: {
     const isNetworkError =
       error instanceof TypeError || /failed to fetch|network|offline/i.test(message);
     if (typeof window !== 'undefined' && isNetworkError) {
-      await queueAddUtang({ ...data, clientUuid });
+      await queueAddUtang({ ...data, clientUuid, dueDate: data.dueDate ?? undefined });
       await updateCachedProductStock(data.items);
       const totalAmount = data.items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
       return {
@@ -456,9 +458,47 @@ export async function addUtang(data: {
         remainingBalance: totalAmount,
         note: data.note ?? null,
         status: 'unpaid',
+        dueDate: data.dueDate ?? null,
         createdAt: new Date().toISOString(),
         offline: true,
       };
+    }
+    throw error;
+  }
+}
+
+// Set/change/clear a debt's deadline. Works online AND offline (queued sync).
+export async function updateUtangDeadline(utangEntryId: number, dueDate: string | null): Promise<void> {
+  const { queueUtangDeadlineUpdate } = await import('@/lib/client/offlineQueue');
+  if (typeof window !== 'undefined' && !navigator.onLine) {
+    await queueUtangDeadlineUpdate(utangEntryId, dueDate);
+    try {
+      await db.utang.update(utangEntryId, { dueDate } as unknown as Record<string, unknown>);
+    } catch { /* mirror best-effort */ }
+    return;
+  }
+  try {
+    const res = await fetch(`/api/utang/${utangEntryId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dueDate }),
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || 'Failed to update deadline');
+    }
+    try {
+      const updated = await res.json() as Record<string, unknown>;
+      await db.utang.update(utangEntryId, { dueDate: (updated.dueDate ?? dueDate) as unknown } as Record<string, unknown>);
+    } catch { /* mirror best-effort */ }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (error instanceof TypeError || /failed to fetch|network|offline/i.test(message)) {
+      await queueUtangDeadlineUpdate(utangEntryId, dueDate);
+      try {
+        await db.utang.update(utangEntryId, { dueDate } as unknown as Record<string, unknown>);
+      } catch { /* mirror best-effort */ }
+      return;
     }
     throw error;
   }

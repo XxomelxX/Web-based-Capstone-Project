@@ -37,6 +37,7 @@ interface UtangEntry {
   remainingBalance: number;
   note?: string | null;
   status: string;
+  dueDate?: string | null;
   createdAt: string;
   items: UtangItem[];
   paymentAllocations: PaymentAllocation[];
@@ -53,6 +54,7 @@ interface Activity {
   entryId?: number;
   items?: UtangItem[];
   note?: string | null;
+  dueDate?: string | null;
 }
 
 function num(v: unknown): number {
@@ -66,10 +68,13 @@ function safeTime(v: unknown, fallback = ''): number {
   return Number.isFinite(t) ? t : NaN;
 }
 
-// Debt-warning policy (tunable): an unpaid entry older than AGING_DAYS flags
-// as aging (amber); older than OVERDUE_DAYS flags as overdue (red).
+// Debt-warning policy (tunable). An explicit datetime deadline takes
+// precedence when set; otherwise fall back to age tiers: unpaid older than
+// AGING_DAYS flags as aging (amber), older than OVERDUE_DAYS as overdue (red).
 const AGING_DAYS = 7;
 const OVERDUE_DAYS = 30;
+// A deadline within this many hours counts as "due soon" (amber, urgent).
+const DUE_SOON_HOURS = 24;
 
 function daysSince(iso: unknown): number | null {
   const t = safeTime(iso);
@@ -91,12 +96,49 @@ function isToday(iso: unknown): boolean {
 
 type DebtTier = 'ok' | 'aging' | 'overdue';
 
+function dueTime(iso: unknown): number | null {
+  if (iso === null || iso === undefined || iso === '') return null;
+  const t = safeTime(iso);
+  return Number.isNaN(t) ? null : t;
+}
+
+function formatDue(iso: unknown): string {
+  const t = dueTime(iso);
+  if (t === null) return '';
+  return new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+// Human "time left / overdue by" with day+hour precision (deadlines carry time).
+function dueDeltaLabel(dueMs: number): string {
+  const diff = dueMs - Date.now();
+  const abs = Math.abs(diff);
+  const days = Math.floor(abs / (24 * 60 * 60 * 1000));
+  const hours = Math.floor((abs % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+  const core = days > 0 ? `${days}d${hours > 0 ? ` ${hours}h` : ''}` : `${Math.max(hours, 0)}h`;
+  return diff < 0 ? `Overdue by ${core}` : core;
+}
+
+// datetime-local value (device-local) for inputs.
+function toDatetimeLocalValue(iso: unknown): string {
+  const t = dueTime(iso);
+  if (t === null) return '';
+  const d = new Date(t);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export default function CreditClient() {
   const liveUtang = useLiveQuery(() => db.utang.toArray());
   const [selectedCustomer, setSelectedCustomer] = useState<number | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | 'unpaid' | 'partial' | 'paid'>('all');
   const [isCached, setIsCached] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
+  const [deadlineEntry, setDeadlineEntry] = useState<Activity | null>(null);
+  const [deadlineValue, setDeadlineValue] = useState('');
+  const [deadlineError, setDeadlineError] = useState('');
+  const [deadlineSaving, setDeadlineSaving] = useState(false);
+  // Frozen "now" for render-pure deadline math, refreshed on each data pull.
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const entries: UtangEntry[] = useMemo(() => ((liveUtang ?? []) as any[]).filter((e) => e && typeof e === 'object' && e.id != null) as UtangEntry[], [liveUtang]);
@@ -104,6 +146,7 @@ export default function CreditClient() {
   const refresh = useCallback(async () => {
     const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
     setIsOffline(offlineNow);
+    setNowMs(Date.now());
     if (offlineNow) {
       try {
         const cached = await getCachedUtangEntries<UtangEntry>();
@@ -153,6 +196,40 @@ export default function CreditClient() {
 
   useRealtime({ utang: refresh });
 
+  function openDeadlineModal(a: Activity) {
+    setDeadlineError('');
+    setDeadlineEntry(a);
+    setDeadlineValue(toDatetimeLocalValue(a.dueDate));
+  }
+
+  async function handleSaveDeadline(e: React.FormEvent) {
+    e.preventDefault();
+    if (!deadlineEntry?.entryId) return;
+    setDeadlineError('');
+    // Empty = clear the deadline.
+    let iso: string | null = null;
+    if (deadlineValue) {
+      const parsed = new Date(deadlineValue);
+      if (Number.isNaN(parsed.getTime())) {
+        setDeadlineError('Invalid date/time.');
+        return;
+      }
+      iso = parsed.toISOString();
+    }
+    setDeadlineSaving(true);
+    try {
+      const { updateUtangDeadline } = await import('@/lib/client/api/inventory');
+      await updateUtangDeadline(deadlineEntry.entryId, iso);
+      setDeadlineEntry(null);
+      setDeadlineValue('');
+      await refresh();
+    } catch (err) {
+      setDeadlineError(err instanceof Error ? err.message : 'Failed to save deadline');
+    } finally {
+      setDeadlineSaving(false);
+    }
+  }
+
   useEffect(() => {
     refresh();
     function handleReconnect() { refresh(); }
@@ -193,22 +270,39 @@ export default function CreditClient() {
     });
   }, [customerSummaries, entries, statusFilter]);
 
-  // Per-customer debt flags: warning tier from the oldest UNPAID entry age,
-  // plus today's collected payments. Pure client-side — works offline.
+  // Per-customer debt flags. An explicit datetime deadline takes precedence:
+  // past-due (+balance) = overdue; within DUE_SOON_HOURS = due-soon (amber).
+  // Entries without a deadline fall back to the 7/30-day age tiers.
+  // Plus today's collected payments. Pure client-side — works offline.
   const debtFlags = useMemo(() => {
-    const map = new Map<number, { tier: DebtTier; maxAgeDays: number; paidToday: number; paidTodayCount: number }>();
+    const map = new Map<number, {
+      tier: DebtTier; maxAgeDays: number; paidToday: number; paidTodayCount: number;
+      nearestDue: number | null; overdueByMs: number | null; dueSoon: boolean;
+    }>();
     for (const e of entries) {
       if (!e) continue;
       const cid = num(e.customerId);
       if (!cid) continue;
       let flag = map.get(cid);
       if (!flag) {
-        flag = { tier: 'ok', maxAgeDays: 0, paidToday: 0, paidTodayCount: 0 };
+        flag = { tier: 'ok', maxAgeDays: 0, paidToday: 0, paidTodayCount: 0, nearestDue: null, overdueByMs: null, dueSoon: false };
         map.set(cid, flag);
       }
       if (e.status !== 'paid') {
-        const age = daysSince(e.createdAt);
-        if (age !== null && age > flag.maxAgeDays) flag.maxAgeDays = age;
+        const due = dueTime((e as { dueDate?: unknown }).dueDate);
+        if (due !== null) {
+          if (flag.nearestDue === null || due < flag.nearestDue) flag.nearestDue = due;
+          if (due <= nowMs) {
+            flag.tier = 'overdue';
+            const over = nowMs - due;
+            flag.overdueByMs = flag.overdueByMs === null ? over : Math.max(flag.overdueByMs, over);
+          } else if (due - nowMs <= DUE_SOON_HOURS * 60 * 60 * 1000) {
+            flag.dueSoon = true;
+          }
+        } else {
+          const age = daysSince(e.createdAt);
+          if (age !== null && age > flag.maxAgeDays) flag.maxAgeDays = age;
+        }
       }
       for (const a of e.paymentAllocations ?? []) {
         if (!a) continue;
@@ -220,11 +314,13 @@ export default function CreditClient() {
       }
     }
     for (const flag of map.values()) {
-      if (flag.maxAgeDays > OVERDUE_DAYS) flag.tier = 'overdue';
+      if (flag.tier === 'overdue') continue; // explicit deadline wins
+      if (flag.dueSoon) flag.tier = 'aging';
+      else if (flag.maxAgeDays > OVERDUE_DAYS) flag.tier = 'overdue';
       else if (flag.maxAgeDays > AGING_DAYS) flag.tier = 'aging';
     }
     return map;
-  }, [entries]);
+  }, [entries, nowMs]);
 
   const needsAttentionCount = useMemo(
     () => Array.from(debtFlags.values()).filter((f) => f.tier === 'overdue').length,
@@ -269,6 +365,7 @@ export default function CreditClient() {
         entryId: num(e.id),
         items: Array.isArray(e.items) ? e.items : [],
         note: e.note ?? null,
+        dueDate: (e as { dueDate?: string | null }).dueDate ?? null,
       });
       for (const alloc of e.paymentAllocations ?? []) {
         if (!alloc) continue;
@@ -418,11 +515,19 @@ export default function CreditClient() {
                     </div>
                     <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
                       <span>{c.entryCount} {c.entryCount === 1 ? 'entry' : 'entries'}</span>
-                      {tier === 'overdue' && (
-                        <span className="px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-300 font-semibold">⚠️ Overdue</span>
+                      {tier === 'overdue' && flag && (
+                        <span className="px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-300 font-semibold">
+                          ⚠️ {flag.nearestDue !== null ? dueDeltaLabel(flag.nearestDue) : 'Overdue'}
+                        </span>
                       )}
                       {tier === 'aging' && flag && (
-                        <span className="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 font-semibold">⚠️ {flag.maxAgeDays}d unpaid</span>
+                        <span className="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 font-semibold">
+                          {flag.dueSoon && flag.nearestDue !== null
+                            ? `⏰ Due in ${dueDeltaLabel(flag.nearestDue)} · ${formatDue(flag.nearestDue)}`
+                            : flag.nearestDue !== null
+                              ? `⏰ Due ${formatDue(flag.nearestDue)}`
+                              : `⚠️ ${flag.maxAgeDays}d unpaid`}
+                        </span>
                       )}
                       {flag && flag.paidToday > 0 && (
                         <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 font-semibold">✓ Paid today −₱{num(flag.paidToday).toFixed(2)}</span>
@@ -455,7 +560,10 @@ export default function CreditClient() {
                 {activity.map((a) => {
                   const paidTodayRow = a.type === 'payment' && isToday(a.date);
                   const saleAge = a.type === 'sale' && a.status !== 'paid' ? daysSince(a.date) : null;
-                  const staleSale = saleAge !== null && saleAge > OVERDUE_DAYS;
+                  const saleDue = a.type === 'sale' && a.status !== 'paid' ? dueTime(a.dueDate) : null;
+                  // Explicit deadline wins over the age fallback.
+                  const staleSale = saleDue !== null ? saleDue <= nowMs : (saleAge !== null && saleAge > OVERDUE_DAYS);
+                  const dueSoonRow = saleDue !== null && saleDue > nowMs && saleDue - nowMs <= DUE_SOON_HOURS * 60 * 60 * 1000;
                   return (
                   <div
                     key={a.id}
@@ -490,9 +598,19 @@ export default function CreditClient() {
                                 {a.status}
                               </span>
                             )}
-                            {staleSale && saleAge !== null && (
+                            {staleSale && (
                               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-500/15 text-rose-300 font-semibold">
-                                ⚠️ {saleAge}d unpaid
+                                {saleDue !== null ? `⚠️ ${dueDeltaLabel(saleDue)}` : `⚠️ ${saleAge ?? '?'}d unpaid`}
+                              </span>
+                            )}
+                            {!staleSale && dueSoonRow && saleDue !== null && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 font-semibold">
+                                ⏰ Due in {dueDeltaLabel(saleDue)}
+                              </span>
+                            )}
+                            {a.type === 'sale' && saleDue !== null && !staleSale && !dueSoonRow && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-500/15 text-slate-300">
+                                Due {formatDue(saleDue)}
                               </span>
                             )}
                             {paidTodayRow && (
@@ -513,6 +631,14 @@ export default function CreditClient() {
                           {a.note && (
                             <p className="text-xs text-slate-500 mt-0.5 italic">&quot;{a.note}&quot;</p>
                           )}
+                          {a.type === 'sale' && a.status !== 'paid' && (
+                            <button
+                              onClick={() => openDeadlineModal(a)}
+                              className="text-[11px] text-cyan-400 hover:underline mt-1 cursor-pointer"
+                            >
+                              {a.dueDate ? `Deadline: ${formatDue(a.dueDate)} — edit` : 'Set deadline'}
+                            </button>
+                          )}
                         </div>
                       </div>
                       <div className="text-right shrink-0">
@@ -532,6 +658,40 @@ export default function CreditClient() {
           </div>
         </div>
       </div>
+
+      {deadlineEntry && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <form onSubmit={handleSaveDeadline} className="bg-slate-900 border border-slate-700 rounded-xl shadow-xl max-w-sm w-full p-6 space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="font-bold text-white">Deadline — {deadlineEntry.customerName}</h3>
+              <button type="button" onClick={() => setDeadlineEntry(null)} className="text-slate-400 hover:text-white cursor-pointer">✕</button>
+            </div>
+            <p className="text-xs text-slate-400">Amount: ₱{num(deadlineEntry.amount).toFixed(2)}</p>
+            {isOffline && (
+              <p className="text-xs text-amber-400 bg-amber-950/40 p-2 rounded border border-amber-800/40">
+                Offline — deadline change queues and syncs on reconnect.
+              </p>
+            )}
+            {deadlineError && <p className="text-sm text-rose-400">{deadlineError}</p>}
+            <div>
+              <label className="text-sm font-medium text-slate-300">Date &amp; time</label>
+              <input
+                type="datetime-local"
+                value={deadlineValue}
+                onChange={(e) => setDeadlineValue(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-cyan-500 mt-1"
+              />
+              <p className="text-[11px] text-slate-500 mt-1">Leave empty to clear the deadline.</p>
+            </div>
+            <div className="flex gap-2 justify-end pt-2">
+              <button type="button" onClick={() => setDeadlineEntry(null)} className="border border-slate-700 rounded-xl px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 cursor-pointer">Cancel</button>
+              <button type="submit" disabled={deadlineSaving} className="bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold cursor-pointer">
+                {deadlineSaving ? 'Saving…' : 'Save Deadline'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

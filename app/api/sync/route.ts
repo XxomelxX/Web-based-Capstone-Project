@@ -107,11 +107,17 @@ export async function POST(request: Request) {
             return { ...item, unitPrice: prod.price };
           });
           const totalAmount = pricedUtang.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+          let syncDueDate: Date | null = null;
+          if (typeof p.dueDate === 'string' && p.dueDate !== '') {
+            const parsed = new Date(p.dueDate);
+            if (!Number.isNaN(parsed.getTime())) syncDueDate = parsed;
+          }
           const entry = await tx.utangEntry.create({
             data: {
               clientUuid: action.clientUuid, customerId: customer.id,
               totalAmount, amountPaid: 0, remainingBalance: totalAmount,
               note: p.note ?? null, status: 'unpaid',
+              dueDate: syncDueDate,
             },
           });
           for (const item of pricedUtang) {
@@ -475,6 +481,20 @@ export async function POST(request: Request) {
           broadcastRealtime('products', { action: 'stock-updated' });
           results.push({ clientUuid: action.clientUuid, ok: true, serverId: existing.id });
         }
+      } else if (action.type === 'utang_update_deadline') {
+        // Deadline edit queued offline (any role). Last-write-wins.
+        if (typeof p.utangEntryId !== 'number') throw new Error('utangEntryId required');
+        let editDue: Date | null = null;
+        if (typeof p.dueDate === 'string' && p.dueDate !== '') {
+          const parsed = new Date(p.dueDate);
+          if (Number.isNaN(parsed.getTime())) throw new Error('Invalid dueDate');
+          editDue = parsed;
+        }
+        const target = await prisma.utangEntry.findUnique({ where: { id: p.utangEntryId } });
+        if (!target) throw new Error('Utang entry not found');
+        await prisma.utangEntry.update({ where: { id: target.id }, data: { dueDate: editDue } });
+        broadcastRealtime('utang', { action: 'deadline-updated' });
+        results.push({ clientUuid: action.clientUuid, ok: true, serverId: target.id });
       } else if (action.type === 'restock') {
         if (requireAdmin(action.clientUuid)) continue;
         if (!p.productId || !p.quantity || p.quantity <= 0) throw new Error('productId and positive quantity required');

@@ -62,6 +62,8 @@ export default function POSClient() {
   const [newCustomerName, setNewCustomerName] = useState('');
   const [showNewCustomer, setShowNewCustomer] = useState(false);
   const [creditNote, setCreditNote] = useState('');
+  // Optional custom deadline (datetime-local string) for credit sales.
+  const [creditDue, setCreditDue] = useState('');
 
   const [utangEntries, setUtangEntries] = useState<Array<{ customerId: number; remainingBalance: number; status: string }>>([]);
 
@@ -236,7 +238,14 @@ export default function POSClient() {
           return;
         }
         const items = cart.map((l) => ({ productId: l.product.id, quantity: l.quantity, unitPrice: l.product.price }));
-        const result = await addUtangOffline(customerName, items, creditNote || undefined);
+        // datetime-local → ISO; empty = no deadline. Past values rejected server-side.
+        const dueIso = creditDue ? new Date(creditDue).toISOString() : undefined;
+        if (creditDue && Number.isNaN(new Date(creditDue).getTime())) {
+          setError('Invalid deadline date/time.');
+          setProcessing(false);
+          return;
+        }
+        const result = await addUtangOffline(customerName, items, creditNote || undefined, dueIso ?? undefined);
         setReceipt({
           id: result.id,
           subtotal: result.totalAmount,
@@ -255,6 +264,7 @@ export default function POSClient() {
         setCart([]);
         setTendered(0);
         setCreditNote('');
+        setCreditDue('');
         setSelectedCustomerId(0);
         setNewCustomerName('');
         setShowNewCustomer(false);
@@ -630,6 +640,15 @@ export default function POSClient() {
                 placeholder="Note (optional)"
                 className="w-full border rounded-md px-3 py-2 mt-2 text-sm"
               />
+              <div className="mt-2">
+                <label className="text-sm font-medium">Deadline (optional)</label>
+                <input
+                  type="datetime-local"
+                  value={creditDue}
+                  onChange={(e) => setCreditDue(e.target.value)}
+                  className="w-full border rounded-md px-3 py-2 mt-1 text-sm"
+                />
+              </div>
             </div>
           )}
 

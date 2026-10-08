@@ -310,7 +310,8 @@ export interface UtangResult {
 export async function addUtangOffline(
   customerName: string,
   items: Array<{ productId: number; quantity: number; unitPrice: number }>,
-  note?: string
+  note?: string,
+  dueDate?: string | null
 ) {
   const totalAmount = items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
 
@@ -327,7 +328,7 @@ export async function addUtangOffline(
   };
 
   if (!isOnline() || !navigator.onLine) {
-    await queueAddUtang({ customerName, items, note });
+    await queueAddUtang({ customerName, items, note, dueDate: dueDate ?? undefined });
     await updateCachedProductStock(items);
     return { ...fallbackEntry, offline: true };
   }
@@ -337,7 +338,7 @@ export async function addUtangOffline(
     const response = await fetch('/api/utang', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ customerName, items, note, clientUuid }),
+      body: JSON.stringify({ customerName, items, note, clientUuid, dueDate: dueDate ?? undefined }),
     });
 
     if (!response.ok) {
@@ -358,7 +359,7 @@ export async function addUtangOffline(
       /can't reach database server|connection refused|econnrefused|timeout|p1001/i.test(message);
 
     if (typeof window !== 'undefined' && (isNetworkError || isDatabaseUnreachable)) {
-      await queueAddUtang({ customerName, items, note, clientUuid });
+      await queueAddUtang({ customerName, items, note, clientUuid, dueDate: dueDate ?? undefined });
       await updateCachedProductStock(items);
       return { ...fallbackEntry, offline: true };
     }

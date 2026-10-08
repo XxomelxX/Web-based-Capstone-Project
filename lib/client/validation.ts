@@ -11,7 +11,7 @@ export const queuedActionSchema = z.object({
   type: z.enum(['pos_sale', 'add_utang', 'record_payment', 'open_shift', 'close_shift',
     'product_upsert', 'product_delete', 'category_upsert', 'category_delete',
     'expense_add', 'settings_update', 'customer_add', 'void_sale', 'void_request',
-    'void_request_cancel', 'void_review', 'restock']),
+    'void_request_cancel', 'void_review', 'utang_update_deadline', 'restock']),
   payload: z.object({
     items: z.array(saleItemSchema).optional(),
     paymentMethod: z.string().optional(),
@@ -19,6 +19,8 @@ export const queuedActionSchema = z.object({
     customerId: z.number().int().positive().nullable().optional(),
     customerName: z.string().max(200).optional(),
     note: z.string().max(500).optional(),
+    dueDate: z.string().max(40).optional(),
+    utangEntryId: z.number().int().positive().optional(),
     notes: z.string().max(500).optional(),
     amount: z.number().positive().optional(),
     expectedBalance: z.number().optional(),
