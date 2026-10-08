@@ -375,12 +375,23 @@ export async function POST(request: Request) {
         if (txn.status === 'voided') {
           results.push({ clientUuid: action.clientUuid, ok: true, serverId: txn.id });
         } else {
+          // Offline supervisor approval audit: resolve the approving supervisor
+          // to a real user id when possible; fall back to the syncing user.
+          let voidedBy = cashierId;
+          const supName = typeof p.supervisorUsername === 'string' ? p.supervisorUsername : null;
+          if (supName) {
+            const sup = await prisma.user.findUnique({ where: { username: supName.toLowerCase() } }).catch(() => null);
+            if (sup && sup.role === 'admin') voidedBy = sup.id;
+          }
+          const auditReason = supName
+            ? `${p.reason} (offline supervisor approval: ${supName}${typeof p.supervisorVerifiedAt === 'string' ? ` @ ${p.supervisorVerifiedAt}` : ''})`
+            : (p.reason as string);
           const updated = await prisma.$transaction(async (tx) => {
             for (const item of txn.items) {
               await tx.product.update({ where: { id: item.productId }, data: { stock: { increment: item.quantity } } });
-              await tx.itemLog.create({ data: { productId: item.productId, action: 'voided', quantity: item.quantity, performedBy: cashierId } });
+              await tx.itemLog.create({ data: { productId: item.productId, action: 'voided', quantity: item.quantity, performedBy: voidedBy } });
             }
-            return tx.transaction.update({ where: { id: txn.id }, data: { status: 'voided', voidReason: p.reason, voidedBy: cashierId, voidedAt: new Date() } });
+            return tx.transaction.update({ where: { id: txn.id }, data: { status: 'voided', voidReason: auditReason, voidedBy, voidedAt: new Date() } });
           }, { maxWait: 15000, timeout: 25000 });
           broadcastRealtime('transactions', { action: 'voided' });
           broadcastRealtime('products', { action: 'stock-updated' });

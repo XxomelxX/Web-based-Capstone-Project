@@ -145,16 +145,19 @@ export async function getItemLogOffline<T = Record<string, unknown>>(): Promise<
 }
 
 export async function getTransactionsOffline<T = Record<string, unknown>>(): Promise<T[]> {
-  return cachedGet<T[]>(
+  const { cachedGetOrEmpty } = await import('@/lib/client/offline');
+  const { mergeTransactions } = await import('@/lib/client/offline');
+  return cachedGetOrEmpty<T>(
     () => getCachedTransactions<T>(),
     async () => {
       const res = await fetch('/api/transactions');
       if (!res.ok) throw new Error('Failed to load transactions');
       const data = (await res.json()) as T[];
-      await saveTransactions(data as Record<string, unknown>[]);
+      // Merge (no clear): a partial pull must never wipe cached history.
+      await mergeTransactions(data as Record<string, unknown>[]);
       return data;
     },
-    saveTransactions as (value: T[]) => Promise<void>
+    mergeTransactions as (value: T[]) => Promise<void>
   );
 }
 

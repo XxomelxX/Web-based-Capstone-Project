@@ -10,7 +10,7 @@
   saveUsers,
   cachedGet,
 } from '@/lib/client/api/offline';
-import { saveUtangEntries, saveCachedCustomers, getCachedCustomers, saveExpenses, getCachedExpenses, saveSettings, getCachedSettings, updateCachedProductStock, db, mergeProducts } from '@/lib/client/offline';
+import { saveUtangEntries, saveCachedCustomers, getCachedCustomers, saveExpenses, getCachedExpenses, saveSettings, getCachedSettings, updateCachedProductStock, db } from '@/lib/client/offline';
 import { queueAddUtang, queueUtangPayment, queueExpenseAdd, queueSettingsUpdate, queueCustomerAdd, queueVoidSale, queueRestock } from '@/lib/client/offlineQueue';
 interface Expense {
   id: number;
@@ -182,20 +182,47 @@ export async function deleteCustomer(id: number, adminUsername: string, adminPas
   return res.json();
 }
 
-// Void Order (Category 2 — queued offline; admin sessions only, since
-// cashier voids require supervisor password verification server-side)
+// Void Order — online: supervisor check server-side. Offline: supervisor is
+// verified against the locally cached credential hash, then the void is queued
+// and synced when connectivity returns.
 export async function voidTransaction(id: number, reason: string, adminUsername?: string, adminPassword?: string) {
   if (isOffline()) {
     let role: string | null = null;
+    let cashierUsername: string | undefined;
     try {
       const raw = sessionStorage.getItem('offlineSession');
-      role = raw ? (JSON.parse(raw) as { role?: string }).role ?? null : null;
+      const sess = raw ? (JSON.parse(raw) as { role?: string; username?: string }) : null;
+      role = sess?.role ?? null;
+      cashierUsername = sess?.username;
     } catch { role = null; }
-    if (role !== 'admin') {
-      throw new Error('Voiding offline requires an admin session (cashier voids need supervisor approval online)');
+
+    // Admin offline session: self-approved.
+    if (role === 'admin') {
+      await db.transactions.update(id, { status: 'voided', voidReason: reason, pendingSync: true } as unknown as Record<string, unknown>);
+      await queueVoidSale(id, reason, { supervisorUsername: cashierUsername, supervisorVerifiedAt: new Date().toISOString(), cashierUsername });
+      return { offline: true, id, status: 'voided' };
     }
-    await db.transactions.update(id, { status: 'voided', voidReason: reason } as Record<string, unknown>);
-    await queueVoidSale(id, reason);
+
+    // Cashier offline: require supervisor credentials, verified locally.
+    if (!adminUsername || !adminPassword) {
+      throw new Error('Supervisor approval required — enter an admin username and password to void offline.');
+    }
+    const cleanSupervisor = adminUsername.trim().toLowerCase();
+    const cached = await db.cachedCredentials.get(cleanSupervisor);
+    if (!cached || (cached.role !== 'admin' && cached.role !== 'supervisor')) {
+      throw new Error('Supervisor not recognized on this device. The supervisor must log in online on this device at least once.');
+    }
+    const { compare } = await import('bcryptjs');
+    const ok = await compare(adminPassword, cached.passwordHash);
+    if (!ok) {
+      throw new Error('Invalid supervisor password.');
+    }
+    await db.transactions.update(id, { status: 'voided', voidReason: reason, pendingSync: true } as unknown as Record<string, unknown>);
+    await queueVoidSale(id, reason, {
+      supervisorUsername: cached.username,
+      supervisorVerifiedAt: new Date().toISOString(),
+      cashierUsername,
+    });
     return { offline: true, id, status: 'voided' };
   }
   const res = await fetch(`/api/transactions/${id}/void`, {

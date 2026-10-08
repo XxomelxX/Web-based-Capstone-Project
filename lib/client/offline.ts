@@ -426,6 +426,34 @@ export async function getCachedTransactions<T = Record<string, unknown>>() {
   return db.transactions.toArray() as Promise<T[]>;
 }
 
+/** Read helper that never throws: offline + empty cache resolves [] instead. */
+export async function cachedGetOrEmpty<T>(
+  cacheFn: () => Promise<T[]>,
+  fetchFn: () => Promise<T[]>,
+  saveFn?: (value: T[]) => Promise<unknown>
+): Promise<T[]> {
+  if (isOnline()) {
+    try {
+      const value = await fetchFn();
+      if (saveFn) {
+        try { await saveFn(value); } catch { /* cache write best-effort */ }
+      }
+      return value ?? [];
+    } catch {
+      try {
+        return (await cacheFn()) ?? [];
+      } catch {
+        return [];
+      }
+    }
+  }
+  try {
+    return (await cacheFn()) ?? [];
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Merge transactions WITHOUT clearing (upsert by primary key).
  * Pull returns only recent rows — must never wipe older cached history.

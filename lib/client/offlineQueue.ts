@@ -56,6 +56,9 @@ export interface QueuedActionPayload {
   supplier?: string | null;
   costPerUnit?: number | null;
   reason?: string;
+  supervisorUsername?: string;
+  supervisorVerifiedAt?: string;
+  cashierUsername?: string;
   // Optimistic temp-row bookkeeping: negative Dexie id + table to delete
   // once the server row arrives via pull.
   tempId?: number;
@@ -240,8 +243,12 @@ export async function queueSettingsUpdate(data: Record<string, unknown>) {
 export async function queueCustomerAdd(data: Record<string, unknown>, tempId?: number) {
   return queueCategory1Action('customer_add', { data, tempId, table: tempId ? 'customers' : undefined });
 }
-export async function queueVoidSale(transactionId: number, reason: string) {
-  return queueCategory1Action('void_sale', { transactionId, reason });
+export async function queueVoidSale(
+  transactionId: number,
+  reason: string,
+  approval?: { supervisorUsername?: string; supervisorVerifiedAt?: string; cashierUsername?: string }
+) {
+  return queueCategory1Action('void_sale', { transactionId, reason, ...approval });
 }
 export async function queueRestock(productId: number, quantity: number, supplier?: string | null, costPerUnit?: number | null) {
   return queueCategory1Action('restock', { productId, quantity, supplier: supplier ?? null, costPerUnit: costPerUnit ?? null });
