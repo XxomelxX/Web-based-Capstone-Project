@@ -66,6 +66,31 @@ function safeTime(v: unknown, fallback = ''): number {
   return Number.isFinite(t) ? t : NaN;
 }
 
+// Debt-warning policy (tunable): an unpaid entry older than AGING_DAYS flags
+// as aging (amber); older than OVERDUE_DAYS flags as overdue (red).
+const AGING_DAYS = 7;
+const OVERDUE_DAYS = 30;
+
+function daysSince(iso: unknown): number | null {
+  const t = safeTime(iso);
+  if (Number.isNaN(t)) return null;
+  const diff = Date.now() - t;
+  if (diff < 0) return 0;
+  return Math.floor(diff / (24 * 60 * 60 * 1000));
+}
+
+function isToday(iso: unknown): boolean {
+  const t = safeTime(iso);
+  if (Number.isNaN(t)) return false;
+  const d = new Date(t);
+  const now = new Date();
+  return d.getFullYear() === now.getFullYear()
+    && d.getMonth() === now.getMonth()
+    && d.getDate() === now.getDate();
+}
+
+type DebtTier = 'ok' | 'aging' | 'overdue';
+
 export default function CreditClient() {
   const liveUtang = useLiveQuery(() => db.utang.toArray());
   const [selectedCustomer, setSelectedCustomer] = useState<number | null>(null);
@@ -168,6 +193,66 @@ export default function CreditClient() {
     });
   }, [customerSummaries, entries, statusFilter]);
 
+  // Per-customer debt flags: warning tier from the oldest UNPAID entry age,
+  // plus today's collected payments. Pure client-side — works offline.
+  const debtFlags = useMemo(() => {
+    const map = new Map<number, { tier: DebtTier; maxAgeDays: number; paidToday: number; paidTodayCount: number }>();
+    for (const e of entries) {
+      if (!e) continue;
+      const cid = num(e.customerId);
+      if (!cid) continue;
+      let flag = map.get(cid);
+      if (!flag) {
+        flag = { tier: 'ok', maxAgeDays: 0, paidToday: 0, paidTodayCount: 0 };
+        map.set(cid, flag);
+      }
+      if (e.status !== 'paid') {
+        const age = daysSince(e.createdAt);
+        if (age !== null && age > flag.maxAgeDays) flag.maxAgeDays = age;
+      }
+      for (const a of e.paymentAllocations ?? []) {
+        if (!a) continue;
+        const payDate = a.payment?.createdAt ?? a.createdAt;
+        if (isToday(payDate)) {
+          flag.paidToday += num(a.amountApplied);
+          flag.paidTodayCount += 1;
+        }
+      }
+    }
+    for (const flag of map.values()) {
+      if (flag.maxAgeDays > OVERDUE_DAYS) flag.tier = 'overdue';
+      else if (flag.maxAgeDays > AGING_DAYS) flag.tier = 'aging';
+    }
+    return map;
+  }, [entries]);
+
+  const needsAttentionCount = useMemo(
+    () => Array.from(debtFlags.values()).filter((f) => f.tier === 'overdue').length,
+    [debtFlags]
+  );
+  const paidTodaySummary = useMemo(() => {
+    let customers = 0;
+    let total = 0;
+    for (const f of debtFlags.values()) {
+      if (f.paidToday > 0) {
+        customers += 1;
+        total += f.paidToday;
+      }
+    }
+    return { customers, total };
+  }, [debtFlags]);
+  const overdueSummary = useMemo(() => {
+    let customers = 0;
+    let total = 0;
+    for (const [cid, f] of debtFlags) {
+      if (f.tier === 'overdue') {
+        customers += 1;
+        total += num(customerSummaries.find((c) => c.id === cid)?.totalOutstanding);
+      }
+    }
+    return { customers, total };
+  }, [debtFlags, customerSummaries]);
+
   const activity = useMemo<Activity[]>(() => {
     const feed: Activity[] = [];
     for (const e of entries) {
@@ -215,7 +300,6 @@ export default function CreditClient() {
     [entries]
   );
   const customersWithDebt = customerSummaries.length;
-  const activeEntries = entries.filter((e) => e?.status !== 'paid').length;
   const now = new Date();
   const collectedThisMonth = useMemo(() => {
     return entries.reduce((sum, e) => {
@@ -263,12 +347,23 @@ export default function CreditClient() {
           icon={<TrendingUp size={20} className="text-emerald-400" />}
         />
         <StatCard
-          label="Active Entries"
-          value={activeEntries}
+          label="Needs Attention"
+          value={needsAttentionCount}
           accent="text-rose-400"
           icon={<FileText size={20} className="text-rose-400" />}
         />
       </div>
+
+      {paidTodaySummary.customers > 0 && (
+        <div className="text-sm text-emerald-300 bg-emerald-950/40 border border-emerald-800/50 rounded-md px-3 py-2">
+          ✓ {paidTodaySummary.customers} {paidTodaySummary.customers === 1 ? 'customer' : 'customers'} paid today · ₱{num(paidTodaySummary.total).toFixed(2)} collected
+        </div>
+      )}
+      {overdueSummary.customers > 0 && (
+        <div className="text-sm text-amber-300 bg-amber-950/40 border border-amber-800/50 rounded-md px-3 py-2">
+          ⚠️ {overdueSummary.customers} {overdueSummary.customers === 1 ? 'customer' : 'customers'} overdue (unpaid &gt; {OVERDUE_DAYS} days) · ₱{num(overdueSummary.total).toFixed(2)} at risk
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 space-y-4">
@@ -302,11 +397,16 @@ export default function CreditClient() {
               {filteredCustomers.length === 0 ? (
                 <p className="text-sm text-slate-500 text-center py-4">No customers found</p>
               ) : (
-                filteredCustomers.map((c) => (
+                filteredCustomers.map((c) => {
+                  const flag = debtFlags.get(c.id);
+                  const tier = flag?.tier ?? 'ok';
+                  return (
                   <button
                     key={c.id}
                     onClick={() => setSelectedCustomer(c.id)}
                     className={`w-full text-left px-3 py-2 rounded-lg text-sm transition cursor-pointer ${
+                      tier === 'overdue' ? 'border-l-2 border-l-rose-500 ' : ''
+                    }${
                       selectedCustomer === c.id
                         ? 'bg-amber-600/20 border border-amber-500/30 text-amber-300'
                         : 'text-slate-300 hover:bg-slate-800'
@@ -316,12 +416,21 @@ export default function CreditClient() {
                       <span className="font-medium truncate">{c.name}</span>
                       <span className="text-amber-400 font-bold">₱{num(c.totalOutstanding).toFixed(2)}</span>
                     </div>
-                    <div className="text-xs text-slate-500 mt-0.5">
-                      {c.entryCount} {c.entryCount === 1 ? 'entry' : 'entries'}
+                    <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                      <span>{c.entryCount} {c.entryCount === 1 ? 'entry' : 'entries'}</span>
+                      {tier === 'overdue' && (
+                        <span className="px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-300 font-semibold">⚠️ Overdue</span>
+                      )}
+                      {tier === 'aging' && flag && (
+                        <span className="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 font-semibold">⚠️ {flag.maxAgeDays}d unpaid</span>
+                      )}
+                      {flag && flag.paidToday > 0 && (
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 font-semibold">✓ Paid today −₱{num(flag.paidToday).toFixed(2)}</span>
+                      )}
                     </div>
                   </button>
-                ))
-              )}
+                  );
+                  }))}
             </div>
           </div>
         </div>
@@ -343,8 +452,17 @@ export default function CreditClient() {
               </div>
             ) : (
               <div className="divide-y divide-slate-800 max-h-[600px] overflow-y-auto">
-                {activity.map((a) => (
-                  <div key={a.id} className="px-4 py-3 hover:bg-slate-900/50 transition">
+                {activity.map((a) => {
+                  const paidTodayRow = a.type === 'payment' && isToday(a.date);
+                  const saleAge = a.type === 'sale' && a.status !== 'paid' ? daysSince(a.date) : null;
+                  const staleSale = saleAge !== null && saleAge > OVERDUE_DAYS;
+                  return (
+                  <div
+                    key={a.id}
+                    className={`px-4 py-3 hover:bg-slate-900/50 transition ${
+                      paidTodayRow ? 'bg-emerald-500/5 border-l-2 border-l-emerald-500' : ''
+                    }`}
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-start gap-3 min-w-0">
                         <div className={`mt-0.5 w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
@@ -372,6 +490,16 @@ export default function CreditClient() {
                                 {a.status}
                               </span>
                             )}
+                            {staleSale && saleAge !== null && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-500/15 text-rose-300 font-semibold">
+                                ⚠️ {saleAge}d unpaid
+                              </span>
+                            )}
+                            {paidTodayRow && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 font-semibold">
+                                ✓ Paid today
+                              </span>
+                            )}
                           </div>
                           <p className="text-sm text-slate-200 mt-1">
                             <span className="font-medium">{a.customerName}</span>
@@ -383,7 +511,7 @@ export default function CreditClient() {
                             </p>
                           )}
                           {a.note && (
-                            <p className="text-xs text-slate-500 mt-0.5 italic">"{a.note}"</p>
+                            <p className="text-xs text-slate-500 mt-0.5 italic">&quot;{a.note}&quot;</p>
                           )}
                         </div>
                       </div>
@@ -397,7 +525,8 @@ export default function CreditClient() {
                       </div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
