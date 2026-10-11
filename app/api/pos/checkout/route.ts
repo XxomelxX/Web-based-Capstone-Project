@@ -21,6 +21,7 @@ export async function POST(request: Request) {
   const items: CartItem[] = body.items;
   const customerId: number | null = body.customerId ?? null;
   const paymentMethod: string = body.paymentMethod;
+  const gcashRef: string | undefined = typeof body.gcashRef === 'string' && body.gcashRef.trim() ? body.gcashRef.trim().slice(0, 50) : undefined;
   let tendered: number = Number(body.tendered ?? 0);
 
   if (!items || items.length === 0) {
@@ -85,6 +86,7 @@ export async function POST(request: Request) {
       const cashierId = Number(session.user.id);
       if (!Number.isFinite(cashierId)) throw new Error('Invalid session');
 
+      const isGcash = paymentMethod === 'gcash';
       const transaction = await tx.transaction.create({
         data: {
           clientUuid,
@@ -97,6 +99,7 @@ export async function POST(request: Request) {
           tendered,
           change,
           status: 'complete',
+          gcashRef: isGcash ? (gcashRef ?? null) : null,
         },
         include: {
           customer: true,

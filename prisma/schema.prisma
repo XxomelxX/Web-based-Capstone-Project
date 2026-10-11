@@ -82,7 +82,9 @@ model Transaction {
   voidReason    String?
   voidedBy      Int?
   voidedAt      DateTime?
-  createdAt     DateTime  @default(now())
+  createdAt DateTime  @default(now())
+  // Manual GCash reference number (typed from customer receipt, no verification)
+  gcashRef           String?
 
   items TransactionItem[]
   voidRequests VoidRequest[]

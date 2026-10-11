@@ -57,12 +57,14 @@ export async function POST(request: Request) {
             return { ...item, unitPrice: prod.price };
           });
           const subtotal = priced.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+          const isGcash = paymentMethod === 'gcash';
           const txn = await tx.transaction.create({
             data: {
               clientUuid: action.clientUuid, cashierId,
               customerId: p.customerId ?? null,
               paymentMethod, subtotal, vat: 0, total: subtotal,
               tendered, change: Number((tendered - subtotal).toFixed(2)), status: 'complete',
+              gcashRef: isGcash && typeof p.gcashRef === 'string' ? p.gcashRef.slice(0, 50) : null,
             },
           });
           for (const item of priced) {

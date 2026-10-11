@@ -16,6 +16,7 @@ export const queuedActionSchema = z.object({
     items: z.array(saleItemSchema).optional(),
     paymentMethod: z.string().optional(),
     tendered: z.number().optional(),
+    gcashRef: z.string().max(50).optional(),
     customerId: z.number().int().positive().nullable().optional(),
     customerName: z.string().max(200).optional(),
     note: z.string().max(500).optional(),

@@ -20,7 +20,7 @@ interface ReportData {
   totalItemsSold: number;
   estimatedProfit: number;
   topSelling: Array<{ name: string; unitsSold: number; revenue: number }>;
-  stockLevels: Array<{ name: string; stock: number; status: string }>;
+  stockLevels: Array<{ id?: number; name: string; stock: number; status: string }>;
 }
 
 export default function ReportsClient() {
@@ -114,12 +114,12 @@ export default function ReportsClient() {
           </div>
 
           <div className="inline-flex items-center gap-3">
-            <div className="inline-flex items-center gap-3 rounded-3xl border border-yellow-500 bg-yellow-400 px-4 py-3 text-sm text-gray-900 shadow-lg shadow-black/10">
+            <div className="inline-flex items-center gap-3 rounded-3xl border border-[#e9e9e9] bg-[#e9e9e9] px-4 py-3 text-sm text-gray-900 shadow-lg shadow-black/10">
               <span className="text-gray-700">Report range</span>
               <select
                 value={range}
                 onChange={(e) => setRange(e.target.value as 'today' | 'week' | 'month' | 'year' | 'all')}
-                className="rounded-2xl border border-yellow-500 bg-yellow-300 px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-yellow-600"
+                className="rounded-2xl border border-[#d4d4d4] bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-[#a3a3a3]"
               >
                 <option value="today">Today</option>
                 <option value="week">This Week</option>
@@ -177,7 +177,7 @@ export default function ReportsClient() {
               ) : (
                 <ol className="space-y-4">
                   {data.topSelling.map((product, index) => (
-                    <li key={product.name} className="rounded-3xl border border-slate-800/80 bg-slate-900/80 p-4">
+                    <li key={`${product.name}-${index}`} className="rounded-3xl border border-slate-800/80 bg-slate-900/80 p-4">
                       <div className="flex items-center justify-between gap-4">
                         <div>
                           <p className="text-sm text-slate-400">{index + 1}. {product.name}</p>
@@ -203,8 +203,8 @@ export default function ReportsClient() {
               </div>
 
               <div className="space-y-3 max-h-[420px] overflow-y-auto pr-2">
-                {data.stockLevels.map((stock) => (
-                  <div key={stock.name} className="grid grid-cols-[1fr_auto_auto] gap-4 rounded-3xl border border-slate-800/80 bg-slate-900/80 px-4 py-4 text-sm text-slate-200">
+                {data.stockLevels.map((stock, idx) => (
+                  <div key={stock.id ?? `${stock.name}-${idx}`} className="grid grid-cols-[1fr_auto_auto] gap-4 rounded-3xl border border-slate-800/80 bg-slate-900/80 px-4 py-4 text-sm text-slate-200">
                     <span className="font-medium text-slate-100">{stock.name}</span>
                     <span className="text-slate-400">{stock.stock}</span>
                     <span className={`rounded-full px-3 py-1 text-xs font-semibold ${stock.status === 'Critical' ? 'bg-rose-500/15 text-rose-300' : 'bg-white text-slate-700'}`}>
