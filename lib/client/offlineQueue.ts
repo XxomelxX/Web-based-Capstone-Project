@@ -39,7 +39,7 @@ export interface QueuedActionPayload {
   utangEntryId?: number;
   paymentMethod?: 'cash' | 'gcash' | string;
   tendered?: number;
-  // GCash reference number (manual claim, verified later via Xendit)
+  // GCash reference number (manual, typed from customer receipt)
   gcashRef?: string;
   customerId?: number | null;
   customerName?: string;
@@ -341,11 +341,6 @@ export async function getSyncFailedSales(): Promise<QueuedSale[]> {
       synced: a.synced,
       syncFailed: a.syncFailed,
     }));
-}
-
-export async function getPendingGcashCount(): Promise<number> {
-  const actions = await db.queuedActions.toArray();
-  return actions.filter((a) => a.type === 'pos_sale' && !a.synced && !a.syncFailed && a.payload.paymentMethod === 'gcash').length;
 }
 
 export async function markActionSynced(id: number) {

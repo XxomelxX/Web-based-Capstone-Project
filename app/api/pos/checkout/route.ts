@@ -100,9 +100,6 @@ export async function POST(request: Request) {
           change,
           status: 'complete',
           gcashRef: isGcash ? (gcashRef ?? null) : null,
-          // Manual / offline GCash claims need Xendit verification on sync.
-          xenditStatus: isGcash ? 'PENDING' : null,
-          needsVerification: isGcash,
         },
         include: {
           customer: true,

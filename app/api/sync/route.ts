@@ -65,9 +65,6 @@ export async function POST(request: Request) {
               paymentMethod, subtotal, vat: 0, total: subtotal,
               tendered, change: Number((tendered - subtotal).toFixed(2)), status: 'complete',
               gcashRef: isGcash && typeof p.gcashRef === 'string' ? p.gcashRef.slice(0, 50) : null,
-              xenditReferenceId: isGcash ? action.clientUuid : null,
-              xenditStatus: isGcash ? 'PENDING' : null,
-              needsVerification: isGcash,
             },
           });
           for (const item of priced) {
@@ -82,14 +79,13 @@ export async function POST(request: Request) {
         // Offline prices may be stale: compare client-expected vs server total.
         const priceConflict = p.expectedSubtotal !== undefined
           && Math.abs(Number(p.expectedSubtotal) - Number(created.total)) > 0.009;
-        const needsGcashVerify = paymentMethod === 'gcash';
         broadcastRealtime('transactions', { action: 'created' });
         broadcastRealtime('products', { action: 'stock-updated' });
         broadcastRealtime('itemlog', { action: 'created' });
         results.push({
           clientUuid: action.clientUuid, ok: true, serverId: created.id,
-          conflict: priceConflict || needsGcashVerify || undefined,
-          error: needsGcashVerify && !priceConflict ? 'Queued offline — pending GCash (Xendit) verification' : priceConflict ? 'Prices changed while offline — server prices applied (server-wins)' : undefined,
+          conflict: priceConflict || undefined,
+          error: priceConflict ? 'Prices changed while offline — server prices applied (server-wins)' : undefined,
         });
       } else if (action.type === 'add_utang') {
         if (!p.customerName || !p.items?.length) throw new Error('customerName and items required');

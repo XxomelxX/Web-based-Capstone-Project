@@ -31,10 +31,8 @@ export interface CheckoutResult {
   tendered: number;
   change: number;
   paymentMethod: 'cash' | 'gcash';
-  // GCash reference number — queued offline, verified later via Xendit.
+  // GCash reference number (manual) — typed from the customer's GCash receipt.
   gcashRef?: string;
-  needsVerification?: boolean;
-  xenditStatus?: string;
   createdAt: string;
 }
 
@@ -240,8 +238,6 @@ export async function checkoutOffline(
     change: tendered - subtotal,
     paymentMethod,
     gcashRef,
-    needsVerification: paymentMethod === 'gcash' ? true : undefined,
-    xenditStatus: paymentMethod === 'gcash' ? 'PENDING' : undefined,
     createdAt: new Date().toISOString(),
   };
 
