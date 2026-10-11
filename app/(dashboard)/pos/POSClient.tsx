@@ -5,7 +5,7 @@ import { Search } from 'lucide-react';
 import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
 import { formatTime, formatDateTime } from '@/lib/client/timeUtils';
 import { getActiveProducts, Product } from '@/lib/client/api/products';
-import { checkout, CheckoutResult } from '@/lib/client/api/pos';
+import { checkout, createGcashChargeOnline, pollGcashStatus, CheckoutResult } from '@/lib/client/api/pos';
 import { getSettings, getCustomersLight, recordUtangPayment } from '@/lib/client/api/inventory';
 import { addUtangOffline } from '@/lib/client/api/offline';
 import { getCachedCustomers, saveCachedCustomers, getCachedUtangEntries } from '@/lib/client/offline';
@@ -280,7 +280,7 @@ export default function POSClient() {
         }
       } else {
         // GCash is exact payment: tendered = total, change = 0. The reference
-        // number is an identifier carried on the receipt only (never money).
+        // number is a manual claim queued offline and verified via Xendit.
         const ref = paymentMethod === 'gcash' ? gcashRef.trim() : '';
         if (paymentMethod === 'gcash' && !ref) {
           setError('GCash reference number is required.');
@@ -288,14 +288,68 @@ export default function POSClient() {
           return;
         }
         const finalTendered = paymentMethod === 'gcash' ? total : tendered;
+        const cartItems = cart.map((l) => ({ productId: l.product.id, quantity: l.quantity, unitPrice: l.product.price }));
+
+        // Online GCash: try real Xendit charge first. Offline (or Xendit
+        // unconfigured/down) falls back to queued manual claim (PENDING).
+        if (paymentMethod === 'gcash' && typeof navigator !== 'undefined' && navigator.onLine) {
+          try {
+            const charge = await createGcashChargeOnline(cartItems, ref);
+            if (charge.checkoutUrl) {
+              window.open(charge.checkoutUrl, '_blank', 'noopener');
+            }
+            // Poll a few times for instant approvals; webhook completes the rest.
+            let status = charge.xenditStatus;
+            for (let i = 0; i < 3 && (status === 'PENDING' || status === 'REQUIRES_ACTION'); i++) {
+              await new Promise((r) => setTimeout(r, 2000));
+              try {
+                const s = await pollGcashStatus(charge.referenceId);
+                status = s.xenditStatus;
+                if (status === 'SUCCEEDED' || status === 'FAILED') break;
+              } catch { break; }
+            }
+            const paid = status === 'SUCCEEDED';
+            setReceipt({
+              id: charge.transactionId,
+              subtotal: total,
+              vat: 0,
+              total,
+              tendered: total,
+              change: 0,
+              paymentMethod: 'gcash',
+              gcashRef: ref,
+              needsVerification: !paid,
+              xenditStatus: status,
+              checkoutUrl: charge.checkoutUrl,
+              createdAt: new Date().toISOString(),
+              offline: false,
+            });
+            setCart([]);
+            setTendered(0);
+            setGcashRef('');
+            void getActiveProducts().then(setProducts).catch(() => {});
+            void fetchActiveShift().then((shift) => {
+              if (shift) setActiveShift(shift);
+            });
+            return;
+          } catch (onlineErr) {
+            // Fall through to manual/PENDING flow (e.g. Xendit key missing).
+            if (onlineErr instanceof Error && !/failed to fetch|network|offline|Xendit|not configured/i.test(onlineErr.message)) {
+              throw onlineErr;
+            }
+          }
+        }
+
         const result = await checkout(
-          cart.map((l) => ({ productId: l.product.id, quantity: l.quantity, unitPrice: l.product.price })),
+          cartItems,
           paymentMethod,
-          finalTendered
+          finalTendered,
+          null,
+          paymentMethod === 'gcash' ? ref : undefined
         );
         setReceipt(
           paymentMethod === 'gcash'
-            ? { ...result, tendered: result.total, change: 0, gcashRef: ref }
+            ? { ...result, tendered: result.total, change: 0, gcashRef: ref, needsVerification: true, xenditStatus: result.xenditStatus ?? 'PENDING' }
             : result
         );
         setCart([]);
@@ -1033,13 +1087,29 @@ function ReceiptModal({
         {receipt.paymentMethod === 'gcash' && receipt.gcashRef && (
           <div className="flex justify-between"><span className="text-slate-400">GCash Ref #</span><span className="font-bold text-cyan-300">{receipt.gcashRef}</span></div>
         )}
+        {receipt.paymentMethod === 'gcash' && (
+          <div className="flex justify-between"><span className="text-slate-400">GCash Status</span><span className={`font-bold ${receipt.needsVerification ? 'text-amber-300' : 'text-emerald-300'}`}>{receipt.needsVerification ? `QUEUED — PENDING VERIFICATION${receipt.xenditStatus ? ` (${receipt.xenditStatus})` : ''}` : `PAID${receipt.xenditStatus ? ` (${receipt.xenditStatus})` : ''}`}</span></div>
+        )}
+        {receipt.paymentMethod === 'gcash' && receipt.checkoutUrl && receipt.needsVerification && (
+          <a href={receipt.checkoutUrl} target="_blank" rel="noopener" className="block text-center text-[11px] font-bold text-cyan-300 underline">Open GCash checkout to complete payment</a>
+        )}
         {receipt.paymentMethod === 'credit' && (
           <div className="flex justify-between"><span className="text-slate-400">Amount Owed</span><span className="font-bold text-amber-400">₱{receipt.total.toFixed(2)}</span></div>
         )}
 
         {receipt.offline && (
           <div className="bg-amber-500/20 border border-amber-500/30 rounded-xl p-2 text-center text-[11px] font-bold text-amber-300">
-            🟡 Saved Offline — will sync automatically once online
+            {receipt.paymentMethod === 'gcash' ? '🟡 Queued Offline — Pending GCash (Xendit) verification, not yet Paid' : '🟡 Saved Offline — will sync automatically once online'}
+          </div>
+        )}
+        {!receipt.offline && receipt.paymentMethod === 'gcash' && receipt.needsVerification && (
+          <div className="bg-amber-500/20 border border-amber-500/30 rounded-xl p-2 text-center text-[11px] font-bold text-amber-300">
+            🟡 Queued — Pending GCash (Xendit) verification, not yet Paid
+          </div>
+        )}
+        {!receipt.offline && receipt.paymentMethod === 'gcash' && !receipt.needsVerification && (
+          <div className="bg-emerald-500/20 border border-emerald-500/30 rounded-xl p-2 text-center text-[11px] font-bold text-emerald-300">
+            ✓ GCash Paid (Xendit verified)
           </div>
         )}
 

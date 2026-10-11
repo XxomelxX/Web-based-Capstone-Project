@@ -39,6 +39,8 @@ export interface QueuedActionPayload {
   utangEntryId?: number;
   paymentMethod?: 'cash' | 'gcash' | string;
   tendered?: number;
+  // GCash reference number (manual claim, verified later via Xendit)
+  gcashRef?: string;
   customerId?: number | null;
   customerName?: string;
   note?: string;
@@ -152,6 +154,7 @@ export async function queueSale(sale: {
   customerId?: number | null;
   createdAt?: string;
   clientUuid?: string;
+  gcashRef?: string;
 }): Promise<number> {
   const res = await db.queuedActions.add({
     type: 'pos_sale',
@@ -162,6 +165,7 @@ export async function queueSale(sale: {
       customerId: sale.customerId ?? null,
       expectedSubtotal: sale.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0),
       clientUuid: sale.clientUuid,
+      ...(sale.gcashRef ? { gcashRef: sale.gcashRef.slice(0, 50) } : {}),
     }),
     createdAt: sale.createdAt || new Date().toISOString(),
     synced: false,
@@ -337,6 +341,11 @@ export async function getSyncFailedSales(): Promise<QueuedSale[]> {
       synced: a.synced,
       syncFailed: a.syncFailed,
     }));
+}
+
+export async function getPendingGcashCount(): Promise<number> {
+  const actions = await db.queuedActions.toArray();
+  return actions.filter((a) => a.type === 'pos_sale' && !a.synced && !a.syncFailed && a.payload.paymentMethod === 'gcash').length;
 }
 
 export async function markActionSynced(id: number) {

@@ -31,8 +31,10 @@ export interface CheckoutResult {
   tendered: number;
   change: number;
   paymentMethod: 'cash' | 'gcash';
-  // GCash reference number — receipt display only, never persisted.
+  // GCash reference number — queued offline, verified later via Xendit.
   gcashRef?: string;
+  needsVerification?: boolean;
+  xenditStatus?: string;
   createdAt: string;
 }
 
@@ -225,7 +227,8 @@ export async function checkoutOffline(
   items: Array<{ productId: number; quantity: number; unitPrice: number }>,
   paymentMethod: 'cash' | 'gcash',
   tendered: number,
-  customerId?: number | null
+  customerId?: number | null,
+  gcashRef?: string
 ) {
   const subtotal = items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
   const fallbackReceipt: CheckoutResult = {
@@ -236,6 +239,9 @@ export async function checkoutOffline(
     tendered,
     change: tendered - subtotal,
     paymentMethod,
+    gcashRef,
+    needsVerification: paymentMethod === 'gcash' ? true : undefined,
+    xenditStatus: paymentMethod === 'gcash' ? 'PENDING' : undefined,
     createdAt: new Date().toISOString(),
   };
 
@@ -246,6 +252,7 @@ export async function checkoutOffline(
       tendered,
       customerId: customerId ?? null,
       createdAt: new Date().toISOString(),
+      gcashRef,
     });
     await updateCachedProductStock(items);
     return { ...fallbackReceipt, offline: true };
@@ -258,7 +265,7 @@ export async function checkoutOffline(
     const response = await fetch('/api/pos/checkout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clientUuid, items, customerId, paymentMethod, tendered }),
+      body: JSON.stringify({ clientUuid, items, customerId, paymentMethod, tendered, gcashRef }),
     });
 
     if (!response.ok) {
@@ -286,6 +293,7 @@ export async function checkoutOffline(
         customerId: customerId ?? null,
         createdAt: new Date().toISOString(),
         clientUuid,
+        gcashRef,
       });
       await updateCachedProductStock(items);
       return { ...fallbackReceipt, offline: true };

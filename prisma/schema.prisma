@@ -83,6 +83,12 @@ model Transaction {
   voidedBy      Int?
   voidedAt      DateTime?
   createdAt     DateTime  @default(now())
+  // Xendit GCash (hybrid offline queue: queued offline = PENDING verification)
+  gcashRef           String?
+  xenditPaymentId    String?   @unique
+  xenditReferenceId  String?
+  xenditStatus       String?   // "PENDING" | "REQUIRES_ACTION" | "SUCCEEDED" | "FAILED"
+  needsVerification  Boolean   @default(false)
 
   items TransactionItem[]
   voidRequests VoidRequest[]

@@ -66,6 +66,7 @@ export async function GET(request: Request) {
     const threshold = settings?.lowStockThreshold ?? 20;
 
     const stockLevels = products.map((p) => ({
+      id: p.id,
       name: p.name,
       stock: p.stock,
       status: p.stock < threshold ? 'Critical' : 'OK',
