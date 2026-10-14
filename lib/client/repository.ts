@@ -47,7 +47,7 @@ export async function repoOpenShift(openingFloat: number, notes?: string) {
   return writeThrough('open_shift', { openingFloat, notes, openedAt: new Date().toISOString() });
 }
 
-export async function repoCloseShift(closingCash: number, notes?: string) {
+export async function repoCloseShift(closingCash?: number, notes?: string) {
   return writeThrough('close_shift', { closingCash, notes, closedAt: new Date().toISOString() });
 }
 

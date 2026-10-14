@@ -230,7 +230,7 @@ export async function queueOpenShift(shift: {
 }
 
 export async function queueCloseShift(shift: {
-  closingCash: number;
+  closingCash?: number;
   notes?: string;
   closedAt?: string;
   clientUuid?: string;

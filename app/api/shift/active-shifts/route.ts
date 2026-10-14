@@ -2,6 +2,7 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/server/auth';
 import { prisma } from '@/lib/server/prisma';
+import { getDrawerFloat } from '@/lib/server/shiftDrawer';
 
 // GET /api/shift/active-shifts — Admin Spot check monitoring of all open cash drawers (X-Read)
 export async function GET() {
@@ -24,6 +25,7 @@ export async function GET() {
           select: {
             fullName: true,
             username: true,
+            role: true,
           },
         },
       },
@@ -58,13 +60,15 @@ export async function GET() {
       }
 
       const totalSales = cashSales + gcashSales;
-      const expectedCash = shift.openingFloat + cashSales;
+      // Shared drawer: every open drawer is measured against the admin's float.
+      const drawerFloat = await getDrawerFloat(shift.cashier.role, shift.openingFloat);
+      const expectedCash = drawerFloat + cashSales;
 
       activeShiftsWithTotals.push({
         id: shift.id,
         cashierId: shift.cashierId,
         cashier: shift.cashier,
-        openingFloat: shift.openingFloat,
+        openingFloat: drawerFloat,
         status: shift.status,
         openedAt: shift.openedAt,
         notes: shift.notes,

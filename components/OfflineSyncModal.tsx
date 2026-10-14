@@ -62,7 +62,9 @@ export function OfflineSyncModal({ onClose }: { onClose: () => void }) {
                   ? `Customer: ${item.payload.customerName} · Amount: ₱${item.payload.amount?.toFixed(2) || '0.00'}`
                   : item.type === 'open_shift'
                   ? `Float: ₱${item.payload.openingFloat?.toFixed(2) || '0.00'}`
-                  : `Cash: ₱${item.payload.closingCash?.toFixed(2) || '0.00'}`;
+                  : item.payload.closingCash !== undefined && item.payload.closingCash !== null
+                  ? `Cash: ₱${item.payload.closingCash.toFixed(2)}`
+                  : 'No physical count';
 
               return (
                 <div key={idx} className="bg-gray-50 border border-gray-200 p-3 rounded-xl space-y-1">

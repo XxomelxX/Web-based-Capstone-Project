@@ -31,8 +31,8 @@ export interface ZReadSummary {
   totalSales: number;
   transactionCount: number;
   expectedCash: number;
-  closingCash: number;
-  overageShortage: number;
+  closingCash: number | null;
+  overageShortage: number | null;
 }
 
 const ACTIVE_SHIFT_CACHE_KEY = 'sari-sari-active-shift';
@@ -65,18 +65,22 @@ export function applyOfflineSaleToShift(
   saleTotal: number,
   paymentMethod: 'cash' | 'gcash'
 ): ShiftDetails {
+  const nextCashSales =
+    paymentMethod === 'cash'
+      ? (shift.cashSales ?? 0) + saleTotal
+      : (shift.cashSales ?? 0);
   return {
     ...shift,
     totalSales: (shift.totalSales ?? 0) + saleTotal,
     transactionCount: (shift.transactionCount ?? 0) + 1,
-    cashSales:
-      paymentMethod === 'cash'
-        ? (shift.cashSales ?? 0) + saleTotal
-        : shift.cashSales,
+    cashSales: nextCashSales,
     gcashSales:
       paymentMethod === 'gcash'
         ? (shift.gcashSales ?? 0) + saleTotal
         : shift.gcashSales,
+    // Cached openingFloat is the drawer float the server returned, so
+    // expected cash stays correct for the shared drawer while offline.
+    expectedCash: (shift.openingFloat ?? 0) + nextCashSales,
   };
 }
 
@@ -160,7 +164,7 @@ export async function openShift(
 }
 
 export async function closeShift(
-  closingCash: number,
+  closingCash?: number,
   notes?: string
 ): Promise<{ success: boolean; shift?: ShiftDetails; summary?: ZReadSummary; error?: string }> {
   const currentShift = getCachedActiveShift();
@@ -171,7 +175,9 @@ export async function closeShift(
   const totalSales = currentShift?.totalSales || cashSales + gcashSales;
   const transactionCount = currentShift?.transactionCount || 0;
   const expectedCash = openingFloat + cashSales;
-  const overageShortage = closingCash - expectedCash;
+  const hasCountedCash = typeof closingCash === 'number' && Number.isFinite(closingCash);
+  const countedCash = hasCountedCash ? closingCash! : null;
+  const overageShortage = hasCountedCash ? closingCash! - expectedCash : null;
 
   const fallbackSummary: ZReadSummary = {
     openedAt,
@@ -182,7 +188,7 @@ export async function closeShift(
     totalSales,
     transactionCount,
     expectedCash,
-    closingCash,
+    closingCash: countedCash,
     overageShortage,
   };
 

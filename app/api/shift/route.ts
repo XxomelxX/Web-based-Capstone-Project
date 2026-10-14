@@ -2,6 +2,7 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/server/auth';
 import { prisma } from '@/lib/server/prisma';
+import { getDrawerFloat } from '@/lib/server/shiftDrawer';
 
 // GET /api/shift — Fetch active open shift for the logged-in cashier
 export async function GET() {
@@ -50,11 +51,15 @@ export async function GET() {
   }
 
   const totalSales = cashSales + gcashSales;
-  const expectedCash = activeShift.openingFloat + cashSales;
+  // Shared drawer: expected cash = admin's drawer float + this user's cash
+  // sales. The float override is returned so the client shows the drawer float.
+  const drawerFloat = await getDrawerFloat(session.user.role, activeShift.openingFloat);
+  const expectedCash = drawerFloat + cashSales;
 
   return NextResponse.json({
     activeShift: {
       ...activeShift,
+      openingFloat: drawerFloat,
       cashSales,
       gcashSales,
       totalSales,
@@ -144,8 +149,8 @@ export async function POST(request: Request) {
               totalSales: (replayed.cashSales ?? 0) + (replayed.gcashSales ?? 0),
               transactionCount: 0,
               expectedCash: replayed.expectedCash ?? replayed.openingFloat,
-              closingCash: replayed.closingCash ?? 0,
-              overageShortage: replayed.overageShortage ?? 0,
+              closingCash: replayed.closingCash,
+              overageShortage: replayed.overageShortage,
             },
           });
         }
@@ -190,12 +195,22 @@ export async function POST(request: Request) {
         }
       }
 
-      const countCash = Number(closingCash);
-      if (!Number.isFinite(countCash) || countCash < 0) {
-        return NextResponse.json({ error: 'closingCash must be a non-negative number' }, { status: 400 });
+      // closingCash is optional: when omitted (no physical drawer count),
+      // store null so the shift closes without an over/short variance.
+      const hasCountedCash = closingCash !== undefined && closingCash !== null
+        && Number.isFinite(Number(closingCash));
+      let countCash: number | null = null;
+      if (hasCountedCash) {
+        countCash = Number(closingCash);
+        if (countCash < 0) {
+          return NextResponse.json({ error: 'closingCash must be a non-negative number' }, { status: 400 });
+        }
       }
-      const expectedCash = activeShift.openingFloat + cashSales;
-      const overageShortage = countCash - expectedCash;
+      // Shared drawer: close against the admin's drawer float (fallback: own
+      // float) and persist it so the closed record reconciles in history.
+      const drawerFloat = await getDrawerFloat(session.user.role, activeShift.openingFloat);
+      const expectedCash = drawerFloat + cashSales;
+      const overageShortage = countCash !== null ? countCash - expectedCash : null;
 
       // Guard against double-close from two devices: only close if still open.
       let closedShift;
@@ -204,6 +219,7 @@ export async function POST(request: Request) {
           where: { id: activeShift.id },
           data: {
             clientUuid: clientUuid ?? undefined,
+            openingFloat: drawerFloat,
             closingCash: countCash,
             expectedCash,
             cashSales,
@@ -236,7 +252,7 @@ export async function POST(request: Request) {
         summary: {
           openedAt: activeShift.openedAt,
           closedAt: closedShift.closedAt,
-          openingFloat: activeShift.openingFloat,
+          openingFloat: drawerFloat,
           cashSales,
           gcashSales,
           totalSales: cashSales + gcashSales,

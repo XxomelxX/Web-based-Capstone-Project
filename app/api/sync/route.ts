@@ -4,6 +4,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/server/auth';
 import { batchSyncSchema } from '@/lib/client/validation';
 import { broadcastRealtime } from '@/lib/server/realtime';
+import { getDrawerFloat } from '@/lib/server/shiftDrawer';
 
 // POST /api/sync — batch push of Category-1 offline actions.
 // Each action carries a permanent clientUuid (stamped at queue time).
@@ -227,6 +228,22 @@ export async function POST(request: Request) {
           results.push({ clientUuid: action.clientUuid, ok: true, serverId: existing.id });
           continue;
         }
+        // Replay safety net: a close applied in an earlier batch overwrites the
+        // row's clientUuid with the close uuid, so the open-uuid lookup above can
+        // miss on retry and would resurrect a duplicate shift. The queue stamps
+        // openedAt at queue time — match that exact timestamp instead. Creating
+        // with the queue-time openedAt keeps this check stable across replays.
+        const queuedOpenedAt = typeof p.openedAt === 'string' ? new Date(p.openedAt) : null;
+        const hasQueuedOpenedAt = queuedOpenedAt !== null && !Number.isNaN(queuedOpenedAt.getTime());
+        if (hasQueuedOpenedAt) {
+          const prior = await prisma.shift.findFirst({
+            where: { cashierId, openedAt: queuedOpenedAt },
+          });
+          if (prior) {
+            results.push({ clientUuid: action.clientUuid, ok: true, serverId: prior.id, conflict: true });
+            continue;
+          }
+        }
         const alreadyOpen = await prisma.shift.findFirst({
           where: { cashierId, status: 'open' }, orderBy: { openedAt: 'desc' },
         });
@@ -240,6 +257,7 @@ export async function POST(request: Request) {
             clientUuid: action.clientUuid, cashierId,
             openingFloat: Number(p.openingFloat ?? 0),
             status: 'open', notes: p.notes ?? null,
+            ...(hasQueuedOpenedAt ? { openedAt: queuedOpenedAt } : {}),
           },
         });
         results.push({ clientUuid: action.clientUuid, ok: true, serverId: created.id });
@@ -262,13 +280,22 @@ export async function POST(request: Request) {
           if (t.paymentMethod === 'cash') cashSales += t.total;
           else if (t.paymentMethod === 'gcash') gcashSales += t.total;
         }
-        const countCash = Number(p.closingCash ?? 0);
-        const expectedCash = activeShift.openingFloat + cashSales;
+        // closingCash is optional: when omitted (no physical drawer count at
+        // close time), store null so overage/shortage stays null (not a fake 0).
+        const hasCounted = p.closingCash !== undefined && p.closingCash !== null
+          && Number.isFinite(Number(p.closingCash));
+        const countCash = hasCounted ? Number(p.closingCash) : null;
+        // Shared drawer: reconcile against the admin's drawer float (fallback:
+        // the shift's own float) and persist it so history matches the Z-Read.
+        const drawerFloat = await getDrawerFloat(role, activeShift.openingFloat);
+        const expectedCash = drawerFloat + cashSales;
         const closed = await prisma.shift.update({
           where: { id: activeShift.id },
           data: {
-            clientUuid: action.clientUuid, closingCash: countCash, expectedCash,
-            cashSales, gcashSales, overageShortage: countCash - expectedCash,
+            clientUuid: action.clientUuid, openingFloat: drawerFloat,
+            closingCash: countCash, expectedCash,
+            cashSales, gcashSales,
+            overageShortage: countCash !== null ? countCash - expectedCash : null,
             status: 'closed', closedAt: new Date(), notes: p.notes ?? activeShift.notes,
           },
         });

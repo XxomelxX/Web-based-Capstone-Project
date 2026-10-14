@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Search } from 'lucide-react';
 import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
 import { formatTime, formatDateTime } from '@/lib/client/timeUtils';
@@ -12,6 +12,7 @@ import { getCachedCustomers, saveCachedCustomers, getCachedUtangEntries } from '
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db as offlineCache } from '@/lib/client/offline';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
+import { LiveClock } from '@/components/LiveClock';
 import { ShiftDetails, ZReadSummary, applyOfflineSaleToShift, cacheActiveShift, fetchActiveShift, openShift, closeShift } from '@/lib/client/api/shift';
 
 interface CartLine {
@@ -41,6 +42,7 @@ interface StoreSettings {
 
 export default function POSClient() {
   const { user } = useCurrentUser();
+  const isAdmin = user?.role === 'admin';
   const [fallbackProducts, setProducts] = useState<Product[]>([]);
   const cachedProducts = useLiveQuery(() => offlineCache.products.toArray(), []) as unknown as Product[] | undefined;
   const [productsLoading, setProductsLoading] = useState(true);
@@ -82,17 +84,26 @@ export default function POSClient() {
   const [showEndShiftModal, setShowEndShiftModal] = useState(false);
   const [zReadReceipt, setZReadReceipt] = useState<ZReadSummary | null>(null);
   const [openFloatInput, setOpenFloatInput] = useState<string>('1000');
-  const [closeCashInput, setCloseCashInput] = useState<string>('');
   const [shiftNotes, setShiftNotes] = useState('');
   const [shiftActionLoading, setShiftActionLoading] = useState(false);
   const [shiftError, setShiftError] = useState('');
 
+  // Ref mirrors the live role so async callbacks (and memoized `refresh`)
+  // never act on the first-render stale value of `user` (null until mounted).
+  // Synced in an effect (runs before the loadShiftData effect below).
+  const userRoleRef = useRef<string | null>(null);
+  useEffect(() => {
+    userRoleRef.current = user?.role ?? null;
+  }, [user]);
+
   function loadShiftData() {
+    // Bail while the role is still unknown (first render, user=null). The
+    // [user] effect below re-invokes this once the role is known, so the
+    // initial fetch is never lost. Both roles use shifts: cashier opens
+    // instantly, admin opens via the float modal.
+    if (userRoleRef.current === null) return;
     fetchActiveShift().then((shift) => {
       setActiveShift(shift);
-      if (!shift) {
-        setShowOpenShiftModal(true);
-      }
     });
   }
 
@@ -119,6 +130,14 @@ export default function POSClient() {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // The first render always has user=null (useCurrentUser defers until mount).
+  // Re-load shift data once the role is known — both admin and cashier need
+  // their active shift (admin opens with the float modal, cashier instant).
+  useEffect(() => {
+    if (!user) return;
+    loadShiftData();
+  }, [user]);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && !navigator.onLine && customers.length === 0) {
@@ -148,8 +167,8 @@ export default function POSClient() {
   }, [utangEntries]);
 
   function addToCart(product: Product) {
-    if (!activeShift) {
-      setShowOpenShiftModal(true);
+    if (!activeShift && !isAdmin) {
+      setError('Open a shift to start selling.');
       return;
     }
     setCart((prev) => {
@@ -224,9 +243,8 @@ export default function POSClient() {
   }
 
   async function handleCompleteSale() {
-    if (!activeShift) {
+    if (!activeShift && !isAdmin) {
       setError('Please open a shift before completing transactions.');
-      setShowOpenShiftModal(true);
       return;
     }
     setError('');
@@ -270,6 +288,7 @@ export default function POSClient() {
         setNewCustomerName('');
         setShowNewCustomer(false);
         void getActiveProducts().then(setProducts).catch(() => {});
+        // Refresh live shift totals for the seller's own shift (admin included).
         if ((result as Record<string, unknown>).offline && activeShift) {
           const updatedShift = applyOfflineSaleToShift(activeShift, result.totalAmount, 'cash');
           cacheActiveShift(updatedShift);
@@ -308,6 +327,7 @@ export default function POSClient() {
         setGcashRef('');
         void getActiveProducts().then(setProducts).catch(() => {});
 
+        // Refresh live shift totals for the seller's own shift (admin included).
         if (result.offline && activeShift) {
           const updatedShift = applyOfflineSaleToShift(activeShift, result.total, paymentMethod);
           cacheActiveShift(updatedShift);
@@ -385,11 +405,25 @@ export default function POSClient() {
     }
   }
 
+  // Instant shift open: no modal, no float entry — opens with ₱0.00 float.
+  async function handleInstantOpenShift() {
+    setShiftError('');
+    setShiftActionLoading(true);
+    const res = await openShift(0);
+    setShiftActionLoading(false);
+    if (!res.success) {
+      setShiftError(res.error || 'Failed to open shift');
+      return;
+    }
+    loadShiftData();
+  }
+
+  // Admin modal open: the admin chooses the drawer float and optional notes.
   async function handleOpenShiftSubmit(e: React.FormEvent) {
     e.preventDefault();
     setShiftError('');
     setShiftActionLoading(true);
-    const amount = parseFloat(openFloatInput) || 0;
+    const amount = Math.max(0, parseFloat(openFloatInput) || 0);
     const res = await openShift(amount, shiftNotes);
     setShiftActionLoading(false);
     if (!res.success) {
@@ -397,6 +431,7 @@ export default function POSClient() {
       return;
     }
     setShowOpenShiftModal(false);
+    setShiftNotes('');
     loadShiftData();
   }
 
@@ -404,8 +439,9 @@ export default function POSClient() {
     e.preventDefault();
     setShiftError('');
     setShiftActionLoading(true);
-    const counted = parseFloat(closeCashInput) || 0;
-    const res = await closeShift(counted, shiftNotes);
+    // No physical cash count: closingCash is omitted so the shift closes with
+    // null counted cash / null variance (online and offline sync paths handle this).
+    const res = await closeShift(undefined, shiftNotes);
     setShiftActionLoading(false);
     if (!res.success) {
       setShiftError(res.error || 'Failed to close shift');
@@ -419,14 +455,15 @@ export default function POSClient() {
   }
 
   const expectedCashAmount = activeShift?.expectedCash ?? 0;
-  const countedCashAmount = parseFloat(closeCashInput) || 0;
-  const varianceAmount = countedCashAmount - expectedCashAmount;
 
   const isCredit = paymentMethod === 'credit';
 
   return (
     <div className="space-y-4">
-      {/* Shift Header Status Bar */}
+      {/* Shared real-time clock — same display for admin and cashier */}
+      <LiveClock />
+
+      {/* Shift Header Status Bar — cashier opens instantly, admin picks the float via modal */}
       <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 flex flex-wrap items-center justify-between gap-4 backdrop-blur-md">
         <div className="flex items-center gap-3">
           <div className={`w-3 h-3 rounded-full ${activeShift ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
@@ -440,35 +477,52 @@ export default function POSClient() {
               )}
             </div>
             <div className="text-xs text-slate-400 flex flex-wrap gap-x-4 gap-y-1 mt-0.5">
-              <span>Float: <strong className="text-slate-200">₱{(activeShift?.openingFloat ?? 0).toFixed(2)}</strong></span>
+              {activeShift && (
+                <span>Float: <strong className="text-slate-200">₱{(activeShift.openingFloat ?? 0).toFixed(2)}</strong></span>
+              )}
               <span>Cash Sales: <strong className="text-slate-200">₱{(activeShift?.cashSales ?? 0).toFixed(2)}</strong></span>
               <span>GCash Sales: <strong className="text-slate-200">₱{(activeShift?.gcashSales ?? 0).toFixed(2)}</strong></span>
               <span>Expected Cash: <strong className="text-cyan-400">₱{(activeShift?.expectedCash ?? 0).toFixed(2)}</strong></span>
             </div>
+            {shiftError && (
+              <div className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 px-2 py-1 rounded-md mt-1.5 inline-block">
+                {shiftError}
+              </div>
+            )}
           </div>
         </div>
 
         <div className="flex items-center gap-2">
           {!activeShift ? (
-            <button
-              onClick={() => {
-                setShiftError('');
-                setShowOpenShiftModal(true);
-              }}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-semibold transition shadow-lg shadow-emerald-950/30 cursor-pointer"
-            >
-              + Open Cash Drawer Shift
-            </button>
+            isAdmin ? (
+              <button
+                onClick={() => {
+                  setShiftError('');
+                  setShiftNotes('');
+                  setShowOpenShiftModal(true);
+                }}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-semibold transition shadow-lg shadow-emerald-950/30 cursor-pointer"
+              >
+                + Open Cash Drawer Shift
+              </button>
+            ) : (
+              <button
+                onClick={handleInstantOpenShift}
+                disabled={shiftActionLoading}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-semibold transition shadow-lg shadow-emerald-950/30 cursor-pointer disabled:opacity-60"
+              >
+                {shiftActionLoading ? 'Starting Shift...' : '+ Open Shift'}
+              </button>
+            )
           ) : (
             <button
               onClick={() => {
                 setShiftError('');
-                setCloseCashInput('');
                 setShowEndShiftModal(true);
               }}
               className="bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 rounded-lg text-sm font-semibold transition shadow-lg shadow-rose-950/30 cursor-pointer flex items-center gap-1.5"
             >
-               End Shift
+              {isAdmin ? 'End of the Day' : 'End Shift'}
             </button>
           )}
         </div>
@@ -702,10 +756,10 @@ export default function POSClient() {
 
           <button
             onClick={handleCompleteSale}
-            disabled={cart.length === 0 || (!isCredit && paymentMethod === 'cash' && tendered < total) || (!isCredit && paymentMethod === 'gcash' && !gcashRef.trim()) || (isCredit && !selectedCustomerId && !showNewCustomer) || processing || !activeShift}
+            disabled={cart.length === 0 || (!isCredit && paymentMethod === 'cash' && tendered < total) || (!isCredit && paymentMethod === 'gcash' && !gcashRef.trim()) || (isCredit && !selectedCustomerId && !showNewCustomer) || processing || (!activeShift && !isAdmin)}
             className={`w-full text-white rounded-md py-3 font-medium disabled:opacity-40 transition cursor-pointer ${isCredit ? 'bg-amber-600 hover:bg-amber-500' : 'bg-green-700 hover:bg-green-600'}`}
           >
-            {processing ? 'Processing...' : !activeShift ? 'Open Shift to Complete Sale' : isCredit ? '✓ Record Credit Sale' : '✓ Complete Sale'}
+            {processing ? 'Processing...' : (!activeShift && !isAdmin) ? 'Open Shift to Complete Sale' : isCredit ? '✓ Record Credit Sale' : '✓ Complete Sale'}
           </button>
 
           <div className="border-t pt-3">
@@ -804,7 +858,7 @@ export default function POSClient() {
           </div>
         )}
 
-        {/* Open Shift Modal */}
+        {/* Open Cash Drawer Shift — admin chooses the float amount */}
         {showOpenShiftModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
             <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
@@ -833,6 +887,7 @@ export default function POSClient() {
                   <input
                     type="number"
                     step="0.01"
+                    min="0"
                     required
                     value={openFloatInput}
                     onChange={(e) => setOpenFloatInput(e.target.value)}
@@ -887,7 +942,7 @@ export default function POSClient() {
             <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
               <div className="flex justify-between items-center border-b border-slate-800 pb-3">
                 <h3 className="font-bold text-lg text-slate-100 flex items-center gap-2">
-                  <span></span> End Shift
+                  <span></span> {isAdmin ? 'End of the Day' : 'End Shift'}
                 </h3>
                 <button onClick={() => setShowEndShiftModal(false)} className="text-slate-400 hover:text-slate-200">✕</button>
               </div>
@@ -914,37 +969,9 @@ export default function POSClient() {
               </div>
 
               <form onSubmit={handleCloseShiftSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-200 mb-1">
-                    Counted Physical Cash in Drawer (₱)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={closeCashInput}
-                    onChange={(e) => setCloseCashInput(e.target.value)}
-                    placeholder="Enter physical cash counted"
-                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-xl font-bold text-emerald-400 outline-none focus:border-emerald-500"
-                  />
-                </div>
-
-                {closeCashInput !== '' && (
-                  <div className={`p-3 rounded-xl border flex justify-between items-center ${
-                    varianceAmount === 0
-                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                      : varianceAmount > 0
-                      ? 'bg-sky-500/10 border-sky-500/30 text-sky-300'
-                      : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
-                  }`}>
-                    <span className="text-xs font-semibold">
-                      {varianceAmount === 0 ? '✓ Exact Match (Balanced)' : varianceAmount > 0 ? '🟢 Cash Overage' : '🔴 Cash Shortage'}
-                    </span>
-                    <span className="font-bold text-base">
-                      {varianceAmount >= 0 ? `+₱${varianceAmount.toFixed(2)}` : `-₱${Math.abs(varianceAmount).toFixed(2)}`}
-                    </span>
-                  </div>
-                )}
+                <p className="text-xs text-slate-400">
+                  Closing your shift records the X-Read totals above. No physical cash count is required.
+                </p>
 
                 <div>
                   <label className="block text-xs font-medium text-slate-400 mb-1">
@@ -975,7 +1002,7 @@ export default function POSClient() {
                   </button>
                   <button
                     type="submit"
-                    disabled={shiftActionLoading || closeCashInput === ''}
+                    disabled={shiftActionLoading}
                     className="flex-1 bg-rose-600 hover:bg-rose-500 text-white rounded-xl py-2.5 text-sm font-semibold transition disabled:opacity-60"
                   >
                     {shiftActionLoading ? 'Closing Shift...' : 'Close Shift'}
@@ -1119,16 +1146,20 @@ function ZReadModal({
 
         <div className="text-sm space-y-1">
           <Row label="Expected Cash" value={`₱${summary.expectedCash.toFixed(2)}`} />
-          <Row label="Counted Cash" value={`₱${summary.closingCash.toFixed(2)}`} />
+          {summary.closingCash !== null && (
+            <Row label="Counted Cash" value={`₱${summary.closingCash.toFixed(2)}`} />
+          )}
         </div>
 
-        <div className={`text-center rounded-md py-2 font-bold ${
-          discrepancy === 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
-        }`}>
-          {discrepancy === 0
-            ? `BALANCED (₱0.00)`
-            : `${discrepancy > 0 ? 'OVER' : 'SHORT'} (₱${Math.abs(discrepancy).toFixed(2)})`}
-        </div>
+        {discrepancy !== null && (
+          <div className={`text-center rounded-md py-2 font-bold ${
+            discrepancy === 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
+          }`}>
+            {discrepancy === 0
+              ? `BALANCED (₱0.00)`
+              : `${discrepancy > 0 ? 'OVER' : 'SHORT'} (₱${Math.abs(discrepancy).toFixed(2)})`}
+          </div>
+        )}
 
         <div className="flex gap-2 pt-2">
           <button onClick={onClose} className="flex-1 bg-green-700 text-white rounded-md py-2 text-sm">Done</button>

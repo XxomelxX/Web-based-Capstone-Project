@@ -2,6 +2,7 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/server/auth';
 import { prisma } from '@/lib/server/prisma';
+import { getAdminOpenFloat } from '@/lib/server/shiftDrawer';
 
 // GET /api/shift/history — Fetch shift logs for reporting / audit
 export async function GET() {
@@ -25,10 +26,21 @@ export async function GET() {
         select: {
           fullName: true,
           username: true,
+          role: true,
         },
       },
     },
   });
 
-  return NextResponse.json({ shifts });
+  // Shared drawer: still-open cashier shifts display the admin's current
+  // drawer float (closed shifts already stored it at close time).
+  const adminOpenFloat = await getAdminOpenFloat();
+  const shiftsOut = adminOpenFloat === null
+    ? shifts
+    : shifts.map((s) => {
+        if (s.status !== 'open' || s.cashier.role === 'admin') return s;
+        return { ...s, openingFloat: adminOpenFloat };
+      });
+
+  return NextResponse.json({ shifts: shiftsOut });
 }
