@@ -134,8 +134,9 @@ export async function openShift(
   // offline fallback, so open-then-fail-then-queue never creates 2 shifts.
   const clientUuid = crypto.randomUUID();
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 2000);
+  const timeoutId = setTimeout(() => controller.abort(), 750);
   let response: Response;
+  let data: { error?: string; shift?: ShiftDetails };
   try {
     response = await fetch('/api/shift', {
       method: 'POST',
@@ -143,6 +144,13 @@ export async function openShift(
       signal: controller.signal,
       body: JSON.stringify({ action: 'open', openingFloat, notes, clientUuid }),
     });
+    const responseText = await response.text();
+    try {
+      data = responseText ? JSON.parse(responseText) as { error?: string; shift?: ShiftDetails } : {};
+    } catch {
+      if (response.ok) throw new Error('Shift API returned an invalid response.');
+      data = {};
+    }
   } catch (error) {
     if (!(error instanceof TypeError) && !(error instanceof DOMException && error.name === 'AbortError')) {
       throw error;
@@ -155,7 +163,6 @@ export async function openShift(
   }
 
   if (!response.ok) {
-    const data = (await response.json().catch(() => ({}))) as { error?: string; shift?: ShiftDetails };
     if (response.status === 409 && data.shift) {
       cacheActiveShift(data.shift);
       return { success: true, shift: data.shift };
@@ -163,7 +170,6 @@ export async function openShift(
     throw new Error(data.error || `Failed to open shift (${response.status})`);
   }
 
-  const data = (await response.json()) as { error?: string; shift?: ShiftDetails };
   if (!data.shift) {
     throw new Error(data.error || 'Shift API returned a successful response without a shift.');
   }

@@ -79,7 +79,7 @@ export function OnlineProvider({ children }: { children: React.ReactNode }) {
     // Initial sync pull to populate Dexie cache on first load
     void (async () => {
       try {
-        const { performSync } = await import('@/lib/client/sync-engine');
+        if (!navigator.onLine || !(await checkConnectivity())) return;
         await performSync();
       } catch { /* non-critical */ }
     })();

@@ -17,7 +17,7 @@ export function LiveClock() {
   if (!now) return null;
 
   return (
-    <div className="flex items-center justify-center gap-3 bg-slate-900/80 border border-slate-800 rounded-xl px-4 py-2.5 backdrop-blur-md">
+    <div className="flex items-center justify-center gap-3 bg-slate-900/80 border border-slate-800 rounded-xl px-4 py-2.5">
       <span className="text-slate-400 text-xs font-medium">
         {now.toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
       </span>
