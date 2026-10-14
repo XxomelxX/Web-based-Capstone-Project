@@ -1,0 +1,210 @@
+
+> sari-sari-pos@0.1.0 dev
+> next dev --hostname localhost --webpack
+
+▲ Next.js 16.2.10 (webpack)
+- Local:         http://localhost:3000
+- Network:       http://localhost:3000
+- Environments: .env.local, .env
+✓ Ready in 1943ms
+ ○ (pwa) PWA support is disabled.
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+
+○ Compiling /login ...
+ GET /login 200 in 11.5s (next.js: 9.7s, proxy.ts: 289ms, application-code: 1493ms)
+ GET /login 200 in 239ms (next.js: 19ms, proxy.ts: 42ms, application-code: 177ms)
+ GET /api/health 200 in 3.6s (next.js: 3.5s, application-code: 88ms)
+○ Compiling /dashboard ...
+ GET /dashboard 200 in 25.5s (next.js: 23.4s, proxy.ts: 79ms, application-code: 2.0s)
+○ Compiling /api/reports/chart-data ...
+ GET /api/auth/session 200 in 15.3s (next.js: 15.3s, application-code: 44ms)
+ GET /api/health?t=1791960388497 200 in 28ms (next.js: 10ms, application-code: 18ms)
+ GET /api/reports/chart-data?range=all 200 in 16.0s (next.js: 9.1s, application-code: 7.0s)
+ GET /api/sync/pull?since=2026-10-14T05%3A54%3A20.104Z 200 in 16.7s (next.js: 9.3s, application-code: 7.4s)
+ GET /api/reports?range=all 200 in 17.8s (next.js: 9.1s, application-code: 8.7s)
+ GET /api/health?t=1791960392013 200 in 23ms (next.js: 7ms, application-code: 16ms)
+ GET /api/sync/pull?since=2026-10-14T05%3A54%3A20.104Z 200 in 3.0s (next.js: 5ms, application-code: 3.0s)
+ GET /api/health?t=1791960395896 200 in 20ms (next.js: 6ms, application-code: 13ms)
+ GET /api/reports/chart-data?range=all 200 in 956ms (next.js: 6ms, application-code: 950ms)
+ GET /api/reports?range=all 200 in 4.3s (next.js: 5ms, application-code: 4.3s)
+ GET /api/health?t=1791960402514 200 in 26ms (next.js: 7ms, application-code: 18ms)
+ GET /api/health?t=1791960408443 200 in 31ms (next.js: 6ms, application-code: 25ms)
+ GET /api/health?t=1791960415239 200 in 23ms (next.js: 7ms, application-code: 15ms)
+ GET /api/health?t=1791960455619 200 in 30ms (next.js: 10ms, application-code: 20ms)
+ GET /api/health?t=1791960458378 200 in 22ms (next.js: 7ms, application-code: 15ms)
+ GET /api/health?t=1791960458568 200 in 56ms (next.js: 20ms, application-code: 36ms)
+ GET /api/health?t=1791960459045 200 in 22ms (next.js: 5ms, application-code: 17ms)
+ GET /api/health?t=1791960460347 200 in 66ms (next.js: 21ms, application-code: 44ms)
+ GET /api/health?t=1791960461606 200 in 21ms (next.js: 5ms, application-code: 16ms)
+ GET /api/health?t=1791960461795 200 in 19ms (next.js: 5ms, application-code: 14ms)
+ GET /api/health?t=1791960467807 200 in 16ms (next.js: 4ms, application-code: 12ms)
+ GET /api/health?t=1791960473809 200 in 28ms (next.js: 12ms, application-code: 16ms)
+ GET /api/health?t=1791960475004 200 in 25ms (next.js: 7ms, application-code: 18ms)
+ GET /dashboard 200 in 870ms (next.js: 547ms, proxy.ts: 60ms, application-code: 263ms)
+○ Compiling /products ...
+ GET /api/health?t=1791960495048 200 in 4.2s (next.js: 3.0s, application-code: 1220ms)
+ GET /dashboard 200 in 24.1s (next.js: 22.5s, proxy.ts: 298ms, application-code: 1252ms)
+ GET /pos 200 in 24.1s (next.js: 22.8s, proxy.ts: 95ms, application-code: 1213ms)
+ GET /products 200 in 21.7s (next.js: 19.9s, proxy.ts: 564ms, application-code: 1216ms)
+ GET /pos 200 in 304ms (next.js: 41ms, proxy.ts: 71ms, application-code: 191ms)
+ GET /api/health?t=1791960506211 200 in 23ms (next.js: 7ms, application-code: 16ms)
+○ Compiling /api/shift ...
+ GET /api/customers?light=true 200 in 11.1s (next.js: 9.7s, application-code: 1423ms)
+ GET /api/customers?light=true 200 in 267ms (next.js: 6ms, application-code: 261ms)
+ GET /api/shift 200 in 10.7s (next.js: 8.7s, application-code: 1999ms)
+ GET /api/settings 200 in 12.2s (next.js: 9.8s, application-code: 2.4s)
+ GET /api/settings 200 in 404ms (next.js: 6ms, application-code: 398ms)
+ GET /api/health?t=1791960520026 200 in 33ms (next.js: 14ms, application-code: 19ms)
+ GET /api/shift 200 in 1103ms (next.js: 4ms, application-code: 1099ms)
+ GET /api/products 200 in 13.2s (next.js: 9.6s, application-code: 3.6s)
+ GET /api/products 200 in 13.4s (next.js: 9.8s, application-code: 3.6s)
+○ Compiling /api/sync/pull ...
+ GET /api/health?t=1791960527114 200 in 5.1s (next.js: 5.0s, application-code: 106ms)
+ GET /api/health?t=1791960536617 200 in 84ms (next.js: 41ms, application-code: 43ms)
+ GET /api/shift 200 in 17.0s (next.js: 13.0s, application-code: 4.0s)
+ GET /api/sync/pull?since=2026-10-14T06%3A46%3A35.233Z 200 in 18.0s (next.js: 13.6s, application-code: 4.4s)
+ GET /api/shift 200 in 719ms (next.js: 6ms, application-code: 713ms)
+ GET /api/shift 200 in 920ms (next.js: 4ms, application-code: 916ms)
+ GET /api/health?t=1791960539847 200 in 20ms (next.js: 6ms, application-code: 15ms)
+ GET /api/shift 200 in 951ms (next.js: 4ms, application-code: 947ms)
+ GET /api/shift 200 in 839ms (next.js: 4ms, application-code: 834ms)
+ GET /api/shift 200 in 871ms (next.js: 4ms, application-code: 867ms)
+ GET /api/shift 200 in 1105ms (next.js: 5ms, application-code: 1101ms)
+ GET /api/shift 200 in 1421ms (next.js: 5ms, application-code: 1416ms)
+ GET /api/shift 200 in 1549ms (next.js: 78ms, application-code: 1471ms)
+ GET /api/shift 200 in 1156ms (next.js: 14ms, application-code: 1142ms)
+ GET /api/health?t=1791960547300 200 in 177ms (next.js: 77ms, application-code: 100ms)
+ GET /api/shift 200 in 1865ms (next.js: 4ms, application-code: 1861ms)
+ GET /api/health?t=1791960553239 200 in 27ms (next.js: 10ms, application-code: 17ms)
+ GET /api/health?t=1791960559183 200 in 26ms (next.js: 6ms, application-code: 20ms)
+ GET /api/shift 200 in 2.0s (next.js: 5ms, application-code: 2.0s)
+ GET /api/health?t=1791960563924 200 in 30ms (next.js: 6ms, application-code: 24ms)
+ GET /api/shift 200 in 993ms (next.js: 4ms, application-code: 989ms)
+ GET /api/health?t=1791960571438 200 in 28ms (next.js: 11ms, application-code: 17ms)
+ GET /api/shift 200 in 1626ms (next.js: 9ms, application-code: 1616ms)
+ GET /api/shift 200 in 1440ms (next.js: 14ms, application-code: 1426ms)
+ GET /api/shift 200 in 2.8s (next.js: 12ms, application-code: 2.8s)
+ GET /api/shift 200 in 1109ms (next.js: 5ms, application-code: 1104ms)
+ GET /api/shift 200 in 1198ms (next.js: 5ms, application-code: 1193ms)
+ GET /api/shift 200 in 813ms (next.js: 6ms, application-code: 807ms)
+ GET /api/shift 200 in 1028ms (next.js: 4ms, application-code: 1023ms)
+ GET /api/shift 200 in 683ms (next.js: 5ms, application-code: 678ms)
+ GET /api/shift 200 in 991ms (next.js: 6ms, application-code: 985ms)
+ GET /api/shift 200 in 540ms (next.js: 5ms, application-code: 536ms)
+ GET /api/shift 200 in 901ms (next.js: 6ms, application-code: 895ms)
+ GET /api/shift 200 in 1850ms (next.js: 6ms, application-code: 1844ms)
+ GET /api/shift 200 in 1150ms (next.js: 5ms, application-code: 1145ms)
+ GET /api/shift 200 in 1577ms (next.js: 5ms, application-code: 1572ms)
+ GET /api/shift 200 in 1227ms (next.js: 5ms, application-code: 1222ms)
+ GET /api/shift 200 in 1155ms (next.js: 6ms, application-code: 1149ms)
+ GET /api/shift 200 in 953ms (next.js: 4ms, application-code: 949ms)
+ GET /api/shift 200 in 1585ms (next.js: 4ms, application-code: 1581ms)
+ GET /api/shift 200 in 1759ms (next.js: 8ms, application-code: 1752ms)
+ GET /api/shift 200 in 1289ms (next.js: 10ms, application-code: 1278ms)
+ GET /api/shift 200 in 1754ms (next.js: 4ms, application-code: 1750ms)
+ GET /api/shift 200 in 1553ms (next.js: 5ms, application-code: 1549ms)
+ GET /api/shift 200 in 1369ms (next.js: 4ms, application-code: 1366ms)
+ GET /api/shift 200 in 1043ms (next.js: 4ms, application-code: 1039ms)
+ GET /api/shift 200 in 2.2s (next.js: 7ms, application-code: 2.2s)
+ GET /api/shift 200 in 696ms (next.js: 8ms, application-code: 688ms)
+ GET /api/shift 200 in 878ms (next.js: 4ms, application-code: 873ms)
+ GET /api/shift 200 in 580ms (next.js: 6ms, application-code: 575ms)
+ GET /api/shift 200 in 691ms (next.js: 4ms, application-code: 686ms)
+ GET /api/shift 200 in 585ms (next.js: 4ms, application-code: 581ms)
+ GET /api/shift 200 in 749ms (next.js: 5ms, application-code: 744ms)
+ GET /api/shift 200 in 820ms (next.js: 4ms, application-code: 816ms)
+ GET /api/shift 200 in 1080ms (next.js: 5ms, application-code: 1075ms)
+ GET /api/shift 200 in 1893ms (next.js: 6ms, application-code: 1886ms)
+ GET /api/shift 200 in 942ms (next.js: 5ms, application-code: 937ms)
+ GET /api/shift 200 in 978ms (next.js: 5ms, application-code: 973ms)
+ GET /api/shift 200 in 1325ms (next.js: 4ms, application-code: 1321ms)
+ GET /api/shift 200 in 1394ms (next.js: 5ms, application-code: 1388ms)
+ GET /api/shift 200 in 3.5s (next.js: 4ms, application-code: 3.5s)
+ GET /api/shift 200 in 2.8s (next.js: 4ms, application-code: 2.8s)
+ GET /api/shift 200 in 1559ms (next.js: 5ms, application-code: 1554ms)
+ GET /api/shift 200 in 3.0s (next.js: 3ms, application-code: 3.0s)
+ GET /api/shift 200 in 1087ms (next.js: 5ms, application-code: 1082ms)
+ GET /api/health?t=1791960694615 200 in 32ms (next.js: 10ms, application-code: 22ms)
+ GET /api/shift 200 in 544ms (next.js: 7ms, application-code: 537ms)
+ GET /api/health?t=1791960695574 200 in 32ms (next.js: 11ms, application-code: 21ms)
+ GET /api/shift 200 in 804ms (next.js: 10ms, application-code: 793ms)
+ GET /api/shift 200 in 519ms (next.js: 12ms, application-code: 507ms)
+ GET /api/shift 200 in 518ms (next.js: 5ms, application-code: 513ms)
+ GET /api/health?t=1791960698533 200 in 21ms (next.js: 6ms, application-code: 16ms)
+ GET /api/shift 200 in 524ms (next.js: 5ms, application-code: 520ms)
+○ Compiling / ...
+ GET /api/shift 200 in 1647ms (next.js: 120ms, application-code: 1526ms)
+○ Compiling /products ...
+ GET /products 200 in 25.8s (next.js: 23.9s, proxy.ts: 569ms, application-code: 1365ms)
+ GET /api/shift 200 in 15.0s (next.js: 13.0s, application-code: 1936ms)
+ GET /api/shift 200 in 654ms (next.js: 5ms, application-code: 650ms)
+○ Compiling /api/categories ...
+ GET /products 200 in 435ms (next.js: 163ms, proxy.ts: 67ms, application-code: 205ms)
+ GET /api/categories 200 in 8.2s (next.js: 6.0s, application-code: 2.2s)
+ GET /api/products 200 in 9.6s (next.js: 6.0s, application-code: 3.6s)
+ GET /api/products?archived=true 200 in 11.7s (next.js: 6.0s, application-code: 5.7s)
+ GET /api/health?t=1791960767134 200 in 38ms (next.js: 17ms, application-code: 21ms)
+ GET /api/health?t=1791960767606 200 in 2.1s (next.js: 2.1s, application-code: 62ms)
+ GET /api/sync/pull?since=2026-10-14T06%3A48%3A58.086Z 200 in 4.7s (next.js: 2.3s, application-code: 2.4s)
+ GET /api/categories 200 in 480ms (next.js: 11ms, application-code: 469ms)
+ GET /api/health?t=1791960773816 200 in 15ms (next.js: 5ms, application-code: 10ms)
+ GET /api/products?archived=true 200 in 1610ms (next.js: 4ms, application-code: 1605ms)
+ GET /api/products 200 in 1880ms (next.js: 11ms, application-code: 1869ms)
+ GET /api/health?t=1791961273562 200 in 24ms (next.js: 5ms, application-code: 19ms)
+ GET /api/health?t=1791961316833 200 in 29ms (next.js: 12ms, application-code: 17ms)
+ GET /api/health?t=1791961377028 200 in 24ms (next.js: 9ms, application-code: 15ms)
+ GET /api/health?t=1791961387988 200 in 23ms (next.js: 6ms, application-code: 17ms)
+ GET /products 200 in 1083ms (next.js: 235ms, proxy.ts: 53ms, application-code: 795ms)
+ GET /api/health?t=1791961392456 200 in 21ms (next.js: 6ms, application-code: 15ms)
+○ Compiling /api/sync/pull ...
+ GET /api/auth/session 200 in 11.5s (next.js: 11.0s, application-code: 506ms)
+ GET /api/health?t=1791961404457 200 in 35ms (next.js: 8ms, application-code: 27ms)
+ GET /products 200 in 819ms (next.js: 369ms, proxy.ts: 155ms, application-code: 295ms)
+ GET /api/categories 200 in 13.5s (next.js: 10.8s, application-code: 2.7s)
+ GET /api/products 200 in 16.0s (next.js: 10.8s, application-code: 5.2s)
+ GET /api/sync/pull?since=2026-10-14T06%3A52%3A52.143Z 200 in 15.2s (next.js: 9.9s, application-code: 5.3s)
+⨯ Error [PrismaClientKnownRequestError]: 
+Invalid `prisma.product.findMany()` invocation:
+
+
+Can't reach database server at `ep-dry-fog-atngtudj-pooler.c-9.us-east-1.aws.neon.tech:5432`
+
+Please make sure your database server is running at `ep-dry-fog-atngtudj-pooler.c-9.us-east-1.aws.neon.tech:5432`.
+    at async GET (app\api\products\route.ts:17:20)
+  15 |   const showArchived = searchParams.get('archived') === 'true';
+  16 |
+> 17 |   const products = await prisma.product.findMany({
+     |                    ^
+  18 |     where: { archived: showArchived },
+  19 |     include: { category: true },
+  20 |     orderBy: { name: 'asc' }, {
+  code: 'P1001',
+  meta: {
+    modelName: 'Product',
+    database_location: 'ep-dry-fog-atngtudj-pooler.c-9.us-east-1.aws.neon.tech:5432'
+  },
+  clientVersion: '6.19.3'
+}
+ GET /api/products?archived=true 500 in 17.1s (next.js: 10.8s, application-code: 6.3s)
+ GET /api/health?t=1791961410464 200 in 19ms (next.js: 4ms, application-code: 15ms)
+ GET /api/health?t=1791961415824 200 in 19ms (next.js: 4ms, application-code: 15ms)
+ GET /api/health?t=1791961416489 200 in 46ms (next.js: 18ms, application-code: 29ms)
+ GET /api/health?t=1791961417293 200 in 24ms (next.js: 5ms, application-code: 18ms)
+ GET /api/health?t=1791961418970 200 in 21ms (next.js: 5ms, application-code: 16ms)
+ GET /api/health?t=1791961420707 200 in 30ms (next.js: 5ms, application-code: 25ms)
+⚠ Found a change in next.config.ts. Restarting the server to apply the changes...
+▲ Next.js 16.2.10 (webpack)
+- Local:         http://localhost:3000
+- Network:       http://localhost:3000
+- Environments: .env.local, .env
+✓ Ready in 5.2s
+ ○ (pwa) PWA support is disabled.
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+
+○ Compiling middleware ...
+○ Compiling / ...
+ GET / 200 in 35.9s (next.js: 32.1s, proxy.ts: 622ms, application-code: 3.1s)
+○ Compiling /dashboard ...
+ GET /api/health?t=1791962689600 200 in 55s (next.js: 54s, application-code: 792ms)
+ GET /api/auth/session 200 in 65s (next.js: 64s, application-code: 322ms)
+ GET /api/sync/pull?since=2026-10-14T07%3A03%3A28.828Z 200 in 65s (next.js: 58s, application-code: 6.4s)

@@ -108,6 +108,7 @@ export default function POSClient() {
   }
 
   const refresh = useCallback(async () => {
+    if (typeof window !== 'undefined' && !navigator.onLine) return;
     setProductsLoading(true);
     // getActiveProducts() merges without clearing, so archived rows survive.
     getActiveProducts().then(setProducts).catch(() => {}).finally(() => setProductsLoading(false));

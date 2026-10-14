@@ -30,6 +30,7 @@ export function useRealtime(handlers: RealtimeHandlers) {
 
     const handleEvent = (event: MessageEvent, channel: RealtimeChannel) => {
       reconnectDelay = 1000;
+      if (typeof navigator !== 'undefined' && !navigator.onLine) return;
       const currentHandler = handlersRef.current[channel];
       if (!currentHandler) return;
       try {

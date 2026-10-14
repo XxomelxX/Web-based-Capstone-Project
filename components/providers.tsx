@@ -14,6 +14,12 @@ function warmOfflineCaches() {
   warmStaticAssets();
 }
 
+let rewarmTimeout: ReturnType<typeof setTimeout> | null = null;
+const rewarm = () => {
+  if (rewarmTimeout) clearTimeout(rewarmTimeout);
+  rewarmTimeout = setTimeout(warmOfflineCaches, 5000);
+};
+
 export function Providers({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     initTheme();
@@ -26,7 +32,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
     // Re-run warmers whenever connectivity returns: a precache/warmup that was
     // interrupted by going offline mid-download completes on the next online
     // window, so the following offline visit is fully styled.
-    const rewarm = () => warmOfflineCaches();
+    const rewarm = () => {
+      if (rewarmTimeout) clearTimeout(rewarmTimeout);
+      rewarmTimeout = setTimeout(warmOfflineCaches, 5000);
+    };
     window.addEventListener('online', rewarm);
     window.addEventListener(RECONNECT_EVENT_NAME, rewarm);
     return () => {
