@@ -133,34 +133,42 @@ export async function openShift(
   // Idempotency key generated once: reused by the live request and any
   // offline fallback, so open-then-fail-then-queue never creates 2 shifts.
   const clientUuid = crypto.randomUUID();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 2000);
+  let response: Response;
   try {
-    const res = await fetch('/api/shift', {
+    response = await fetch('/api/shift', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
       body: JSON.stringify({ action: 'open', openingFloat, notes, clientUuid }),
     });
-
-    if (!res.ok) {
-      await queueOpenShift({ openingFloat, notes, clientUuid });
-      cacheActiveShift(offlineShift);
-      return { success: true, shift: offlineShift };
+  } catch (error) {
+    if (!(error instanceof TypeError) && !(error instanceof DOMException && error.name === 'AbortError')) {
+      throw error;
     }
+    await queueOpenShift({ openingFloat, notes, clientUuid });
+    cacheActiveShift(offlineShift);
+    return { success: true, shift: offlineShift };
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
-    const data = (await res.json().catch(() => ({}))) as { error?: string; shift?: ShiftDetails };
-    if (data.shift) {
+  if (!response.ok) {
+    const data = (await response.json().catch(() => ({}))) as { error?: string; shift?: ShiftDetails };
+    if (response.status === 409 && data.shift) {
       cacheActiveShift(data.shift);
       return { success: true, shift: data.shift };
     }
-
-    await queueOpenShift({ openingFloat, notes, clientUuid });
-    cacheActiveShift(offlineShift);
-    return { success: true, shift: offlineShift };
-  } catch (error) {
-    console.error('Network/DB error opening shift, fallback to offline:', error);
-    await queueOpenShift({ openingFloat, notes, clientUuid });
-    cacheActiveShift(offlineShift);
-    return { success: true, shift: offlineShift };
+    throw new Error(data.error || `Failed to open shift (${response.status})`);
   }
+
+  const data = (await response.json()) as { error?: string; shift?: ShiftDetails };
+  if (!data.shift) {
+    throw new Error(data.error || 'Shift API returned a successful response without a shift.');
+  }
+  cacheActiveShift(data.shift);
+  return { success: true, shift: data.shift };
 }
 
 export async function closeShift(

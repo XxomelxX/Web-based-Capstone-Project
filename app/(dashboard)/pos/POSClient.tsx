@@ -406,13 +406,19 @@ export default function POSClient() {
   async function handleInstantOpenShift() {
     setShiftError('');
     setShiftActionLoading(true);
-    const res = await openShift(0);
-    setShiftActionLoading(false);
-    if (!res.success) {
-      setShiftError(res.error || 'Failed to open shift');
-      return;
+    try {
+      const res = await openShift(0);
+      if (!res.success) {
+        setShiftError(res.error || 'Failed to open shift');
+        return;
+      }
+      if (res.shift) setActiveShift(res.shift);
+      else loadShiftData();
+    } catch (err) {
+      setShiftError(err instanceof Error ? err.message : 'Failed to open shift');
+    } finally {
+      setShiftActionLoading(false);
     }
-    loadShiftData();
   }
 
   // Admin modal open: the admin chooses the drawer float and optional notes.
@@ -421,15 +427,21 @@ export default function POSClient() {
     setShiftError('');
     setShiftActionLoading(true);
     const amount = Math.max(0, parseFloat(openFloatInput) || 0);
-    const res = await openShift(amount, shiftNotes);
-    setShiftActionLoading(false);
-    if (!res.success) {
-      setShiftError(res.error || 'Failed to open shift');
-      return;
+    try {
+      const res = await openShift(amount, shiftNotes);
+      if (!res.success) {
+        setShiftError(res.error || 'Failed to open shift');
+        return;
+      }
+      if (res.shift) setActiveShift(res.shift);
+      else loadShiftData();
+      setShowOpenShiftModal(false);
+      setShiftNotes('');
+    } catch (err) {
+      setShiftError(err instanceof Error ? err.message : 'Failed to open shift');
+    } finally {
+      setShiftActionLoading(false);
     }
-    setShowOpenShiftModal(false);
-    setShiftNotes('');
-    loadShiftData();
   }
 
   async function handleCloseShiftSubmit(e: React.FormEvent) {
@@ -857,7 +869,7 @@ export default function POSClient() {
 
         {/* Open Cash Drawer Shift — admin chooses the float amount */}
         {showOpenShiftModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
             <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
               <div className="flex justify-between items-center border-b border-slate-800 pb-3">
                 <h3 className="font-bold text-lg text-slate-100 flex items-center gap-2">
@@ -935,7 +947,7 @@ export default function POSClient() {
 
         {/* End Shift */}
         {showEndShiftModal && activeShift && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
             <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
               <div className="flex justify-between items-center border-b border-slate-800 pb-3">
                 <h3 className="font-bold text-lg text-slate-100 flex items-center gap-2">
