@@ -73,6 +73,16 @@ const withPWA = withPWAInit({
         },
       },
       {
+        // Prefer the cached POS shell quickly when its RSC navigation request
+        // cannot reach the network.
+        urlPattern: /\/pos.*_rsc=/,
+        handler: 'NetworkFirst',
+        options: {
+          cacheName: 'pages-cache-v2',
+          networkTimeoutSeconds: 1,
+        },
+      },
+      {
         // Next.js App Router RSC payloads (?_rsc= query). Without this,
         // offline navigations/refreshes fail their RSC fetches with
         // ERR_FAILED console spam even when the HTML shell is served.
@@ -93,7 +103,7 @@ const withPWA = withPWAInit({
         handler: 'NetworkFirst',
         options: {
           cacheName: 'pages-cache-v2',
-          networkTimeoutSeconds: 2,
+          networkTimeoutSeconds: 1,
         },
       },
       {

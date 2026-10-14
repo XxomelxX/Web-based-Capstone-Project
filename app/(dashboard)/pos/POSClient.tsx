@@ -168,10 +168,6 @@ export default function POSClient() {
   }, [utangEntries]);
 
   function addToCart(product: Product) {
-    if (!activeShift && !isAdmin) {
-      setError('Open a shift to start selling.');
-      return;
-    }
     setCart((prev) => {
       const existing = prev.find((l) => l.product.id === product.id);
       if (existing) {
