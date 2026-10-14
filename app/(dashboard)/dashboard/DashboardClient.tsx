@@ -21,6 +21,8 @@ interface ReportData {
   totalRevenue: number;
   totalTransactions: number;
   totalItemsSold: number;
+  // Optional: absent in pre-upgrade offline caches — treat as ₱0.
+  totalOutstandingCredit?: number;
   topSelling: Array<{ name: string; unitsSold: number; revenue: number }>;
   stockLevels: Array<{ id?: number; name: string; stock: number; status: string }>;
 }
@@ -228,11 +230,16 @@ export default function DashboardClient() {
         </div>
       ) : (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
             <DashboardStatCard label="Revenue" value={`₱${data.totalRevenue.toFixed(2)}`} accent="text-emerald-300" />
             <DashboardStatCard label="Transactions" value={String(data.totalTransactions)} accent="text-[#f59e0b]" />
             <DashboardStatCard label="Items Sold" value={String(data.totalItemsSold)} accent="text-emerald-400" />
             <DashboardStatCard label="Low Stock Alerts" value={String(lowStockCount)} accent={lowStockCount > 0 ? 'text-rose-400' : 'text-slate-300'} />
+            <DashboardStatCard
+              label="Outstanding Credit"
+              value={`₱${(data.totalOutstandingCredit ?? 0).toFixed(2)}`}
+              accent={(data.totalOutstandingCredit ?? 0) > 0 ? 'text-violet-300' : 'text-slate-300'}
+            />
           </div>
 
           {chartData && (

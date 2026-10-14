@@ -65,6 +65,14 @@ export async function GET(request: Request) {
     const settings = await prisma.settings.findFirst();
     const threshold = settings?.lowStockThreshold ?? 20;
 
+    // Total outstanding credit (current balance — not range-bound: this is
+    // what customers still owe right now, matching the Credit page's total).
+    const outstanding = await prisma.utangEntry.aggregate({
+      where: { status: { not: 'paid' } },
+      _sum: { remainingBalance: true },
+    });
+    const totalOutstandingCredit = outstanding._sum.remainingBalance ?? 0;
+
     const stockLevels = products.map((p) => ({
       id: p.id,
       name: p.name,
@@ -79,6 +87,7 @@ export async function GET(request: Request) {
       totalItemsSold,
       totalExpenses,
       estimatedProfit: totalRevenue - totalExpenses,
+      totalOutstandingCredit,
       topSelling,
       stockLevels,
     });
