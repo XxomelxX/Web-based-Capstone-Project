@@ -304,6 +304,25 @@ export async function getAllQueuedCategory1Actions(): Promise<QueuedCategory1Act
   return actions.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
+export async function retryAdminBlockedActions(): Promise<number> {
+  const failedActions = await db.queuedActions
+    .filter((action) =>
+      !action.synced
+      && action.syncFailed === true
+      && action.errorMessage?.startsWith('Admin only') === true
+    )
+    .toArray();
+
+  for (const action of failedActions) {
+    if (action.id !== undefined) {
+      await db.queuedActions.update(action.id, { syncFailed: false, errorMessage: undefined });
+    }
+  }
+
+  if (failedActions.length > 0) triggerQueueUpdate();
+  return failedActions.length;
+}
+
 // NOTE: `synced` / `syncFailed` are BOOLEANS and IndexedDB cannot index
 // booleans — where('synced').equals(0) never matches a row, so these counters
 // (and the queue-full guard below) silently reported 0 while sales piled up.
