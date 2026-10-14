@@ -118,6 +118,11 @@ export async function wipeOfflineData(): Promise<void> {
     }
     doomed.forEach((k) => localStorage.removeItem(k));
     sessionStorage.removeItem('offlineSession');
+    // Durable identity + the owner-scoped active-shift cache must not survive a
+    // logout either: the next user on this device owns neither.
+    localStorage.removeItem('sari-pos-identity');
+    localStorage.removeItem('sari-sari-active-shift');
+    sessionStorage.removeItem('sari-sari-active-shift');
   } catch { /* storage wipe best-effort */ }
 }
 
@@ -566,17 +571,27 @@ export async function getPendingSyncCount(): Promise<number> {
   }
 }
 
+/**
+ * Decrement cached stock for a completed offline sale.
+ * Writes every line inside ONE Dexie transaction so the POS's live query
+ * (useLiveQuery on products) fires once per sale instead of once per item —
+ * N change events meant N full re-renders of the product grid per checkout.
+ */
 export async function updateCachedProductStock(items: Array<{ productId: number; quantity: number }>) {
-  for (const item of items) {
-    const product = await db.products.get(item.productId);
-    if (product) {
-      const currentStock = typeof product.stock === 'number' ? product.stock : 0;
-      await db.products.put({
-        ...product,
-        stock: Math.max(0, currentStock - item.quantity),
-      });
-    }
-  }
+  if (items.length === 0) return;
+  try {
+    await db.transaction('rw', db.products, async () => {
+      for (const item of items) {
+        const product = await db.products.get(item.productId);
+        if (!product) continue;
+        const currentStock = typeof product.stock === 'number' ? product.stock : 0;
+        await db.products.put({
+          ...product,
+          stock: Math.max(0, currentStock - item.quantity),
+        });
+      }
+    });
+  } catch (e) { console.error('[Dexie] updateCachedProductStock failed:', e); }
 }
 
 export async function queueOrFetch<T>(

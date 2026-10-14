@@ -2,21 +2,34 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/server/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/server/auth';
-import { batchSyncSchema } from '@/lib/client/validation';
+import { queuedActionSchema } from '@/lib/client/validation';
 import { broadcastRealtime } from '@/lib/server/realtime';
 import { getDrawerFloat } from '@/lib/server/shiftDrawer';
+
+// Accepts at most 100 actions per push (matches the client-side queue cap).
+const MAX_ACTIONS = 100;
 
 // POST /api/sync — batch push of Category-1 offline actions.
 // Each action carries a permanent clientUuid (stamped at queue time).
 // Idempotent: replays return the original row. Server-wins on conflicts.
+//
+// Actions are validated ONE BY ONE. Validating the batch as a whole meant a
+// single malformed action (e.g. an unknown field, or a sale referencing a
+// product created offline) 400'd the entire push — so every queued sale
+// stayed stuck, the client burned its 5 retries and then paused syncing.
+// Now a bad action reports its own error and its siblings still reach the
+// server.
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
-  const body = await request.json();
-  const parsed = batchSyncSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.message }, { status: 400 });
+  const body = await request.json().catch(() => null) as { actions?: unknown } | null;
+  if (!body || !Array.isArray(body.actions)) {
+    return NextResponse.json({ error: 'actions array required' }, { status: 400 });
+  }
+  const rawActions = body.actions;
+  if (rawActions.length > MAX_ACTIONS) {
+    return NextResponse.json({ error: `Too many actions (max ${MAX_ACTIONS})` }, { status: 400 });
   }
 
   const cashierId = Number(session.user.id);
@@ -30,7 +43,21 @@ export async function POST(request: Request) {
   };
   const results: { clientUuid: string; ok: boolean; serverId?: number; conflict?: boolean; error?: string }[] = [];
 
-  for (const action of parsed.data.actions) {
+  for (const raw of rawActions) {
+    const rawRecord = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
+    const rawUuid = typeof rawRecord.clientUuid === 'string' ? rawRecord.clientUuid : '';
+
+    const parsedAction = queuedActionSchema.safeParse(raw);
+    if (!parsedAction.success) {
+      results.push({
+        clientUuid: rawUuid,
+        ok: false,
+        error: `Invalid queued action: ${parsedAction.error.issues[0]?.message ?? 'schema validation failed'}`,
+      });
+      continue;
+    }
+
+    const action = parsedAction.data;
     const p = action.payload;
     try {
       if (action.type === 'pos_sale') {

@@ -3,12 +3,15 @@ import { useState } from 'react';
 import { signOut } from 'next-auth/react';
 import { Sun, Moon, LogOut } from 'lucide-react';
 import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
+import { useStableRole } from '@/lib/client/hooks/useStableRole';
 import { useTheme } from '@/lib/client/hooks/useTheme';
 import { OfflineStatusPill } from '@/components/OfflineStatusPill';
 import { OfflineSyncModal } from '@/components/OfflineSyncModal';
 
 export function MobileTopBar() {
   const { user } = useCurrentUser();
+  // Latched role: an offline reload must not drop an admin to the cashier label.
+  const role = useStableRole();
   const { theme, toggleTheme } = useTheme();
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [logoOk, setLogoOk] = useState(true);
@@ -70,6 +73,22 @@ export function MobileTopBar() {
           </span>
         )}
         <span className="font-bold text-sm text-white truncate">J &amp; J Merchandise Store</span>
+        {/* Who is signed in — the mobile bar is the only chrome on phones, so
+            without this an offline shift can't be attributed to anyone. */}
+        {user?.name && (
+          <span className="text-[11px] text-green-100/90 truncate max-w-[7rem]">
+            {user.name}
+          </span>
+        )}
+        {role && (
+          <span
+            className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+              role === 'admin' ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800'
+            }`}
+          >
+            {role.toUpperCase()}
+          </span>
+        )}
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <OfflineStatusPill onClick={() => setShowSyncModal(true)} />

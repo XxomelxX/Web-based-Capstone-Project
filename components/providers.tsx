@@ -3,6 +3,7 @@
 import { SessionProvider } from 'next-auth/react';
 import { useEffect } from 'react';
 import { installOfflineSync, unregisterServiceWorker, warmBrandCache, warmPagesCache, warmStaticAssets } from '@/lib/client/offline';
+import { installOfflineNavigation } from '@/lib/client/offlineNavigation';
 import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
 import { OnlineProvider } from '@/components/providers/online-provider';
 import { initTheme } from '@/lib/client/hooks/useTheme';
@@ -23,6 +24,9 @@ const rewarm = () => {
 export function Providers({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     initTheme();
+    // Offline link clicks must be full document loads (cached shells), not
+    // client-side RSC navigations whose ?_rsc=<hash> was never cached.
+    installOfflineNavigation();
     if (process.env.NODE_ENV !== 'production') {
       void unregisterServiceWorker();
       return;

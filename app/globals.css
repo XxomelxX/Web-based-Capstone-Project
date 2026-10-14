@@ -564,7 +564,26 @@ select {
   background: rgba(245, 158, 11, 0.25);
 }
 
-[data-pos-product-card] {
+/* ======================= POS PERFORMANCE (FLAT SURFACES) ==================== */
+/* Every product card, stock badge and list pill rendered with .bg-white /
+ * .bg-gray-* got a composited backdrop-filter from the theme blocks above.
+ * The POS draws one card per product, so a 60-item catalogue created ~120
+ * blur layers scrolling under a sticky (also blurred) cart panel — that is
+ * what made the register stutter, online and offline, for admin and cashier.
+ * Blur is invisible here anyway (the page background is a flat colour), so
+ * anything inside a [data-pos-flat] subtree renders flat.
+ * Specificity note: these are 2-selector rules like [data-theme='dark']
+ * .bg-white above, and they sit LATER in the file, so they win the tie. The
+ * old single-selector [data-pos-product-card] rule lost that tie and was a
+ * no-op — do not shrink these back to one selector. */
+[data-theme] [data-pos-flat],
+[data-theme] [data-pos-flat] *,
+[data-theme] [data-pos-product-card],
+[data-theme] [data-pos-product-card] *,
+[data-theme] .backdrop-blur-sm[data-pos-flat],
+[data-theme] .backdrop-blur-md[data-pos-flat],
+[data-theme] [data-pos-flat] .backdrop-blur-sm,
+[data-theme] [data-pos-flat] .backdrop-blur-md {
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }

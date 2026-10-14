@@ -132,7 +132,10 @@ export async function queueCategory1Action(
   type: QueuedActionType,
   payload: QueuedActionPayload
 ): Promise<number> {
-  const pending = await db.queuedActions.where('synced').equals(0).count();
+  // Same boolean-index pitfall as getPendingCount(): count in JS so the cap
+  // actually triggers instead of letting the queue grow past what one
+  // /api/sync push can carry (server rejects batches over 100).
+  const pending = await getPendingCount();
   if (pending >= MAX_QUEUED_ACTIONS) {
     throw new Error('Offline queue is full (100 actions). Reconnect and sync before queuing more.');
   }
@@ -301,14 +304,18 @@ export async function getAllQueuedCategory1Actions(): Promise<QueuedCategory1Act
   return actions.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
+// NOTE: `synced` / `syncFailed` are BOOLEANS and IndexedDB cannot index
+// booleans — where('synced').equals(0) never matches a row, so these counters
+// (and the queue-full guard below) silently reported 0 while sales piled up.
+// Filter in JS against the small, ≤MAX_QUEUED_ACTIONS table instead.
 export async function getPendingCount(): Promise<number> {
-  const pending = await db.queuedActions.where('synced').equals(0).toArray();
-  return pending.filter((a) => !a.syncFailed).length;
+  const actions = await db.queuedActions.toArray();
+  return actions.filter((a) => !a.synced && !a.syncFailed).length;
 }
 
 export async function getFailedCount(): Promise<number> {
-  const failed = await db.queuedActions.where('syncFailed').equals(1).toArray();
-  return failed.length;
+  const actions = await db.queuedActions.toArray();
+  return actions.filter((a) => a.syncFailed && !a.synced).length;
 }
 
 export async function getPendingSales(): Promise<QueuedSale[]> {

@@ -1,5 +1,6 @@
-﻿import { queueCloseShift, queueOpenShift } from '@/lib/client/offlineQueue';
+import { queueCloseShift, queueOpenShift } from '@/lib/client/offlineQueue';
 import { saveCategory2Cache, getCategory2Cache } from '@/lib/client/localStorageCache';
+import { readIdentity } from '@/lib/client/identity';
 
 export interface ShiftDetails {
   id: number;
@@ -36,16 +37,68 @@ export interface ZReadSummary {
 }
 
 const ACTIVE_SHIFT_CACHE_KEY = 'sari-sari-active-shift';
+// Legacy per-tab key � read as a migration fallback, never written.
+const LEGACY_ACTIVE_SHIFT_KEY = 'sari-sari-active-shift';
+
+interface CachedShiftEnvelope {
+  owner: string;
+  shift: ShiftDetails;
+}
 
 function canUseStorage() {
   return typeof window !== 'undefined';
 }
 
+/**
+ * Owner of the cached shift = the signed-in username (or id as a fallback).
+ * The drawer is SHARED, but an open shift belongs to the cashier who opened it,
+ * so a different user on this device must not inherit someone else's shift.
+ */
+function currentOwner(): string {
+  if (!canUseStorage()) return '';
+  try {
+    const identity = readIdentity();
+    if (identity) return identity.username || String(identity.id);
+  } catch { /* fall through to legacy record */ }
+  try {
+    const raw = sessionStorage.getItem('offlineSession');
+    if (raw) {
+      const parsed = JSON.parse(raw) as { username?: string; id?: number | string };
+      return parsed.username || String(parsed.id ?? '');
+    }
+  } catch { /* no owner available */ }
+  return '';
+}
+
+/**
+ * The active shift is cached in **localStorage** and scoped to its owner.
+ *
+ * It used to live in sessionStorage, which is per-tab: an offline refresh in a
+ * new tab (or after a browser restart) lost the shift and the POS came back up
+ * showing "No Open Shift".
+ */
 export function getCachedActiveShift(): ShiftDetails | null {
   if (!canUseStorage()) return null;
+  const owner = currentOwner();
   try {
-    const raw = sessionStorage.getItem(ACTIVE_SHIFT_CACHE_KEY);
-    return raw ? (JSON.parse(raw) as ShiftDetails) : null;
+    const raw = localStorage.getItem(ACTIVE_SHIFT_CACHE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as CachedShiftEnvelope | ShiftDetails;
+      if (parsed && typeof parsed === 'object' && 'shift' in parsed && 'owner' in parsed) {
+        const envelope = parsed as CachedShiftEnvelope;
+        // Owner mismatch ? not this user's shift. Do not show (and do not delete
+        // the file: the POS reloads the shift from the server when back online).
+        if (envelope.owner && owner && envelope.owner !== owner) return null;
+        return envelope.shift ?? null;
+      }
+      // Pre-owner cache format (older build): treat as the current owner's and
+      // let the next write upgrade it.
+      return parsed as ShiftDetails;
+    }
+  } catch { /* fall through to legacy */ }
+  try {
+    const legacy = sessionStorage.getItem(LEGACY_ACTIVE_SHIFT_KEY);
+    return legacy ? (JSON.parse(legacy) as ShiftDetails) : null;
   } catch {
     return null;
   }
@@ -53,11 +106,90 @@ export function getCachedActiveShift(): ShiftDetails | null {
 
 export function cacheActiveShift(shift: ShiftDetails | null) {
   if (!canUseStorage()) return;
-  if (shift) {
-    sessionStorage.setItem(ACTIVE_SHIFT_CACHE_KEY, JSON.stringify(shift));
-  } else {
-    sessionStorage.removeItem(ACTIVE_SHIFT_CACHE_KEY);
-  }
+  try {
+    if (shift) {
+      const envelope: CachedShiftEnvelope = { owner: currentOwner(), shift };
+      localStorage.setItem(ACTIVE_SHIFT_CACHE_KEY, JSON.stringify(envelope));
+    } else {
+      localStorage.removeItem(ACTIVE_SHIFT_CACHE_KEY);
+    }
+    // Keep the legacy per-tab key in step while other readers may still use it.
+    if (shift) sessionStorage.setItem(LEGACY_ACTIVE_SHIFT_KEY, JSON.stringify(shift));
+    else sessionStorage.removeItem(LEGACY_ACTIVE_SHIFT_KEY);
+  } catch { /* storage unavailable � in-memory state still works */ }
+}
+
+/**
+ * Structural equality for the fields the shift bar displays.
+ * fetchActiveShift() always builds a fresh object (new fetch JSON online, new
+ * JSON.parse from cache offline), so a naive setState re-rendered on every
+ * poll even when nothing changed. Comparing first turns identical payloads
+ * into zero renders.
+ */
+export function sameShift(a: ShiftDetails | null, b: ShiftDetails | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.id === b.id &&
+    a.status === b.status &&
+    a.openingFloat === b.openingFloat &&
+    a.cashSales === b.cashSales &&
+    a.gcashSales === b.gcashSales &&
+    (a.expectedCash ?? null) === (b.expectedCash ?? null) &&
+    (a.totalSales ?? null) === (b.totalSales ?? null) &&
+    (a.transactionCount ?? null) === (b.transactionCount ?? null)
+  );
+}
+
+export type VarianceTone = 'balanced' | 'over' | 'short';
+
+export interface VarianceDisplay {
+  /** signed difference: counted − expected (round to cent precision) */
+  signed: number;
+  /** 'BALANCED' | 'OVER' | 'SHORT' */
+  label: 'BALANCED' | 'OVER' | 'SHORT';
+  /** absolute money, e.g. "₱100.00" */
+  text: string;
+  /** signed money for the live preview, e.g. "+₱100.00" / "-₱100.00" / "₱0.00" */
+  signedText: string;
+  tone: VarianceTone;
+}
+
+/**
+ * Format an over/short variance from a signed difference.
+ * SINGLE SOURCE OF TRUTH for the live End-of-Day preview AND the printed
+ * Z-Read receipt, so the number the admin sees before closing can never
+ * disagree with the number on the receipt. The server computes the same
+ * `overageShortage = counted − expected` when the shift closes.
+ */
+export function formatVarianceDelta(diff: number): VarianceDisplay {
+  // Money maths: snap float error to cent precision (1000.05-1000 etc).
+  const signed = Math.round(diff * 100) / 100;
+  const abs = Math.abs(signed);
+  const tone: VarianceTone = signed === 0 ? 'balanced' : signed > 0 ? 'over' : 'short';
+  const label = tone === 'balanced' ? 'BALANCED' : tone === 'over' ? 'OVER' : 'SHORT';
+  const text = `₱${abs.toFixed(2)}`;
+  const signedText = signed === 0 ? '₱0.00' : `${signed > 0 ? '+' : '-'}${text}`;
+  return { signed, label, text, signedText, tone };
+}
+
+/** Live preview: variance for a physical cash count against expected cash. */
+export function formatVariance(expected: number, counted: number): VarianceDisplay {
+  const safeExpected = Number.isFinite(expected) ? expected : 0;
+  const safeCounted = Number.isFinite(counted) ? counted : 0;
+  return formatVarianceDelta(safeCounted - safeExpected);
+}
+
+/**
+ * Parse the physical cash-count input. Returns null when blank or invalid —
+ * callers can then distinguish "not entered" (close without a count) from a
+ * real 0.00 count.
+ */
+export function parseCashCount(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (trimmed === '') return null;
+  const value = Number.parseFloat(trimmed);
+  return Number.isFinite(value) && value >= 0 ? Math.round(value * 100) / 100 : null;
 }
 
 export function applyOfflineSaleToShift(

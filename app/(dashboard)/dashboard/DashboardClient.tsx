@@ -174,7 +174,7 @@ export default function DashboardClient() {
         <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-3">
             <p className="text-xs font-semibold uppercase tracking-[0.32em] text-cyan-300/80">Retail insights</p>
-            <h1 className="text-3xl font-semibold tracking-tight text-white">Welcome back, {user?.name ?? 'Store Manager'}</h1>
+            <h1 className="text-3xl font-semibold tracking-tight text-white">Welcome back, {user?.name || 'there'}</h1>
             <p className="max-w-2xl text-sm leading-6 text-slate-400">
               A professional summary of store performance, stock health, and sales trends for the selected reporting period.
             </p>
@@ -307,7 +307,7 @@ export default function DashboardClient() {
             <div className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-6 ">
               <div className="mb-5 flex items-center justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold text-white">Top Selling Products</h2>
+                  <h2 className="text-lg font-semibold text-white">Best Selling Products</h2>
                   <p className="text-sm text-slate-500">Performance by units sold and revenue contribution.</p>
                 </div>
                 <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-3 py-1 text-xs uppercase tracking-[0.2em] text-cyan-200">

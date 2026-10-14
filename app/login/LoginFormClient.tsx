@@ -30,7 +30,6 @@ export default function LoginFormClient() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -83,9 +82,21 @@ export default function LoginFormClient() {
             role: cached.role,
           })
         );
+        // Durable copy: survives tab close / new tab / browser restart, which is
+        // what keeps the correct role and shift visible on a cold OFFLINE load.
+        const { saveIdentity } = await import('@/lib/client/identity');
+        saveIdentity({
+          id: cached.userId,
+          name: cached.fullName,
+          username: cached.username,
+          role: cached.role,
+        });
 
         setLoading(false);
-        router.push('/dashboard');
+        // Full document navigation: a client-side RSC nav for a fresh
+        // ?_rsc=<hash> cannot be served offline, while the precached /dashboard
+        // shell can.
+        window.location.assign('/dashboard');
         return;
       } catch (err) {
         console.error('Offline authentication error:', err);
@@ -125,12 +136,15 @@ export default function LoginFormClient() {
               await wipeOfflineData();
             }
           } catch { /* wipe best-effort */ }
-          sessionStorage.setItem('offlineSession', JSON.stringify({
+          // Durable identity (localStorage) so an offline reload / new tab /
+          // restart still knows who this is and keeps admin-vs-cashier nav.
+          const { saveIdentity } = await import('@/lib/client/identity');
+          saveIdentity({
             id: Number(session.user.id || 0),
             name: session.user.name || username,
             username: cleanUsername,
             role: (session.user.role as 'admin' | 'cashier') || 'cashier',
-          }));
+          });
 
           const localHash = await bcrypt.hash(password, 10);
           await db.cachedCredentials.put({
@@ -233,17 +247,7 @@ export default function LoginFormClient() {
         </button>
       </form>
 
-      {/* Remember me + Forgot password */}
-      <div className="flex items-center justify-between mt-5">
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={rememberMe}
-            onChange={(e) => setRememberMe(e.target.checked)}
-            className="h-4 w-4 rounded border-gray-300 text-[#15803d] focus:ring-[#15803d] cursor-pointer"
-          />
-          <span className="text-sm text-gray-600">Remember me</span>
-        </label>
+      <div className="mt-5 flex justify-end">
         <a
           href="/forgot-password"
           className="text-sm text-[#15803d] hover:underline transition"

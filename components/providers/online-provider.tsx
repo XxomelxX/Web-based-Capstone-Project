@@ -44,7 +44,12 @@ export function OnlineProvider({ children }: { children: React.ReactNode }) {
           clearTimeout(offlineTimerRef.current);
           offlineTimerRef.current = null;
         }
-        if (!forceOffline) setIsOnline(true);
+        // A failed sync pauses auto-sync via forceOffline. The probe just
+        // proved the server answers again, so un-pause — otherwise the queue
+        // stayed frozen (and the "Force Sync Queue Now" button dead) until a
+        // full page reload. Nothing in the UI sets forceOffline manually.
+        setForceOffline(false);
+        setIsOnline(true);
         return;
       }
       if (forceOffline) return;
@@ -134,13 +139,17 @@ export function OnlineProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const syncNow = useCallback(async () => {
-    if (syncingRef.current || !effectiveOnline) return;
+    // Guard on raw connectivity (not effectiveOnline) so a manual retry still
+    // works after a failed sync paused auto-sync: the user tapping "Force Sync
+    // Queue Now" is evidence enough that the network is back.
+    if (syncingRef.current || !isOnline) return;
     syncingRef.current = true;
     setIsSyncing(true);
     try {
       const result = await performSync();
       if (result.success) {
         resetRetries();
+        setForceOffline(false);
         setPendingCount(await getPendingCount());
         setFailedCount(await getFailedCount());
         setLastSyncedAt(result.syncedAt);
@@ -166,13 +175,13 @@ export function OnlineProvider({ children }: { children: React.ReactNode }) {
       } else {
         resetRetries();
         setForceOffline(true);
-        toast.error(`Sync failed after 5 retries: ${msg}`);
+        toast.error(`Sync failed after 5 retries: ${msg}. Auto-sync paused — it resumes on the next reconnect, or tap the status pill to retry.`);
       }
     } finally {
       syncingRef.current = false;
       setIsSyncing(false);
     }
-  }, [effectiveOnline]);
+  }, [isOnline]);
 
   useEffect(() => {
     if (effectiveOnline && wasOfflineRef.current) void syncNow();

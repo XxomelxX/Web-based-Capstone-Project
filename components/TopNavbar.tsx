@@ -5,9 +5,11 @@ import { usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
 import { ChevronDown, LogOut, Sun, Moon } from 'lucide-react';
 import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
+import { useStableRole } from '@/lib/client/hooks/useStableRole';
 import { useTheme } from '@/lib/client/hooks/useTheme';
 import { OfflineStatusPill } from '@/components/OfflineStatusPill';
 import { OfflineSyncModal } from '@/components/OfflineSyncModal';
+import { useOnline } from '@/components/providers/online-provider';
 
 const ADMIN_LINKS = [
   { href: '/dashboard', label: 'Dashboard' },
@@ -42,6 +44,7 @@ const CASHIER_MORE = [
 export function TopNavbar() {
   const pathname = usePathname();
   const { user } = useCurrentUser();
+  const { isOnline } = useOnline();
   const { theme, toggleTheme } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -68,16 +71,22 @@ export function TopNavbar() {
     return () => document.removeEventListener('pointerdown', handler);
   }, [moreOpen, menuOpen]);
 
-  // useCurrentUser() returns null until after mount (SSR-safe), so the first
-  // client render matches the server HTML — no hydration mismatch.
-  const role = user?.role ?? 'cashier';
-  const links = role === 'admin' ? ADMIN_LINKS : CASHIER_LINKS;
-  const moreLinks = role === 'admin' ? ADMIN_MORE : CASHIER_MORE;
+  // Latched role: never downgrades to cashier when the session is unavailable
+  // (SSR first paint, offline reload, new tab). null = unknown → render no link
+  // set at all for that tick instead of the wrong one.
+  const role = useStableRole();
+  const links = role === 'admin' ? ADMIN_LINKS : role === 'cashier' ? CASHIER_LINKS : [];
+  const moreLinks = role === 'admin' ? ADMIN_MORE : role === 'cashier' ? CASHIER_MORE : [];
 
   const handleLogout = async () => {
     try {
       if (typeof window !== 'undefined') {
-        sessionStorage.removeItem('offlineSession');
+        // Clear BOTH the legacy per-tab record and the durable identity so the
+        // next user on this shared device starts from a clean slate.
+        try {
+          const { clearIdentity } = await import('@/lib/client/identity');
+          clearIdentity();
+        } catch { /* identity clear best-effort */ }
         // Wipe cached business data so a cached offline shell can never show
         // this user's data to the next user on a shared device. Queued
         // (unsynced) actions are preserved for the next sync.
@@ -140,6 +149,9 @@ export function TopNavbar() {
           <Link
             key={link.href}
             href={link.href}
+            // Offline, each Link prefetch would request a brand-new ?_rsc=<hash>
+            // that was never cached, spamming failed requests.
+            prefetch={isOnline}
             className={`nav-link px-2 py-1 rounded ${pathname === link.href ? 'active text-white' : 'text-green-100'}`}
           >
             {link.label}
@@ -156,7 +168,7 @@ export function TopNavbar() {
           {moreOpen && (
             <div className="absolute right-0 top-full mt-2 shadow-lg rounded-md py-2 w-48 z-50 opacity-100 pointer-events-auto transition-opacity duration-200 bg-slate-900 border border-slate-800">
               {moreLinks.map((link) => (
-                <Link key={link.href} href={link.href} className="block px-4 py-2 text-sm hover:bg-slate-800 text-slate-100 cursor-pointer">
+                <Link key={link.href} href={link.href} prefetch={isOnline} className="block px-4 py-2 text-sm hover:bg-slate-800 text-slate-100 cursor-pointer">
                   {link.label}
                 </Link>
               ))}
@@ -191,7 +203,7 @@ export function TopNavbar() {
                 role === 'admin' ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800'
               }`}
             >
-              {role.toUpperCase()}
+              {role ? role.toUpperCase() : '…'}
             </span>
           </button>
           {menuOpen && (

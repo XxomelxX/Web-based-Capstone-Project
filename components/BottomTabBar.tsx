@@ -3,7 +3,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LayoutDashboard, ShoppingCart, ClipboardList, Wallet, Menu } from 'lucide-react';
 import { useState } from 'react';
-import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
+import { useStableRole } from '@/lib/client/hooks/useStableRole';
+import { useOnline } from '@/components/providers/online-provider';
 
 const TABS = [
   { href: '/dashboard', label: 'Home', icon: LayoutDashboard },
@@ -14,9 +15,11 @@ const TABS = [
 
 export function BottomTabBar() {
   const pathname = usePathname();
-  const { user } = useCurrentUser();
+  const { isOnline } = useOnline();
   const [moreOpen, setMoreOpen] = useState(false);
-  const role = user?.role ?? 'cashier';
+  // Latched: never falls back to the cashier menu when the session is
+  // unavailable (offline reload / new tab / SSR first paint).
+  const role = useStableRole();
 
   const moreLinks =
     role === 'admin'
@@ -31,9 +34,11 @@ export function BottomTabBar() {
           { href: '/users', label: 'Users' },
           { href: '/settings', label: 'Settings' },
         ]
-      : [
+      : role === 'cashier'
+      ? [
           { href: '/lowstock', label: 'Low Stock' },
-        ];
+        ]
+      : [];
 
   return (
     <>
@@ -42,7 +47,7 @@ export function BottomTabBar() {
           const Icon = tab.icon;
           const active = pathname === tab.href;
           return (
-            <Link key={tab.href} href={tab.href} className={`nav-link nav-link-tab flex flex-col items-center gap-0.5 px-3 py-1 rounded ${active ? 'active' : 'text-gray-400'}`}>
+            <Link key={tab.href} href={tab.href} prefetch={isOnline} className={`nav-link nav-link-tab flex flex-col items-center gap-0.5 px-3 py-1 rounded ${active ? 'active' : 'text-gray-400'}`}>
               <Icon size={22} className={active ? 'text-[#f59e0b]' : 'text-[#86b89a]'} />
               <span className={`text-[10px] font-medium ${active ? 'text-[#f59e0b]' : 'text-[#86b89a]'}`}>
                 {tab.label}
@@ -68,6 +73,7 @@ export function BottomTabBar() {
               <Link
                 key={link.href}
                 href={link.href}
+                prefetch={isOnline}
                 onClick={() => setMoreOpen(false)}
                 className="block px-4 py-3 text-sm font-medium border-b border-slate-800 last:border-0 text-white hover:bg-slate-800 cursor-pointer"
               >

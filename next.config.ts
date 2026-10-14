@@ -5,7 +5,12 @@ const withPWA = withPWAInit({
   dest: 'public',
   cacheOnFrontEndNav: true,
   aggressiveFrontEndNavCaching: true,
-  reloadOnOnline: true,
+  // NOTE: reloadOnOnline is OFF on purpose. It reloaded the whole page the
+  // moment the network came back — which wiped an in-progress cart / open
+  // modal right after an offline sale. Fresh assets are taken on the next
+  // navigation instead, and warmPagesCache() re-primes the offline caches on
+  // reconnect (see components/providers.tsx).
+  reloadOnOnline: false,
   disable: process.env.NODE_ENV === 'development',
   workboxOptions: {
     disableDevLogs: true,

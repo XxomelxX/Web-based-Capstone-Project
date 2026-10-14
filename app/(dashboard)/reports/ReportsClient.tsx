@@ -18,6 +18,10 @@ interface ReportData {
   totalRevenue: number;
   totalTransactions: number;
   totalItemsSold: number;
+  // Optional: absent in pre-upgrade offline caches — treat as ₱0.
+  // Also NOT range-bound (see /api/reports): it's what customers owe right
+  // now, deliberately identical to the Dashboard and Credit page figures.
+  totalOutstandingCredit?: number;
   estimatedProfit: number;
   topSelling: Array<{ name: string; unitsSold: number; revenue: number }>;
   stockLevels: Array<{ id?: number; name: string; stock: number; status: string }>;
@@ -153,18 +157,26 @@ export default function ReportsClient() {
         </div>
       ) : (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
             <DashboardStatCard label="Revenue" value={`₱${data.totalRevenue.toFixed(2)}`} accent="text-emerald-300" />
             <DashboardStatCard label="Transactions" value={String(data.totalTransactions)} accent="text-cyan-300" />
             <DashboardStatCard label="Items Sold" value={String(data.totalItemsSold)} accent="text-violet-300" />
             <DashboardStatCard label="Low Stock Alerts" value={String(lowStockCount)} accent={lowStockCount > 0 ? 'text-rose-400' : 'text-slate-300'} />
+            {/* Same card as the Dashboard. Range-independent by design: this is
+                the current outstanding balance, not a figure for the selected
+                period (see /api/reports). */}
+            <DashboardStatCard
+              label="Outstanding Credit"
+              value={`₱${(data.totalOutstandingCredit ?? 0).toFixed(2)}`}
+              accent={(data.totalOutstandingCredit ?? 0) > 0 ? 'text-violet-300' : 'text-slate-300'}
+            />
           </div>
 
           <div className="grid gap-4 xl:grid-cols-2">
             <div className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-6 shadow-[0_24px_80px_-46px_rgba(0,0,0,0.85)]">
               <div className="mb-5 flex items-center justify-between gap-4">
                 <div>
-                  <h2 className="text-lg font-semibold text-white">Top Selling Products</h2>
+                  <h2 className="text-lg font-semibold text-white">Best Selling Products</h2>
                   <p className="text-sm text-slate-500">Performance by units sold and revenue.</p>
                 </div>
                 <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-3 py-1 text-xs uppercase tracking-[0.2em] text-cyan-200">

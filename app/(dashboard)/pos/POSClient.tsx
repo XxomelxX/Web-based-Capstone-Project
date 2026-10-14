@@ -12,8 +12,9 @@ import { getCachedCustomers, saveCachedCustomers, getCachedUtangEntries } from '
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db as offlineCache } from '@/lib/client/offline';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
+import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
 import { LiveClock } from '@/components/LiveClock';
-import { ShiftDetails, ZReadSummary, applyOfflineSaleToShift, cacheActiveShift, fetchActiveShift, openShift, closeShift } from '@/lib/client/api/shift';
+import { ShiftDetails, ZReadSummary, applyOfflineSaleToShift, cacheActiveShift, fetchActiveShift, openShift, closeShift, sameShift, formatVariance, formatVarianceDelta, parseCashCount } from '@/lib/client/api/shift';
 
 interface CartLine {
   product: Product;
@@ -87,23 +88,29 @@ export default function POSClient() {
   const [shiftNotes, setShiftNotes] = useState('');
   const [shiftActionLoading, setShiftActionLoading] = useState(false);
   const [shiftError, setShiftError] = useState('');
-
-  // Ref mirrors the live role so async callbacks (and memoized `refresh`)
-  // never act on the first-render stale value of `user` (null until mounted).
-  // Synced in an effect (runs before the loadShiftData effect below).
-  const userRoleRef = useRef<string | null>(null);
-  useEffect(() => {
-    userRoleRef.current = user?.role ?? null;
-  }, [user]);
+  // Physical drawer count typed in the End of the Day modal.
+  // '' = not entered (cashier may close without a count); admin requires it.
+  const [closingCashInput, setClosingCashInput] = useState('');
+  // Collapses overlapping identical shift polls into a single in-flight fetch.
+  const shiftFetchRef = useRef(false);
 
   function loadShiftData() {
-    // Bail while the role is still unknown (first render, user=null). The
-    // [user] effect below re-invokes this once the role is known, so the
-    // initial fetch is never lost. Both roles use shifts: cashier opens
-    // instantly, admin opens via the float modal.
-    if (userRoleRef.current === null) return;
+    // No role gate here. This used to `return` while the role was unknown,
+    // which — because `user` is null on an offline cold load — meant the POS
+    // never even read the locally cached shift and came back showing
+    // "No Open Shift" after an offline refresh. fetchActiveShift() reads the
+    // durable cache offline and the server online; it needs no role.
+    // In-flight guard: without it, overlapping polls could stack (each cycle
+    // re-renders → re-fires the loader).
+    if (shiftFetchRef.current) return;
+    shiftFetchRef.current = true;
     fetchActiveShift().then((shift) => {
-      setActiveShift(shift);
+      // Structural compare: the loader always hands us a fresh object, so a
+      // naive setState re-rendered (and re-fetched) on every cycle even when
+      // nothing changed.
+      setActiveShift((prev) => (sameShift(prev, shift) ? prev : shift));
+    }).finally(() => {
+      shiftFetchRef.current = false;
     });
   }
 
@@ -135,13 +142,25 @@ export default function POSClient() {
     refresh();
   }, [refresh]);
 
-  // The first render always has user=null (useCurrentUser defers until mount).
-  // Re-load shift data once the role is known — both admin and cashier need
-  // their active shift (admin opens with the float modal, cashier instant).
+  // Re-load shift data on a REAL account change (id/role swap, login/logout),
+  // plus on reconnect. Keyed on stable primitives: `user` itself is a memoized
+  // object, but primitives make the intent airtight — this effect must never
+  // fire on an ordinary re-render, or the loader turns into a fetch loop.
   useEffect(() => {
     if (!user) return;
     loadShiftData();
-  }, [user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, user?.role]);
+
+  useEffect(() => {
+    function handleReconnect() { loadShiftData(); }
+    window.addEventListener(RECONNECT_EVENT_NAME, handleReconnect);
+    window.addEventListener('online', handleReconnect);
+    return () => {
+      window.removeEventListener(RECONNECT_EVENT_NAME, handleReconnect);
+      window.removeEventListener('online', handleReconnect);
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && !navigator.onLine && customers.length === 0) {
@@ -287,7 +306,12 @@ export default function POSClient() {
         setSelectedCustomerId(0);
         setNewCustomerName('');
         setShowNewCustomer(false);
-        void getActiveProducts().then(setProducts).catch(() => {});
+        // Offline: Dexie already holds the decremented stock and the POS live
+        // query re-renders the grid, so re-fetching the whole product list here
+        // only bought an extra full-grid render per sale.
+        if (!(result as Record<string, unknown>).offline) {
+          void getActiveProducts().then(setProducts).catch(() => {});
+        }
         // Refresh live shift totals for the seller's own shift (admin included).
         if ((result as Record<string, unknown>).offline && activeShift) {
           const updatedShift = applyOfflineSaleToShift(activeShift, result.totalAmount, 'cash');
@@ -325,7 +349,10 @@ export default function POSClient() {
         setCart([]);
         setTendered(0);
         setGcashRef('');
-        void getActiveProducts().then(setProducts).catch(() => {});
+        // Online only — offline stock already lives in Dexie (see above).
+        if (!result.offline) {
+          void getActiveProducts().then(setProducts).catch(() => {});
+        }
 
         // Refresh live shift totals for the seller's own shift (admin included).
         if (result.offline && activeShift) {
@@ -450,16 +477,31 @@ export default function POSClient() {
   async function handleCloseShiftSubmit(e: React.FormEvent) {
     e.preventDefault();
     setShiftError('');
+    const raw = closingCashInput.trim();
+    const countedCash = parseCashCount(closingCashInput);
+    // Admin must reconcile the drawer: no count, no close.
+    if (isAdmin && countedCash === null) {
+      setShiftError('Enter the physical cash count to close the shift.');
+      return;
+    }
+    // Any non-blank input must be a valid non-negative amount (type=number
+    // mostly guarantees this, but never silently drop a bad value).
+    if (raw !== '' && countedCash === null) {
+      setShiftError('Cash count must be a number of 0 or more.');
+      return;
+    }
     setShiftActionLoading(true);
-    // No physical cash count: closingCash is omitted so the shift closes with
-    // null counted cash / null variance (online and offline sync paths handle this).
-    const res = await closeShift(undefined, shiftNotes);
+    // Pass the physical drawer count so the server stores counted cash and the
+    // over/short variance. Blank (cashier) → undefined → null variance, exactly
+    // as before. Offline the queued close_shift action carries the same value.
+    const res = await closeShift(countedCash ?? undefined, shiftNotes);
     setShiftActionLoading(false);
     if (!res.success) {
       setShiftError(res.error || 'Failed to close shift');
       return;
     }
     setShowEndShiftModal(false);
+    setClosingCashInput('');
     setActiveShift(null);
     if (res.summary) {
       setZReadReceipt(res.summary);
@@ -467,6 +509,14 @@ export default function POSClient() {
   }
 
   const expectedCashAmount = activeShift?.expectedCash ?? 0;
+  const countedCash = parseCashCount(closingCashInput);
+  // Live variance — computed against the SAME expectedCash the server returns
+  // (and the same value shown in the summary), so preview === stored variance.
+  const closingVariance = countedCash === null ? null : formatVariance(expectedCashAmount, countedCash);
+  // Admin: count required. Cashier: still allowed to close with no count.
+  const canCloseShift = isAdmin
+    ? countedCash !== null
+    : closingCashInput.trim() === '' || countedCash !== null;
 
   const isCredit = paymentMethod === 'credit';
 
@@ -530,6 +580,7 @@ export default function POSClient() {
             <button
               onClick={() => {
                 setShiftError('');
+                setClosingCashInput('');
                 setShowEndShiftModal(true);
               }}
               className="bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 rounded-lg text-sm font-semibold transition shadow-lg shadow-rose-950/30 cursor-pointer flex items-center gap-1.5"
@@ -574,7 +625,9 @@ export default function POSClient() {
           />
         </div>
 
-        <div className="bg-white rounded-xl shadow p-5 space-y-4 h-fit sticky top-4">
+        {/* data-pos-flat: this panel is sticky, so its theme backdrop-filter
+            forced a re-blur every frame while the card grid scrolled behind it. */}
+        <div data-pos-flat className="bg-white rounded-xl shadow p-5 space-y-4 h-fit sticky top-4">
           <div className="flex justify-between items-center">
             <h2 className="font-bold">Cart</h2>
             <span className="text-xs bg-gray-100 rounded-full px-2 py-0.5">{totalItems} items</span>
@@ -946,11 +999,54 @@ export default function POSClient() {
                   <span>Expected Cash in Drawer</span>
                   <span className="text-cyan-400">₱{expectedCashAmount.toFixed(2)}</span>
                 </div>
+                {/* Live variance — appears as soon as a cash count is typed.
+                    Same helper the printed Z-Read uses, so preview === receipt. */}
+                {closingVariance && (
+                  <div className="flex justify-between items-center font-bold pt-1">
+                    <span className="text-slate-400 text-[11px] uppercase tracking-wider font-semibold">
+                      Variance (Counted − Expected)
+                    </span>
+                    <span
+                      className={
+                        closingVariance.tone === 'balanced'
+                          ? 'text-emerald-400'
+                          : closingVariance.tone === 'over'
+                          ? 'text-amber-400'
+                          : 'text-rose-400'
+                      }
+                    >
+                      {closingVariance.signedText} · {closingVariance.label}
+                    </span>
+                  </div>
+                )}
               </div>
 
               <form onSubmit={handleCloseShiftSubmit} className="space-y-4">
+                {/* Physical cash count: admin required, cashier optional. */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-1">
+                    Physical Cash Count (₱){isAdmin ? '' : ' — Optional'}
+                  </label>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    step="0.01"
+                    min="0"
+                    value={closingCashInput}
+                    onChange={(e) => setClosingCashInput(e.target.value)}
+                    placeholder={isAdmin ? String(expectedCashAmount.toFixed(2)) : 'Leave blank to close without a count'}
+                    className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm font-semibold text-cyan-400"
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    {isAdmin
+                      ? 'Count the drawer cash, enter it — the variance above updates as you type.'
+                      : 'Optional. Enter the drawer count to record an over/short variance.'}
+                  </p>
+                </div>
+
                 <p className="text-xs text-slate-400">
-                  Closing your shift records the X-Read totals above. No physical cash count is required.
+                  Closing your shift records the X-Read totals above. The counted cash and
+                  variance are saved to the shift and shown on the receipt.
                 </p>
 
                 <div>
@@ -982,7 +1078,8 @@ export default function POSClient() {
                   </button>
                   <button
                     type="submit"
-                    disabled={shiftActionLoading}
+                    disabled={shiftActionLoading || !canCloseShift}
+                    title={canCloseShift ? undefined : 'Enter the physical cash count to close the shift.'}
                     className="flex-1 bg-rose-600 hover:bg-rose-500 text-white rounded-xl py-2.5 text-sm font-semibold transition disabled:opacity-60"
                   >
                     {shiftActionLoading ? 'Closing Shift...' : 'Close Shift'}
@@ -1022,7 +1119,9 @@ const ProductGrid = memo(function ProductGrid({
   onAddToCart: (product: Product) => void;
 }) {
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+    // data-pos-flat: renders every card/badge flat (no per-card backdrop-filter).
+    // See "POS PERFORMANCE (FLAT SURFACES)" in app/globals.css.
+    <div data-pos-flat className="grid grid-cols-2 sm:grid-cols-3 gap-3">
       {loading ? (
         <p className="col-span-full text-center text-gray-400 py-8">
           Loading products…
@@ -1157,7 +1256,11 @@ function ZReadModal({
   storeName: string;
   onClose: () => void;
 }) {
+  // Single source of truth with the live preview (formatVarianceDelta), so the
+  // receipt can never disagree with the variance shown before closing. The
+  // stored value is the server's authoritative `overageShortage`.
   const discrepancy = summary.overageShortage;
+  const variance = discrepancy === null ? null : formatVarianceDelta(discrepancy);
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
@@ -1191,13 +1294,13 @@ function ZReadModal({
           )}
         </div>
 
-        {discrepancy !== null && (
+        {variance && (
           <div className={`text-center rounded-md py-2 font-bold ${
-            discrepancy === 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
+            variance.tone === 'balanced' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
           }`}>
-            {discrepancy === 0
+            {variance.tone === 'balanced'
               ? `BALANCED (₱0.00)`
-              : `${discrepancy > 0 ? 'OVER' : 'SHORT'} (₱${Math.abs(discrepancy).toFixed(2)})`}
+              : `${variance.label} (${variance.text})`}
           </div>
         )}
 
