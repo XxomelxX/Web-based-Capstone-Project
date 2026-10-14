@@ -564,6 +564,11 @@ select {
   background: rgba(245, 158, 11, 0.25);
 }
 
+[data-pos-product-card] {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
 /* ======================= ANIMATED NAV LINK ======================= */
 /* Diamond -> expanding bar on hover. Adapted from Uiverse.io (asgardOP) */
 .nav-link {

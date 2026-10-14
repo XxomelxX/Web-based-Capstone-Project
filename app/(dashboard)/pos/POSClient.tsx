@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Search } from 'lucide-react';
 import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
 import { formatTime, formatDateTime } from '@/lib/client/timeUtils';
@@ -118,7 +118,10 @@ export default function POSClient() {
     getCachedUtangEntries<{ customerId: number; remainingBalance: number; status: string }>().then(setUtangEntries).catch(() => {});
   }, []);
 
-  const cachedActiveProducts = cachedProducts?.filter((p) => !p.archived);
+  const cachedActiveProducts = useMemo(
+    () => cachedProducts?.filter((p) => !p.archived),
+    [cachedProducts]
+  );
   const products = cachedActiveProducts?.length ? cachedActiveProducts : fallbackProducts;
   const isLoadingProducts = productsLoading && cachedProducts === undefined && fallbackProducts.length === 0;
 
@@ -167,7 +170,7 @@ export default function POSClient() {
     return map;
   }, [utangEntries]);
 
-  function addToCart(product: Product) {
+  const addToCart = useCallback((product: Product) => {
     setCart((prev) => {
       const existing = prev.find((l) => l.product.id === product.id);
       if (existing) {
@@ -177,7 +180,7 @@ export default function POSClient() {
       }
       return [...prev, { product, quantity: 1 }];
     });
-  }
+  }, []);
 
   function handleSearchKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Enter' && filteredProducts.length === 1) {
@@ -561,46 +564,14 @@ export default function POSClient() {
             )}
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {isLoadingProducts ? (
-              <p className="col-span-full text-center text-gray-400 py-8">
-                Loading products…
-              </p>
-            ) : filteredProducts.length === 0 && products.length === 0 && !navigator.onLine ? (
-              <p className="col-span-full text-center text-gray-400 py-8">
-                No products available offline. Please go online to load products.
-              </p>
-            ) : filteredProducts.length === 0 ? (
-              <p className="col-span-full text-center text-gray-400 py-8">
-                No products found matching &quot;{search}&quot;
-              </p>
-            ) : (
-              filteredProducts.map((p) => {
-                const expBadge = getExpiryBadge(p.expiryDate);
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => addToCart(p)}
-                    disabled={p.stock <= 0}
-                    className={`bg-white rounded-lg shadow p-4 text-left hover:shadow-md transition cursor-pointer disabled:opacity-40 ${expBadge ? 'border-l-4 border-l-amber-400' : ''}`}
-                  >
-                    <div className="font-medium text-sm">{p.name}</div>
-                    {expBadge && (
-                      <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded-full mt-1 font-medium ${expBadge.className}`}>
-                        {expBadge.label}
-                      </span>
-                    )}
-                    <div className="flex justify-between items-center mt-2">
-                      <span className="text-green-700 font-bold">₱{p.price}</span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${p.stock < 20 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>
-                        {p.stock} stk
-                      </span>
-                    </div>
-                  </button>
-                );
-              })
-            )}
-          </div>
+          <ProductGrid
+            products={filteredProducts}
+            totalProducts={products.length}
+            loading={isLoadingProducts}
+            offline={typeof navigator !== 'undefined' && !navigator.onLine}
+            search={search}
+            onAddToCart={addToCart}
+          />
         </div>
 
         <div className="bg-white rounded-xl shadow p-5 space-y-4 h-fit sticky top-4">
@@ -1034,6 +1005,66 @@ export default function POSClient() {
     </div>
   );
 }
+
+const ProductGrid = memo(function ProductGrid({
+  products,
+  totalProducts,
+  loading,
+  offline,
+  search,
+  onAddToCart,
+}: {
+  products: Product[];
+  totalProducts: number;
+  loading: boolean;
+  offline: boolean;
+  search: string;
+  onAddToCart: (product: Product) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      {loading ? (
+        <p className="col-span-full text-center text-gray-400 py-8">
+          Loading products…
+        </p>
+      ) : products.length === 0 && totalProducts === 0 && offline ? (
+        <p className="col-span-full text-center text-gray-400 py-8">
+          No products available offline. Please go online to load products.
+        </p>
+      ) : products.length === 0 ? (
+        <p className="col-span-full text-center text-gray-400 py-8">
+          No products found matching &quot;{search}&quot;
+        </p>
+      ) : (
+        products.map((product) => {
+          const expBadge = getExpiryBadge(product.expiryDate);
+          return (
+            <button
+              key={product.id}
+              data-pos-product-card
+              onClick={() => onAddToCart(product)}
+              disabled={product.stock <= 0}
+              className={`bg-white rounded-lg shadow p-4 text-left hover:shadow-md transition cursor-pointer disabled:opacity-40 ${expBadge ? 'border-l-4 border-l-amber-400' : ''}`}
+            >
+              <div className="font-medium text-sm">{product.name}</div>
+              {expBadge && (
+                <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded-full mt-1 font-medium ${expBadge.className}`}>
+                  {expBadge.label}
+                </span>
+              )}
+              <div className="flex justify-between items-center mt-2">
+                <span className="text-green-700 font-bold">₱{product.price}</span>
+                <span className={`text-xs px-2 py-0.5 rounded-full ${product.stock < 20 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>
+                  {product.stock} stk
+                </span>
+              </div>
+            </button>
+          );
+        })
+      )}
+    </div>
+  );
+});
 
 function ReceiptModal({
   receipt,
