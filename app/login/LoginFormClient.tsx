@@ -247,7 +247,7 @@ export default function LoginFormClient() {
         </button>
       </form>
 
-      <div className="mt-5 flex justify-end">
+      <div className="mt-5 flex justify-center">
         <a
           href="/forgot-password"
           className="text-sm text-[#15803d] hover:underline transition"
