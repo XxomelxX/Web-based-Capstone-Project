@@ -15,45 +15,37 @@ export const authOptions: NextAuthOptions = {
         password: { label: 'Password', type: 'password' },
       },
       async authorize(credentials) {
-        try {
-          if (!credentials?.username || !credentials?.password) return null;
-
-      const user = await prisma.user.findUnique({
-        where: { username: credentials.username },
-      });
-
-      if (!user) {
-        if (process.env.NODE_ENV !== 'production') {
-          console.log('[AUTH] authorize failed: user not found', credentials.username);
-        }
-        return null;
-      }
-
-      if (user.status !== 'active') {
-        if (process.env.NODE_ENV !== 'production') {
-          console.log('[AUTH] authorize failed: user inactive', user.status);
-        }
-        return null;
-      }
-
-      const isValid = await compare(credentials.password, user.passwordHash);
-      if (!isValid) {
-        if (process.env.NODE_ENV !== 'production') {
-          console.log('[AUTH] authorize failed: invalid password for', credentials.username);
-        }
-        return null;
-      }
-
-          return {
-            id: String(user.id),
-            name: user.fullName,
-            email: user.email,
-            role: user.role,
-          } as { id: string; name: string; email: string; role: string };
-        } catch (error) {
-          console.error('[AUTH] authorize error:', error);
+        if (
+          typeof credentials?.username !== 'string' ||
+          typeof credentials.password !== 'string'
+        ) {
           return null;
         }
+
+        const username = credentials.username.trim();
+        if (!username || !credentials.password) return null;
+
+        const users = await prisma.user.findMany({
+          where: {
+            username: { equals: username, mode: 'insensitive' },
+          },
+          take: 2,
+        });
+
+        if (users.length !== 1) return null;
+
+        const user = users[0];
+        if (user.status !== 'active') return null;
+
+        const isValid = await compare(credentials.password, user.passwordHash);
+        if (!isValid) return null;
+
+        return {
+          id: String(user.id),
+          name: user.fullName,
+          email: user.email,
+          role: user.role,
+        } as { id: string; name: string; email: string; role: string };
       },
     }),
   ],

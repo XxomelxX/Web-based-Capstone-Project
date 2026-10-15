@@ -28,6 +28,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'All fields are required' }, { status: 400 });
     }
 
+    if (typeof username !== 'string' || !username.trim()) {
+      return NextResponse.json({ error: 'Username is required' }, { status: 400 });
+    }
+
+    const normalizedUsername = username.trim().toLowerCase();
+
     if (!['admin', 'cashier'].includes(role)) {
       return NextResponse.json({ error: 'Role must be admin or cashier' }, { status: 400 });
     }
@@ -40,7 +46,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Valid email is required' }, { status: 400 });
     }
 
-    const existing = await prisma.user.findUnique({ where: { username } });
+    const existing = await prisma.user.findFirst({
+      where: { username: { equals: normalizedUsername, mode: 'insensitive' } },
+    });
     if (existing) {
       return NextResponse.json({ error: 'Username already taken' }, { status: 409 });
     }
@@ -52,7 +60,7 @@ export async function POST(request: Request) {
 
     const passwordHash = await hash(password, 10);
     const user = await prisma.user.create({
-      data: { fullName, username, email, passwordHash, role, status: 'active' },
+      data: { fullName, username: normalizedUsername, email, passwordHash, role, status: 'active' },
       select: { id: true, fullName: true, username: true, email: true, role: true, status: true },
     });
 
