@@ -1,7 +1,8 @@
 ﻿import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/server/prisma';
 import bcrypt from 'bcryptjs';
-import { getClientIp, isRateLimited } from '@/lib/server/rate-limit';
+import { clearRateLimit, getClientIp, isRateLimited } from '@/lib/server/rate-limit';
+import { hashResetCode } from '@/lib/server/reset-code';
 
 export async function POST(request: Request) {
   try {
@@ -20,11 +21,26 @@ export async function POST(request: Request) {
     }
 
     const normEmail = email.trim().toLowerCase();
+    const codeHash = hashResetCode(String(code).trim());
+
+    // Per-email attempt cap (≤5, then invalidate): X-Forwarded-For is
+    // client-spoofable, so the IP bucket alone can't stop code guessing.
+    if (isRateLimited(`reset-attempt:${normEmail}`, 5, 15 * 60 * 1000)) {
+      await prisma.user.updateMany({
+        where: { email: { equals: normEmail, mode: 'insensitive' } },
+        data: { resetToken: null, resetTokenExpiry: null },
+      });
+      await prisma.passwordResetCode.deleteMany({ where: { email: normEmail } });
+      return NextResponse.json(
+        { error: 'Too many wrong codes — a fresh code has been required. Please request a new one.' },
+        { status: 429 }
+      );
+    }
 
     const user = await prisma.user.findFirst({
       where: {
         email: { equals: normEmail, mode: 'insensitive' },
-        resetToken: code,
+        resetToken: codeHash,
         resetTokenExpiry: { gt: new Date() },
       },
     });
@@ -35,7 +51,7 @@ export async function POST(request: Request) {
       const stray = await prisma.passwordResetCode.findFirst({
         where: {
           email: normEmail,
-          code,
+          code: codeHash,
           expiresAt: { gt: new Date() },
         },
       });
@@ -58,6 +74,9 @@ export async function POST(request: Request) {
         resetTokenExpiry: null,
       },
     });
+    // Success clears the per-email attempt bucket so the next legitimate
+    // reset starts fresh.
+    clearRateLimit(`reset-attempt:${normEmail}`);
 
     return NextResponse.json({ message: 'Password reset successfully. You can now log in.' });
   } catch (error) {

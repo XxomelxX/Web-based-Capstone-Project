@@ -4,6 +4,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/server/auth';
 import { broadcastRealtime } from '@/lib/server/realtime';
 import { consumeFifoStock } from '@/lib/server/fifo';
+import { isDbUnreachable, DB_UNAVAILABLE_MESSAGE } from '@/lib/server/db-unreachable';
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -35,8 +36,21 @@ export async function POST(request: Request) {
     customerName: string; items: UtangItem[]; note?: string; clientUuid?: string; dueDate?: string | null;
   };
 
-  if (!customerName || !items || items.length === 0) {
+  if (typeof customerName !== 'string' || !customerName.trim() || !Array.isArray(items) || items.length === 0) {
     return NextResponse.json({ error: 'customerName and at least one item are required' }, { status: 400 });
+  }
+
+  // Reject malformed line items before they reach stock math: a negative or
+  // fractional quantity used to invert the stock decrement and the total.
+  for (const item of items) {
+    if (!item || typeof item !== 'object'
+      || !Number.isInteger(item.productId) || item.productId <= 0
+      || !Number.isInteger(item.quantity) || item.quantity <= 0) {
+      return NextResponse.json(
+        { error: 'Each item requires a positive integer productId and quantity' },
+        { status: 400 }
+      );
+    }
   }
 
   // Optional custom deadline (datetime). Must be a valid date; past dates are
@@ -79,9 +93,6 @@ export async function POST(request: Request) {
       const priced = items.map((item) => {
         const product = productMap.get(item.productId);
         if (!product) throw new Error(`Product ${item.productId} not found`);
-        if (product.stock < item.quantity) {
-          throw new Error(`Insufficient stock for ${product.name}`);
-        }
         return { ...item, unitPrice: product.price };
       });
 
@@ -112,10 +123,16 @@ export async function POST(request: Request) {
           },
         });
 
-        await tx.product.update({
-          where: { id: item.productId },
+        // Conditional decrement: read-then-write races concurrent sales of the
+        // last unit — the guarded write rolls the whole utang back on count 0.
+        const stockUpdate = await tx.product.updateMany({
+          where: { id: item.productId, stock: { gte: item.quantity } },
           data: { stock: { decrement: item.quantity } },
         });
+        if (stockUpdate.count !== 1) {
+          const product = productMap.get(item.productId);
+          throw new Error(`Insufficient stock for ${product?.name ?? `product #${item.productId}`}`);
+        }
 
         // FIFO: utang sales consume the oldest stock layers first.
         await consumeFifoStock(tx, item.productId, item.quantity);
@@ -170,6 +187,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json(result, { status: 201 });
   } catch (err) {
+    // Database down: friendly 503 instead of leaking engine text.
+    if (isDbUnreachable(err)) {
+      return NextResponse.json({ error: DB_UNAVAILABLE_MESSAGE }, { status: 503 });
+    }
     if (clientUuid && typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === 'P2002') {
       const existing = await prisma.utangEntry.findUnique({
         where: { clientUuid },

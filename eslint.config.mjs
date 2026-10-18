@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Node tooling scripts use require() by design (prisma hooks, SW patch).
+    "scripts/**",
+    "public/**",
   ]),
 ]);
 

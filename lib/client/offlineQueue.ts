@@ -317,6 +317,26 @@ export async function getPendingActions(): Promise<QueuedCategory1Action[]> {
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
+// Retry a single failed action: clear its failure flag so the next sync push
+// picks it up again. Returns true when the row exists and was reset.
+export async function retryQueuedAction(id: number): Promise<boolean> {
+  const row = await db.queuedActions.get(id);
+  if (!row || row.synced) return false;
+  await db.queuedActions.update(id, { syncFailed: false, errorMessage: undefined });
+  triggerQueueUpdate();
+  return true;
+}
+
+// Discard a single failed action: permanently removes it from the queue.
+// Money actions (sales/payments) should prefer Retry — Discard drops the record.
+export async function discardQueuedAction(id: number): Promise<boolean> {
+  const row = await db.queuedActions.get(id);
+  if (!row || row.synced) return false;
+  await db.queuedActions.delete(id);
+  triggerQueueUpdate();
+  return true;
+}
+
 export async function getAllQueuedCategory1Actions(): Promise<QueuedCategory1Action[]> {
   const actions = await db.queuedActions.toArray();
   return actions.sort((a, b) => a.createdAt.localeCompare(b.createdAt));

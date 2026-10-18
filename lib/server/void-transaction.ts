@@ -15,7 +15,23 @@ export async function executeVoidTransaction(
     });
 
     if (!transaction) throw new Error('Transaction not found');
+    // Sequential replay shortcut; the guarded update below is the race gate.
     if (transaction.status === 'voided') return transaction;
+
+    // Status gate FIRST: the guarded update is the sole writer of
+    // status='voided', so a direct void racing an approval (or two approvers)
+    // can never both restore stock. Gate before the credit guard so a losing
+    // void holds no row locks while it waits.
+    const gate = await tx.transaction.updateMany({
+      where: { id: transactionId, status: 'complete' },
+      data: {
+        status: 'voided',
+        voidReason: reason,
+        voidedBy: voidedByUserId,
+        voidedAt: new Date(),
+      },
+    });
+    if (gate.count !== 1) throw new Error('Transaction already voided');
 
     // Credit-sale void: reverse the linked utang entry to keep the ledger consistent.
     if (transaction.paymentMethod === 'credit' && transaction.clientUuid?.startsWith('utang-')) {
@@ -52,15 +68,9 @@ export async function executeVoidTransaction(
       });
     }
 
-    return tx.transaction.update({
-      where: { id: transactionId },
-      data: {
-        status: 'voided',
-        voidReason: reason,
-        voidedBy: voidedByUserId,
-        voidedAt: new Date(),
-      },
-    });
+    // Reflect the gated write (status/reason/voidedBy/voidedAt) with the
+    // restored stock already applied in this same transaction.
+    return tx.transaction.findUniqueOrThrow({ where: { id: transactionId } });
   }, {
     maxWait: 15000,
     timeout: 25000,

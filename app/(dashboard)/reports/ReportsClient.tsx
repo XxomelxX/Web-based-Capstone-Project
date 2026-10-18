@@ -389,6 +389,29 @@ function ShiftHistoryTable() {
       setLoadingShifts(false);
       return;
     }
+    // Drain any offline-queued audit sign-offs first (FIFO), then load history.
+    void (async () => {
+      try {
+        const KEY = 'sari_pos_cache_shift_audit_queue';
+        const raw = localStorage.getItem(KEY);
+        const queue = raw ? (JSON.parse(raw) as { shiftId: number; verificationStatus: string; verificationNotes: string }[]) : [];
+        if (queue.length > 0) {
+          for (const q of queue) {
+            await fetch('/api/shift', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                action: 'verify',
+                shiftId: q.shiftId,
+                verificationStatus: q.verificationStatus,
+                verificationNotes: q.verificationNotes,
+              }),
+            }).catch(() => null);
+          }
+          localStorage.removeItem(KEY);
+        }
+      } catch { /* queue drain best-effort */ }
+    })();
     import('@/lib/client/api/shift').then(({ fetchShiftHistory }) => {
       fetchShiftHistory().then((data) => {
         setShifts(data);
@@ -432,12 +455,27 @@ function ShiftHistoryTable() {
       const isNetworkError =
         typeof window !== 'undefined' && (/failed to fetch|network|offline/i.test(message));
       if (isNetworkError) {
-        await saveCategory2Cache('shift_audit_queue', {
-          shiftId: verifyingShift.id,
-          verificationStatus: verifyStatus,
-          verificationNotes: auditNotes,
-        });
-        setAuditError('');
+        // Offline: append to a durable audit queue (localStorage array keyed by
+        // shift id). loadHistory() drains it on the next online visit, so an
+        // offline sign-off is never silently dropped.
+        try {
+          const KEY = 'sari_pos_cache_shift_audit_queue';
+          const raw = localStorage.getItem(KEY);
+          const queue = raw ? (JSON.parse(raw) as Record<string, unknown>[]) : [];
+          const entry = {
+            shiftId: verifyingShift.id,
+            verificationStatus: verifyStatus,
+            verificationNotes: auditNotes,
+            queuedAt: new Date().toISOString(),
+          };
+          const deduped = queue.filter((q) => (q as { shiftId?: number }).shiftId !== verifyingShift.id);
+          localStorage.setItem(KEY, JSON.stringify([...deduped, entry]));
+          setVerifyingShift(null);
+          setAuditNotes('');
+          setAuditError('Offline — audit sign-off queued, will submit on reconnect.');
+        } catch {
+          setAuditError('Offline — could not queue the audit sign-off. Please retry online.');
+        }
       } else {
         setAuditError(err instanceof Error ? err.message : 'Audit sign-off failed');
       }

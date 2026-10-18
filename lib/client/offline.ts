@@ -151,6 +151,20 @@ export async function wipeOfflineData(): Promise<void> {
     localStorage.removeItem('sari-sari-active-shift');
     sessionStorage.removeItem('sari-sari-active-shift');
   } catch { /* storage wipe best-effort */ }
+  try {
+    // Service Worker runtime caches hold authenticated API JSON (products,
+    // reports, RSC payloads). Without this a logged-out device keeps serving
+    // the previous user's data from cache. Queued offline actions live in
+    // IndexedDB, not the Cache API, so this never drops unsynced work.
+    if (typeof caches !== 'undefined') {
+      const names = await caches.keys();
+      await Promise.all(
+        names
+          .filter((n) => n.startsWith('api-cache-') || n.startsWith('pages-cache-'))
+          .map((n) => caches.delete(n))
+      );
+    }
+  } catch { /* cache wipe best-effort */ }
 }
 
 export async function unregisterServiceWorker() {

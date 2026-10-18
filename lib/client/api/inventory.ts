@@ -166,9 +166,10 @@ export async function updateCustomer(id: number, data: {
 }
 
 export async function deleteCustomer(id: number, adminUsername: string, adminPassword: string, force?: boolean) {
+  // Customers are Category 3 (blocked offline): the old path queued a void_sale
+  // with the CUSTOMER id as transactionId — sync would void a random sale.
   if (typeof window !== 'undefined' && !navigator.onLine) {
-    await queueVoidSale(id, 'Deleted offline');
-    return { offline: true, id, status: 'voided' };
+    throw new Error('You are offline — customers can only be deleted online.');
   }
   const res = await fetch(`/api/customers/${id}`, {
     method: 'DELETE',
@@ -539,6 +540,11 @@ export interface AdjustStockInput {
 export async function adjustInventoryStock(
   data: AdjustStockInput
 ): Promise<{ product: { stock: number }; delta: number; mode?: string; type?: string }> {
+  // Stock recounts are Category 3 (admin, online-only): translate the raw
+  // offline TypeError into the same friendly message callers already handle.
+  if (typeof window !== 'undefined' && !navigator.onLine) {
+    throw new Error('You are offline — stock adjustments can only be made online.');
+  }
   const res = await fetch('/api/inventory/adjust', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -633,23 +639,10 @@ export async function addUser(data: {
   password: string;
   role: 'admin' | 'cashier';
 }): Promise<InventoryUser> {
+  // Users are Category 3 (blocked offline): creating an account offline would
+  // queue a customer_add that syncs as a junk Customer row. Fail loudly.
   if (typeof window !== 'undefined' && !navigator.onLine) {
-    const tempId = -Date.now();
-    const offlineUser = {
-      id: tempId,
-      fullName: data.fullName,
-      username: data.username,
-      email: data.email,
-      password: data.password,
-      role: data.role,
-      status: 'active',
-      createdAt: new Date().toISOString(),
-      offline: true,
-    };
-    const cached = await getCachedUsers<Record<string, unknown>>();
-    await saveUsers([...cached, offlineUser] as unknown as Record<string, unknown>[]);
-    await queueCustomerAdd(data as unknown as Record<string, unknown>, offlineUser.id);
-    return { ...offlineUser, offline: true } as unknown as InventoryUser;
+    throw new Error('You are offline — user accounts can only be created online.');
   }
   const res = await fetch('/api/users', {
     method: 'POST',
@@ -670,15 +663,10 @@ export async function updateUser(id: number, data: {
   status?: string;
   newPassword?: string;
 }): Promise<InventoryUser> {
+  // Users are Category 3 (blocked offline): the old path queued a customer_add
+  // that synced as a junk Customer row. Fail loudly instead.
   if (typeof window !== 'undefined' && !navigator.onLine) {
-    const cached = await getCachedUsers<Record<string, unknown>>();
-    const existing = cached.findIndex((c) => (c as { id: number }).id === id);
-    if (existing >= 0) {
-      const updated = { ...cached[existing], ...data } as unknown as Record<string, unknown>;
-      await db.users.put(updated);
-      await queueCustomerAdd(data as unknown as Record<string, unknown>, id);
-    }
-    return { offline: true, id } as unknown as InventoryUser;
+    throw new Error('You are offline — user accounts can only be edited online.');
   }
   const res = await fetch(`/api/users/${id}`, {
     method: 'PATCH',
@@ -693,9 +681,9 @@ export async function updateUser(id: number, data: {
 }
 
 export async function deleteUser(id: number): Promise<void> {
+  // Users are Category 3 (blocked offline).
   if (typeof window !== 'undefined' && !navigator.onLine) {
-    await db.users.delete(id);
-    return;
+    throw new Error('You are offline — user accounts can only be deleted online.');
   }
   const res = await fetch(`/api/users/${id}`, { method: 'DELETE' });
   if (!res.ok) {

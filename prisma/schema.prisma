@@ -38,6 +38,7 @@ model User {
   voidedTransactions     Transaction[]  @relation("TxnVoided")
   voidRequestsMade       VoidRequest[]  @relation("VoidRequested")
   voidRequestsReviewed   VoidRequest[]  @relation("VoidReviewed")
+  paymentsRecorded       Payment[]      @relation("PaymentRecorded")
 }
 
 model PasswordResetCode {
@@ -68,6 +69,8 @@ model Product {
   stock      Int
   packSize   String?
   unit       String?
+  // Scanner lookup aid only — NOT unique (same barcode can appear on multiple
+  // products/pack sizes). Never rely on a barcode 409; match by id.
   barcode    String?
   archived   Boolean  @default(false)
   updatedAt  DateTime @default(now()) @updatedAt
@@ -209,6 +212,10 @@ model Payment {
   clientUuid   String?              @unique
   amount       Int                  // centavos
   note         String?
+  // Cashier who recorded the payment (audit attribution). Nullable so legacy
+  // rows migrate cleanly; always set on new payments.
+  recordedBy   Int?
+  recordedByUser User?              @relation("PaymentRecorded", fields: [recordedBy], references: [id], onDelete: SetNull)
   createdAt    DateTime             @default(now())
 
   allocations   PaymentAllocation[]

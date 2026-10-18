@@ -6,6 +6,7 @@ import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
 import { WifiOff } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface User { id: number; fullName: string; username: string; email: string; role: string; status: string; createdAt: string }
 
@@ -24,12 +25,22 @@ export default function UsersClient() {
   const [newPassword, setNewPassword] = useState('');
   const [editError, setEditError] = useState('');
   const [isOffline, setIsOffline] = useState(false);
+  const [loadError, setLoadError] = useState('');
 
   const refresh = useCallback(() => {
     const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
     setIsOffline(offlineNow);
-    if (offlineNow) return;
-    getUsers<User>().then(setUsers).catch(() => {});
+    // Never skip the fetch while offline: getUsers() already falls back to the
+    // Dexie cache (cachedGet) and re-syncs from the server when online. The old
+    // early return left the table empty under the "users cached locally" banner.
+    getUsers<User>()
+      .then((data) => {
+        setUsers(data);
+        setLoadError('');
+      })
+      .catch((err) => {
+        setLoadError(err instanceof Error ? err.message : 'Failed to load users');
+      });
   }, []);
 
   useRealtime({
@@ -99,10 +110,21 @@ export default function UsersClient() {
     setEditError('');
   }
 
+  function isSelf(u: User): boolean {
+    return user != null && Number(user.id) === u.id;
+  }
+
   function openDelete(u: User) {
     setDeleteTarget(u);
     setDeleteError('');
     setCanDeactivate(false);
+  }
+
+  function openDeactivate(u: User) {
+    if (isSelf(u)) return;
+    setDeleteTarget(u);
+    setDeleteError('');
+    setCanDeactivate(true);
   }
 
   async function handleDelete() {
@@ -124,6 +146,12 @@ export default function UsersClient() {
 
   async function handleDeactivate() {
     if (!deleteTarget) return;
+    // Defense in depth: the row action is disabled for self, but the delete→409
+    // fallback can also flip this modal into deactivate mode for the signed-in user.
+    if (isSelf(deleteTarget)) {
+      setDeleteError('You cannot deactivate your own account');
+      return;
+    }
     try {
       await deactivateUser(deleteTarget.id);
       setDeleteTarget(null);
@@ -132,6 +160,20 @@ export default function UsersClient() {
       refresh();
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : 'Failed to deactivate');
+    }
+  }
+
+  async function handleActivate(u: User) {
+    if (isOffline) return;
+    // Optimistic: flip the badge/action immediately, revert on failure.
+    setUsers((prev) => prev.map((x) => (x.id === u.id ? { ...x, status: 'active' } : x)));
+    try {
+      await updateUser(u.id, { status: 'active' });
+      toast.success(`@${u.username} reactivated`);
+      refresh();
+    } catch (err) {
+      setUsers((prev) => prev.map((x) => (x.id === u.id ? { ...x, status: u.status } : x)));
+      toast.error(err instanceof Error ? err.message : `Failed to reactivate @${u.username}`);
     }
   }
 
@@ -153,6 +195,8 @@ export default function UsersClient() {
           <span>Offline — users cached locally. Will sync on reconnect.</span>
         </div>
       )}
+
+      {loadError && <p className="text-sm text-rose-400 bg-rose-950/40 border border-rose-800/50 rounded-md px-3 py-2">{loadError}</p>}
 
       <div className="flex justify-between items-center">
         <div>
@@ -200,6 +244,18 @@ export default function UsersClient() {
                 </td>
                 <td className="p-3 space-x-2">
                   <button onClick={() => openEdit(u)} disabled={isOffline} className="text-xs text-cyan-400 hover:underline disabled:opacity-40 cursor-pointer">Edit</button>
+                  {u.status === 'inactive' ? (
+                    <button onClick={() => handleActivate(u)} disabled={isOffline} className="text-xs text-emerald-400 hover:underline disabled:opacity-40 cursor-pointer">Activate</button>
+                  ) : (
+                    <button
+                      onClick={() => openDeactivate(u)}
+                      disabled={isOffline || isSelf(u)}
+                      title={isSelf(u) ? 'You cannot deactivate your own account' : undefined}
+                      className="text-xs text-amber-400 hover:underline disabled:opacity-40 cursor-pointer"
+                    >
+                      Deactivate
+                    </button>
+                  )}
                   <button onClick={() => openDelete(u)} disabled={isOffline} className="text-xs text-rose-400 hover:underline disabled:opacity-40 cursor-pointer">Delete</button>
                 </td>
               </tr>
@@ -286,7 +342,7 @@ export default function UsersClient() {
             {deleteError && <p className={`text-sm ${canDeactivate ? 'text-amber-400' : 'text-rose-400'}`}>{deleteError}</p>}
             {canDeactivate ? (
               <p className="text-sm text-slate-300">
-                Are you sure you want to deactivate <strong>@{deleteTarget.username}</strong>? They won&apos;t be able to sign in until reactivated.
+                Deactivate <strong>@{deleteTarget.username}</strong>? They won&apos;t be able to sign in until reactivated.
               </p>
             ) : (
               <p className="text-sm text-slate-300">Are you sure you want to delete user <strong>@{deleteTarget.username}</strong>?</p>

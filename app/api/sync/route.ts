@@ -6,7 +6,8 @@ import { queuedActionSchema } from '@/lib/client/validation';
 import { broadcastRealtime } from '@/lib/server/realtime';
 import { getDrawerFloat } from '@/lib/server/shiftDrawer';
 import { sumShiftCash, computeExpectedCash } from '@/lib/server/shiftCash';
-import { consumeFifoStock, restoreFifoStock, adjustFifoStock } from '@/lib/server/fifo';
+import { consumeFifoStock, adjustFifoStock } from '@/lib/server/fifo';
+import { executeVoidTransaction } from '@/lib/server/void-transaction';
 
 // Accepts at most 100 actions per push (matches the client-side queue cap).
 const MAX_ACTIONS = 100;
@@ -71,10 +72,14 @@ export async function POST(request: Request) {
           continue;
         }
         const paymentMethod = p.paymentMethod ?? 'cash';
-        let tendered = Number(p.tendered ?? 0);
-        const subtotal = items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
-        if (paymentMethod === 'gcash' && tendered < subtotal) tendered = subtotal;
-        if (tendered < subtotal) throw new Error('Insufficient tendered');
+        // Shift close only counts exact 'cash'/'gcash' — reject anything else.
+        if (paymentMethod !== 'cash' && paymentMethod !== 'gcash') {
+          throw new Error('paymentMethod must be "cash" or "gcash"');
+        }
+        const tendered = Number(p.tendered ?? 0);
+        if (!Number.isInteger(tendered) || tendered < 0) {
+          throw new Error('tendered must be a non-negative integer in centavos');
+        }
 
         const created = await prisma.$transaction(async (tx) => {
           const ids = items.map((i) => i.productId);
@@ -83,25 +88,43 @@ export async function POST(request: Request) {
           const priced = items.map((item) => {
             const prod = map.get(item.productId);
             if (!prod) throw new Error(`Product #${item.productId} not found`);
-            if (prod.stock < item.quantity) throw new Error(`Insufficient stock for ${prod.name}`);
             return { ...item, unitPrice: prod.price };
           });
-          const subtotal = priced.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+          const serverTotal = priced.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+          // VAT mirrors online checkout exactly: vat-inclusive total split by the
+          // store tax rate (subtotal = total / (1 + rate), vat = remainder).
+          // The old code stored vat: 0, which drifted synced sales in reports.
+          const settings = await tx.settings.findFirst();
+          const rate = (settings?.taxRate ?? 12) / 100;
+          const serverSubtotal = Math.round(serverTotal / (1 + rate));
+          const serverVat = serverTotal - serverSubtotal;
           const isGcash = paymentMethod === 'gcash';
+          // Re-validate tendered against the SERVER-priced total: client prices
+          // may be stale offline, and change must never use a stale subtotal.
+          let serverTendered = tendered;
+          if (isGcash && serverTendered < serverTotal) serverTendered = serverTotal;
+          if (serverTendered < serverTotal) throw new Error('Insufficient tendered');
           const txn = await tx.transaction.create({
             data: {
               clientUuid: action.clientUuid, cashierId,
               customerId: p.customerId ?? null,
-              paymentMethod, subtotal, vat: 0, total: subtotal,
-              tendered, change: Number((tendered - subtotal).toFixed(2)), status: 'complete',
+              paymentMethod, subtotal: serverSubtotal, vat: serverVat, total: serverTotal,
+              tendered: serverTendered, change: serverTendered - serverTotal, status: 'complete',
               gcashRef: isGcash && typeof p.gcashRef === 'string' ? p.gcashRef.slice(0, 50) : null,
             },
           });
           for (const item of priced) {
             await tx.transactionItem.create({
-              data: { transactionId: txn.id, productId: item.productId, quantity: item.quantity, unitPrice: item.unitPrice, lineTotal: Number((item.quantity * item.unitPrice).toFixed(2)) },
+              data: { transactionId: txn.id, productId: item.productId, quantity: item.quantity, unitPrice: item.unitPrice, lineTotal: item.quantity * item.unitPrice },
             });
-            await tx.product.update({ where: { id: item.productId }, data: { stock: { decrement: item.quantity } } });
+            // Conditional decrement: read-then-write races concurrent sales.
+            const stockUpdate = await tx.product.updateMany({
+              where: { id: item.productId, stock: { gte: item.quantity } },
+              data: { stock: { decrement: item.quantity } },
+            });
+            if (stockUpdate.count !== 1) {
+              throw new Error(`Insufficient stock for ${map.get(item.productId)?.name ?? `product #${item.productId}`}`);
+            }
             await consumeFifoStock(tx, item.productId, item.quantity);
             await tx.itemLog.create({ data: { productId: item.productId, action: 'sold', quantity: item.quantity, performedBy: cashierId } });
           }
@@ -137,7 +160,6 @@ export async function POST(request: Request) {
           const pricedUtang = p.items!.map((item) => {
             const prod = dbMap.get(item.productId);
             if (!prod) throw new Error(`Product #${item.productId} not found`);
-            if (prod.stock < item.quantity) throw new Error(`Insufficient stock for ${prod.name}`);
             return { ...item, unitPrice: prod.price };
           });
           const totalAmount = pricedUtang.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
@@ -158,7 +180,15 @@ export async function POST(request: Request) {
             await tx.utangEntryItem.create({
               data: { utangEntryId: entry.id, productId: item.productId, quantity: item.quantity, unitPrice: item.unitPrice, lineTotal: item.quantity * item.unitPrice },
             });
-            await tx.product.update({ where: { id: item.productId }, data: { stock: { decrement: item.quantity } } });
+            // Conditional decrement: guarded write is the race gate (count 0
+            // rolls the whole utang back — same rule as online /api/utang).
+            const stockUpdate = await tx.product.updateMany({
+              where: { id: item.productId, stock: { gte: item.quantity } },
+              data: { stock: { decrement: item.quantity } },
+            });
+            if (stockUpdate.count !== 1) {
+              throw new Error(`Insufficient stock for ${dbMap.get(item.productId)?.name ?? `product #${item.productId}`}`);
+            }
             await consumeFifoStock(tx, item.productId, item.quantity);
             await tx.itemLog.create({ data: { productId: item.productId, action: 'sold', quantity: item.quantity, performedBy: cashierId } });
           }
@@ -229,19 +259,35 @@ export async function POST(request: Request) {
             orderBy: { createdAt: 'asc' },
           });
           const payment = await tx.payment.create({
-            data: { clientUuid: action.clientUuid, amount: p.amount!, note: p.note ?? null },
+            data: { clientUuid: action.clientUuid, amount: p.amount!, note: p.note ?? null, recordedBy: cashierId },
           });
           let remaining = p.amount!;
           for (const entry of outstanding) {
             if (remaining <= 0) break;
             const apply = Math.min(remaining, entry.remainingBalance);
+            if (apply <= 0) continue;
+            // Relative guarded write: absolute writes lost concurrent payments
+            // (both read the same balance, both overwrite). count 0 means the
+            // balance moved under us — roll the whole payment back.
+            const guarded = await tx.utangEntry.updateMany({
+              where: { id: entry.id, remainingBalance: { gte: apply } },
+              data: {
+                remainingBalance: { decrement: apply },
+                amountPaid: { increment: apply },
+              },
+            });
+            if (guarded.count !== 1) {
+              throw new Error('Utang balance changed concurrently — payment rolled back, please retry');
+            }
+            // Status derives from the post-write balance (the row is locked by our
+            // update, so this read sees our decrement, not the stale snapshot).
+            const settled = await tx.utangEntry.findUnique({
+              where: { id: entry.id },
+              select: { remainingBalance: true },
+            });
             await tx.utangEntry.update({
               where: { id: entry.id },
-              data: {
-                amountPaid: entry.amountPaid + apply,
-                remainingBalance: entry.remainingBalance - apply,
-                status: entry.remainingBalance - apply <= 0 ? 'paid' : 'partial',
-              },
+              data: { status: (settled?.remainingBalance ?? 0) <= 0 ? 'paid' : 'partial' },
             });
             await tx.paymentAllocation.create({
               data: { paymentId: payment.id, utangEntryId: entry.id, amountApplied: apply },
@@ -521,13 +567,14 @@ export async function POST(request: Request) {
       } else if (action.type === 'void_sale') {
         if (requireAdmin(action.clientUuid)) continue;
         if (!p.transactionId || !p.reason) throw new Error('transactionId and reason required');
-        const txn = await prisma.transaction.findUnique({ where: { id: p.transactionId }, include: { items: true } });
+        const txn = await prisma.transaction.findUnique({ where: { id: p.transactionId } });
         if (!txn) throw new Error('Transaction not found');
         if (txn.status === 'voided') {
           results.push({ clientUuid: action.clientUuid, ok: true, serverId: txn.id });
         } else {
-          // Offline supervisor approval audit: resolve the approving supervisor
-          // to a real user id when possible; fall back to the syncing user.
+          // Single writer: funnel through the shared void helper so offline voids
+          // get the same status gate (no double-restore) and the same credit-sale
+          // utang reversal guard as online voids/approvals.
           let voidedBy = cashierId;
           const supName = typeof p.supervisorUsername === 'string' ? p.supervisorUsername : null;
           if (supName) {
@@ -537,14 +584,7 @@ export async function POST(request: Request) {
           const auditReason = supName
             ? `${p.reason} (offline supervisor approval: ${supName}${typeof p.supervisorVerifiedAt === 'string' ? ` @ ${p.supervisorVerifiedAt}` : ''})`
             : (p.reason as string);
-          const updated = await prisma.$transaction(async (tx) => {
-            for (const item of txn.items) {
-              await tx.product.update({ where: { id: item.productId }, data: { stock: { increment: item.quantity } } });
-              await restoreFifoStock(tx, item.productId, item.quantity);
-              await tx.itemLog.create({ data: { productId: item.productId, action: 'voided', quantity: item.quantity, performedBy: voidedBy } });
-            }
-            return tx.transaction.update({ where: { id: txn.id }, data: { status: 'voided', voidReason: auditReason, voidedBy, voidedAt: new Date() } });
-          }, { maxWait: 15000, timeout: 25000 });
+          const updated = await executeVoidTransaction(p.transactionId as number, auditReason, voidedBy);
           broadcastRealtime('transactions', { action: 'voided' });
           broadcastRealtime('products', { action: 'stock-updated' });
           results.push({ clientUuid: action.clientUuid, ok: true, serverId: updated.id });
@@ -568,15 +608,15 @@ export async function POST(request: Request) {
             if (pending) {
               results.push({ clientUuid: action.clientUuid, ok: true, serverId: pending.id, conflict: true, error: 'Void already requested — linked to existing request' });
             } else {
-              // requestedBy arrives in payload (captured at queue time on the
-              // cashier's session); fall back to the syncing user.
-              const requestedBy = typeof p.requestedBy === 'number' && p.requestedBy > 0 ? p.requestedBy : cashierId;
+              // Ownership comes from the SERVER session (cashierId), never the
+              // client payload — the old p.requestedBy was forgeable and let a
+              // cashier file audit-trail requests as another user.
               const created = await prisma.voidRequest.create({
                 data: {
                   clientUuid: action.clientUuid,
                   transactionId: p.transactionId,
                   reason: p.reason as string,
-                  requestedBy,
+                  requestedBy: cashierId,
                 },
               });
               broadcastRealtime('transactions', { action: 'void-requested' });
@@ -591,7 +631,10 @@ export async function POST(request: Request) {
         if (existing.status !== 'pending') {
           results.push({ clientUuid: action.clientUuid, ok: true, conflict: true, error: `Request already ${existing.status}` });
         } else {
-          const isOwner = typeof p.requestedBy === 'number' && existing.requestedBy === p.requestedBy;
+          // Ownership from the SERVER session: only the original requester
+          // (existing.requestedBy) or an admin can cancel. The old check
+          // compared against client-supplied p.requestedBy — forgeable.
+          const isOwner = existing.requestedBy === cashierId;
           if (!isOwner && role !== 'admin') {
             results.push({ clientUuid: action.clientUuid, ok: false, error: 'Only the requester or an admin can cancel' });
           } else {

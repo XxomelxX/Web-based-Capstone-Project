@@ -1,9 +1,9 @@
 ﻿import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/server/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/server/auth';
 import { broadcastRealtime } from '@/lib/server/realtime';
 import { executeVoidTransaction } from '@/lib/server/void-transaction';
+import { verifySupervisor } from '@/lib/server/supervisor';
 
 // POST /api/transactions/:id/void   body: { reason: string, adminUsername?: string, adminPassword?: string }
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -24,25 +24,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   // If cashier is executing, require supervisor credentials
   if (session.user.role === 'cashier') {
-    if (!adminUsername || !adminPassword) {
-      return NextResponse.json({ error: 'Supervisor authorization required to void transactions.' }, { status: 403 });
+    const gate = await verifySupervisor(adminUsername, adminPassword);
+    if (!gate.ok) {
+      return NextResponse.json({ error: gate.error }, { status: gate.status });
     }
 
-    const adminUser = await prisma.user.findUnique({
-      where: { username: adminUsername },
-    });
-
-    if (!adminUser || adminUser.status !== 'active' || adminUser.role !== 'admin') {
-      return NextResponse.json({ error: 'Invalid supervisor credentials.' }, { status: 403 });
-    }
-
-    const compare = (await import('bcryptjs')).compare;
-    const isValid = await compare(adminPassword, adminUser.passwordHash);
-    if (!isValid) {
-      return NextResponse.json({ error: 'Invalid supervisor password.' }, { status: 403 });
-    }
-
-    voidedByUserId = adminUser.id; // Override auditor to the admin who authorized it!
+    voidedByUserId = gate.adminId; // Override auditor to the admin who authorized it!
   }
 
   try {

@@ -4,6 +4,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/server/auth';
 import { broadcastRealtime } from '@/lib/server/realtime';
 import { consumeFifoStock } from '@/lib/server/fifo';
+import { isDbUnreachable, DB_UNAVAILABLE_MESSAGE } from '@/lib/server/db-unreachable';
 import { peso } from '@/lib/money';
 
 interface CartItem {
@@ -26,8 +27,26 @@ export async function POST(request: Request) {
   const gcashRef: string | undefined = typeof body.gcashRef === 'string' && body.gcashRef.trim() ? body.gcashRef.trim().slice(0, 50) : undefined;
   let tendered: number = Number(body.tendered ?? 0);
 
-  if (!items || items.length === 0) {
+  // Shift close only counts exact 'cash'/'gcash' — reject anything else loudly.
+  if (paymentMethod !== 'cash' && paymentMethod !== 'gcash') {
+    return NextResponse.json({ error: 'paymentMethod must be "cash" or "gcash"' }, { status: 400 });
+  }
+
+  if (!Array.isArray(items) || items.length === 0) {
     return NextResponse.json({ error: 'Cart is empty' }, { status: 400 });
+  }
+
+  // Reject malformed line items before they reach stock math: a negative or
+  // fractional quantity used to invert the stock decrement and the sale total.
+  for (const item of items) {
+    if (!item || typeof item !== 'object'
+      || !Number.isInteger(item.productId) || item.productId <= 0
+      || !Number.isInteger(item.quantity) || item.quantity <= 0) {
+      return NextResponse.json(
+        { error: 'Each item requires a positive integer productId and quantity' },
+        { status: 400 }
+      );
+    }
   }
 
   // Money is integer centavos end-to-end; reject legacy float payloads loudly
@@ -47,11 +66,7 @@ export async function POST(request: Request) {
       const productMap = new Map(allProducts.map((p) => [p.id, p]));
 
       for (const item of items) {
-        const product = productMap.get(item.productId);
-        if (!product) throw new Error(`Product #${item.productId} not found`);
-        if (product.stock < item.quantity) {
-          throw new Error(`Insufficient stock for ${product.name} (available: ${product.stock}, required: ${item.quantity})`);
-        }
+        if (!productMap.has(item.productId)) throw new Error(`Product #${item.productId} not found`);
       }
 
       const settings = await tx.settings.findFirst();
@@ -122,10 +137,18 @@ export async function POST(request: Request) {
           },
         });
 
-        await tx.product.update({
-          where: { id: item.productId },
+        // Conditional decrement: a plain read-then-write races concurrent
+        // checkouts of the last unit (both pass the check, stock goes negative).
+        // The guarded write is the authoritative gate — count 0 means the
+        // transaction rolls back with a stock error.
+        const stockUpdate = await tx.product.updateMany({
+          where: { id: item.productId, stock: { gte: item.quantity } },
           data: { stock: { decrement: item.quantity } },
         });
+        if (stockUpdate.count !== 1) {
+          const product = productMap.get(item.productId);
+          throw new Error(`Insufficient stock for ${product?.name ?? `product #${item.productId}`}`);
+        }
 
         // FIFO: consume the oldest stock layers first (same transaction).
         await consumeFifoStock(tx, item.productId, item.quantity);
@@ -152,6 +175,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json(result, { status: 201 });
   } catch (err) {
+    // Database down: friendly 503 instead of leaking engine text.
+    if (isDbUnreachable(err)) {
+      return NextResponse.json({ error: DB_UNAVAILABLE_MESSAGE }, { status: 503 });
+    }
     // Unique-constraint race on clientUuid: return the winner's row.
     if (clientUuid && typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === 'P2002') {
       const existing = await prisma.transaction.findUnique({ where: { clientUuid } });

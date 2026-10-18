@@ -3,6 +3,7 @@ import { prisma } from '@/lib/server/prisma';
 import { getClientIp, isRateLimited } from '@/lib/server/rate-limit';
 import { Resend } from 'resend';
 import { randomInt } from 'crypto';
+import { hashResetCode } from '@/lib/server/reset-code';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -43,7 +44,7 @@ export async function POST(request: Request) {
       console.log('[forgot-password] User found:', user.username, '(' + user.role + ')');
       await prisma.user.update({
         where: { id: user.id },
-        data: { resetToken: code, resetTokenExpiry: expiry },
+        data: { resetToken: hashResetCode(code), resetTokenExpiry: expiry },
       });
       greeting = user.fullName;
     } else {
@@ -52,7 +53,7 @@ export async function POST(request: Request) {
       // but the reset step will refuse it ("No account found").
       await prisma.passwordResetCode.deleteMany({ where: { email: normalizedEmail } });
       await prisma.passwordResetCode.create({
-        data: { email: normalizedEmail, code, expiresAt: expiry },
+        data: { email: normalizedEmail, code: hashResetCode(code), expiresAt: expiry },
       });
       greeting = 'there';
     }

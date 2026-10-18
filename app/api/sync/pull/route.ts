@@ -5,9 +5,13 @@ import { authOptions } from '@/lib/server/auth';
 
 // GET /api/sync/pull?since=ISO — delta sync (blog §9 pullChanges).
 // Returns products (delta), categories (full), customers (full), settings (single).
+// Cashiers get the operational slice only: no transaction history, no payment
+// allocations, no void-request cashier PII. Admins get the full mirror.
 export async function GET(request: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  const role = (session.user as { role?: string }).role ?? 'cashier';
+  const isAdmin = role === 'admin';
   const { searchParams } = new URL(request.url);
   const since = searchParams.get('since');
 
@@ -28,13 +32,17 @@ export async function GET(request: Request) {
     prisma.category.findMany({ take: 200 }),
     prisma.customer.findMany({ take: 1000 }),
     prisma.settings.findFirst(),
-    prisma.utangEntry.findMany({ take: 1000, include: { customer: true, items: true, paymentAllocations: true } }),
-    prisma.expense.findMany({ take: 500, orderBy: { createdAt: 'desc' } }),
-    prisma.transaction.findMany({ take: 500, orderBy: { createdAt: 'desc' } }),
-    prisma.itemLog.findMany({ take: 500, orderBy: { createdAt: 'desc' } }),
+    // Cashiers: balances without allocation/payment PII. Admins: full ledger.
+    isAdmin
+      ? prisma.utangEntry.findMany({ take: 1000, include: { customer: true, items: true, paymentAllocations: true } })
+      : prisma.utangEntry.findMany({ take: 1000, include: { customer: true, items: true } }),
+    isAdmin ? prisma.expense.findMany({ take: 500, orderBy: { createdAt: 'desc' } }) : Promise.resolve([]),
+    isAdmin ? prisma.transaction.findMany({ take: 500, orderBy: { createdAt: 'desc' } }) : Promise.resolve([]),
+    isAdmin ? prisma.itemLog.findMany({ take: 500, orderBy: { createdAt: 'desc' } }) : Promise.resolve([]),
     prisma.voidRequest.findMany({
       where: { status: 'pending' },
-      include: { transaction: { include: { cashier: true } } },
+      // Cashiers: no cashier PII on other users' requests.
+      include: isAdmin ? { transaction: { include: { cashier: true } } } : { transaction: true },
       orderBy: { requestedAt: 'desc' },
       take: 200,
     }),

@@ -22,3 +22,9 @@ export function getClientIp(request: Request): string {
   if (forwarded) return forwarded.split(',')[0].trim();
   return request.headers.get('x-real-ip') ?? 'unknown';
 }
+
+// Clear a throttle bucket (e.g. after a successful reset/login so a
+// legitimate user isn't stuck behind their own failed attempts).
+export function clearRateLimit(key: string): void {
+  buckets.delete(key);
+}

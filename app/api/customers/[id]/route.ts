@@ -4,6 +4,7 @@ import { prisma } from '@/lib/server/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/server/auth';
 import { broadcastRealtime } from '@/lib/server/realtime';
+import { verifySupervisor } from '@/lib/server/supervisor';
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -54,22 +55,9 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     }
     const { adminUsername, adminPassword, force } = body;
 
-    if (!adminUsername || !adminPassword) {
-      return NextResponse.json({ error: 'Admin credentials are required to delete a customer.' }, { status: 400 });
-    }
-
-    const adminUser = await prisma.user.findUnique({
-      where: { username: adminUsername },
-    });
-
-    if (!adminUser || adminUser.status !== 'active' || adminUser.role !== 'admin') {
-      return NextResponse.json({ error: 'Invalid admin credentials.' }, { status: 403 });
-    }
-
-    const compare = (await import('bcryptjs')).compare;
-    const isValid = await compare(adminPassword, adminUser.passwordHash);
-    if (!isValid) {
-      return NextResponse.json({ error: 'Invalid admin password.' }, { status: 403 });
+    const gate = await verifySupervisor(adminUsername, adminPassword);
+    if (!gate.ok) {
+      return NextResponse.json({ error: gate.error }, { status: gate.status });
     }
 
     const customer = await prisma.customer.findUnique({

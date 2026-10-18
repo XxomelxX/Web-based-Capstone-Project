@@ -119,6 +119,17 @@ export default function LoginFormClient({ callbackUrl }: { callbackUrl?: string 
           return;
         }
 
+        // Offline credential TTL (7 days): a stolen device must not grant
+        // offline access forever, and a user deactivated online stops being
+        // able to log in offline once the cache expires.
+        const cachedAt = new Date(cached.cachedAt).getTime();
+        if (!Number.isFinite(cachedAt) || Date.now() - cachedAt > 7 * 24 * 60 * 60 * 1000) {
+          try { await db.cachedCredentials.delete(cleanIdentifier); } catch { /* best-effort */ }
+          setError('Offline login expired — please connect to the internet and sign in once to refresh it.');
+          setLoading(false);
+          return;
+        }
+
         const passwordMatches = await bcrypt.compare(password, cached.passwordHash);
         if (!passwordMatches) {
           setError('Incorrect username or password.');

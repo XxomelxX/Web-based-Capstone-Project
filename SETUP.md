@@ -59,9 +59,15 @@ npx prisma db seed
 This creates:
 - Admin: username `admin` / password `admin123`
 - Cashier: username `cashier` / password `cashier123`
-- 7 categories, 10 sample products
+- 11 categories, ~60 sample products (see `prisma/seed.ts` `productsByCategory`)
 
 **Change these demo passwords before using this for anything real.**
+
+> Destructive reseed is opt-in: `npx prisma db seed` alone only ensures the
+> settings + admin rows exist. Wiping products/categories requires
+> `SEED_WIPE=true npx prisma db seed` (production additionally requires
+> `ALLOW_DESTRUCTIVE_SEED=true`), so a grader's test data is never destroyed
+> by accident.
 
 ### 6. Run it
 ```bash

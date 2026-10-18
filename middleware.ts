@@ -55,6 +55,14 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
+  // Revoked marker stamped by the auth JWT callback when the live user row is
+  // deactivated/missing (see lib/server/auth.ts) — bounce before rendering.
+  if (token.role === 'revoked') {
+    const loginUrl = new URL('/login', request.url);
+    loginUrl.searchParams.set('callbackUrl', request.url);
+    return NextResponse.redirect(loginUrl);
+  }
+
   const response = NextResponse.next();
 
   // Set CSP on page responses only (skip APIs, SW, static assets)

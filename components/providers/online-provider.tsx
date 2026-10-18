@@ -83,7 +83,11 @@ export function OnlineProvider({ children }: { children: React.ReactNode }) {
     // Verify real connectivity on mount — never trust initial `true`.
     // Route through the confirmation gate so a cold load with wifi off
     // also gets the 10s delay instead of flashing Offline instantly.
-    if (!navigator.onLine) handleConnectivityResult(false);
+    // Deferred via setTimeout: a synchronous setState in the effect body
+    // triggers a cascading render (react-hooks/set-state-in-effect).
+    const boot = setTimeout(() => {
+      if (!navigator.onLine) handleConnectivityResult(false);
+    }, 0);
     void verify();
     // Initial sync pull to populate Dexie cache on first load
     // (skip on auth routes — no session yet, and it just hammers Neon during login).
@@ -114,6 +118,7 @@ export function OnlineProvider({ children }: { children: React.ReactNode }) {
     const ping = setInterval(verify, 6000);
     return () => {
       cancelled = true;
+      clearTimeout(boot);
       window.removeEventListener('online', on);
       window.removeEventListener('offline', off);
       window.removeEventListener('focus', on);
@@ -143,6 +148,10 @@ export function OnlineProvider({ children }: { children: React.ReactNode }) {
       window.removeEventListener(QUEUE_UPDATE_EVENT_NAME, update);
     };
   }, []);
+
+  // Retry timer must call the LATEST syncNow without referencing it before its
+  // declaration — route the deferred retry through this ref instead.
+  const syncNowRef = useRef<() => Promise<void>>(async () => {});
 
   const syncNow = useCallback(async () => {
     // Guard on raw connectivity (not effectiveOnline) so a manual retry still
@@ -175,7 +184,7 @@ export function OnlineProvider({ children }: { children: React.ReactNode }) {
         incrementRetry();
         const retryIn = getRetryDelay();
         toast.warning(`Sync failed, retrying in ${Math.round(retryIn / 1000)}s... (${getRetryCount()}/5)`);
-        setTimeout(() => { syncingRef.current = false; void syncNow(); }, retryIn);
+        setTimeout(() => { syncingRef.current = false; void syncNowRef.current(); }, retryIn);
         setIsSyncing(false);
         return;
       } else {
@@ -188,6 +197,11 @@ export function OnlineProvider({ children }: { children: React.ReactNode }) {
       setIsSyncing(false);
     }
   }, [isOnline]);
+
+  // Point the retry ref at the newest syncNow (it re-creates on isOnline flips).
+  useEffect(() => {
+    syncNowRef.current = syncNow;
+  }, [syncNow]);
 
   useEffect(() => {
     if (effectiveOnline && wasOfflineRef.current) void syncNow();

@@ -1,10 +1,10 @@
 ﻿import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/server/prisma';
-import { requireSession } from '@/lib/server/require-session';
+import { requireAdmin } from '@/lib/server/require-session';
 import { isDbUnreachable, DB_UNAVAILABLE_MESSAGE } from '@/lib/server/db-unreachable';
 
 export async function GET(request: Request) {
-  const guard = await requireSession();
+  const guard = await requireAdmin();
   if (guard) return guard;
 
   const { searchParams } = new URL(request.url);

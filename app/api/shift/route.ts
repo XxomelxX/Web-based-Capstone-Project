@@ -93,20 +93,6 @@ export async function POST(request: Request) {
         const replayed = await prisma.shift.findUnique({ where: { clientUuid } });
         if (replayed) return NextResponse.json({ success: true, shift: replayed });
       }
-      // Check if cashier already has an open shift
-      const existingOpenShift = await prisma.shift.findFirst({
-        where: {
-          cashierId: userId,
-          status: 'open',
-        },
-      });
-
-      if (existingOpenShift) {
-        return NextResponse.json(
-          { error: 'You already have an active open shift', shift: existingOpenShift },
-          { status: 409 }
-        );
-      }
 
       const floatAmount = Number(openingFloat);
       if (!Number.isInteger(floatAmount) || floatAmount < 0) {
@@ -126,10 +112,24 @@ export async function POST(request: Request) {
 
         return NextResponse.json({ success: true, shift: newShift });
       } catch (createErr) {
-        // Concurrent double-open race: return the winner instead of 500.
-        if (clientUuid && typeof createErr === 'object' && createErr !== null && 'code' in createErr && (createErr as { code: string }).code === 'P2002') {
-          const replayed = await prisma.shift.findUnique({ where: { clientUuid } });
-          if (replayed) return NextResponse.json({ success: true, shift: replayed });
+        // Concurrent double-open race (two devices / double-tap): the unique
+        // open-shift index rejects the loser. Return the winner instead of 500.
+        // P2002 on clientUuid is a replay — return the original row.
+        if (typeof createErr === 'object' && createErr !== null && 'code' in createErr && (createErr as { code: string }).code === 'P2002') {
+          if (clientUuid) {
+            const replayed = await prisma.shift.findUnique({ where: { clientUuid } });
+            if (replayed) return NextResponse.json({ success: true, shift: replayed });
+          }
+          const winner = await prisma.shift.findFirst({
+            where: { cashierId: userId, status: 'open' },
+            orderBy: { openedAt: 'desc' },
+          });
+          if (winner) {
+            return NextResponse.json(
+              { error: 'You already have an active open shift', shift: winner },
+              { status: 409 }
+            );
+          }
         }
         throw createErr;
       }
@@ -225,32 +225,66 @@ export async function POST(request: Request) {
       const expectedCash = computeExpectedCash(drawerFloat, cashSales, cashSums);
       const overageShortage = countCash !== null ? countCash - expectedCash : null;
 
-      // Guard against double-close from two devices: only close if still open.
+      // Guard against double-close from two devices: the guarded update only
+      // closes a still-open shift — count 0 means the other device won.
+      const closeGate = await prisma.shift.updateMany({
+        where: { id: activeShift.id, status: 'open' },
+        data: {
+          clientUuid: clientUuid ?? undefined,
+          openingFloat: drawerFloat,
+          closingCash: countCash,
+          expectedCash,
+          cashSales,
+          gcashSales,
+          cashIn: cashSums.cashIn,
+          cashOut: cashSums.cashOut,
+          totalExpenses: cashSums.expenses,
+          overageShortage,
+          status: 'closed',
+          closedAt: new Date(),
+          notes: notes ?? activeShift.notes,
+        },
+      });
+      if (closeGate.count !== 1) {
+        const already = await prisma.shift.findUnique({
+          where: { id: activeShift.id },
+          include: { cashier: { select: { fullName: true, username: true } } },
+        });
+        if (already?.status === 'closed') {
+          return NextResponse.json({ success: true, shift: already });
+        }
+        throw new Error('Shift close raced — please retry');
+      }
       let closedShift;
       try {
-        closedShift = await prisma.shift.update({
+        closedShift = await prisma.shift.findUniqueOrThrow({
           where: { id: activeShift.id },
-          data: {
-            clientUuid: clientUuid ?? undefined,
-            openingFloat: drawerFloat,
-            closingCash: countCash,
-            expectedCash,
-            cashSales,
-            gcashSales,
-            cashIn: cashSums.cashIn,
-            cashOut: cashSums.cashOut,
-            totalExpenses: cashSums.expenses,
-            overageShortage,
-            status: 'closed',
-            closedAt: new Date(),
-            notes: notes ?? activeShift.notes,
-          },
           include: {
             cashier: {
               select: { fullName: true, username: true },
             },
           },
         });
+        // Late clientUuid attach: the guarded write above couldn't set it when
+        // the close raced a replay with the same uuid — absorb idempotently.
+        if (clientUuid && closedShift.clientUuid !== clientUuid) {
+          try {
+            closedShift = await prisma.shift.update({
+              where: { id: activeShift.id },
+              data: { clientUuid },
+              include: { cashier: { select: { fullName: true, username: true } } },
+            });
+          } catch (updateErr) {
+            if (typeof updateErr === 'object' && updateErr !== null && 'code' in updateErr && (updateErr as { code: string }).code === 'P2002') {
+              const replayed = await prisma.shift.findUnique({
+                where: { clientUuid },
+                include: { cashier: { select: { fullName: true, username: true } } },
+              });
+              if (replayed) return NextResponse.json({ success: true, shift: replayed });
+            }
+            throw updateErr;
+          }
+        }
       } catch (updateErr) {
         if (clientUuid && typeof updateErr === 'object' && updateErr !== null && 'code' in updateErr && (updateErr as { code: string }).code === 'P2002') {
           const replayed = await prisma.shift.findUnique({

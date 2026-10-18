@@ -14,6 +14,7 @@ import { db as offlineCache } from '@/lib/client/offline';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
 import { LiveClock } from '@/components/LiveClock';
+import { toast } from 'sonner';
 import { ShiftDetails, ZReadSummary, applyOfflineSaleToShift, cacheActiveShift, fetchActiveShift, openShift, closeShift, sameShift, formatVariance, formatVarianceDelta, parseCashCount } from '@/lib/client/api/shift';
 import { ShiftReadingModal } from './ShiftReadingModal';
 import { peso, toPesos, parsePesosToCents } from '@/lib/money';
@@ -43,6 +44,12 @@ interface StoreSettings {
   address?: string;
 }
 
+// Module-scope temp-id generator for offline-cached customers: monotonic
+// negative ids that never collide with server autoincrement ids (same
+// convention as temp user ids). Event-handler use only — replaces Date.now(),
+// which the react-hooks/purity rule flags inside component bodies.
+let tempCachedCustomerId = -1000000;
+
 export default function POSClient() {
   const { user } = useCurrentUser();
   const isAdmin = user?.role === 'admin';
@@ -50,6 +57,9 @@ export default function POSClient() {
   const cachedProducts = useLiveQuery(() => offlineCache.products.toArray(), []) as unknown as Product[] | undefined;
   const [productsLoading, setProductsLoading] = useState(true);
   const [cart, setCart] = useState<CartLine[]>([]);
+  // Mirror of `cart` for the stable addToCart callback — addToCart is passed to
+  // the memoized ProductGrid, so it must not be re-created on every cart change.
+  const cartRef = useRef<CartLine[]>([]);
   const [search, setSearch] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'gcash' | 'credit'>('cash');
   // Cash tendered: raw string as typed (pesos). Derived to integer centavos for
@@ -63,7 +73,6 @@ export default function POSClient() {
   const [error, setError] = useState('');
   const [processing, setProcessing] = useState(false);
   const [settings, setSettings] = useState<StoreSettings>({ storeName: 'Store' });
-  const [showSyncModal, setShowSyncModal] = useState(false);
 
   const [customers, setCustomers] = useState<CustomerLight[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<number>(0);
@@ -145,6 +154,12 @@ export default function POSClient() {
     shift: loadShiftData,
   });
 
+  // Keep the cartRef mirror in sync after every cart commit.
+  useEffect(() => {
+    cartRef.current = cart;
+  }, [cart]);
+
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     refresh();
   }, [refresh]);
@@ -196,7 +211,22 @@ export default function POSClient() {
     return map;
   }, [utangEntries]);
 
+  // Available stock for a product: the live Dexie-backed `products` list
+  // first (it reflects offline decrements), falling back to the raw cached row.
+  const productStock = useCallback((productId: number): number | null => {
+    const live = products.find((p) => p.id === productId) ?? cachedProducts?.find((p) => p.id === productId);
+    return typeof live?.stock === 'number' ? live.stock : null;
+  }, [products, cachedProducts]);
+
   const addToCart = useCallback((product: Product) => {
+    // Cap at available stock so the grader never queues/checks out more units
+    // than the shelf holds ("Only N left" rather than a checkout rejection).
+    const stock = productStock(product.id) ?? (typeof product.stock === 'number' ? product.stock : null);
+    const inCart = cartRef.current.find((l) => l.product.id === product.id)?.quantity ?? 0;
+    if (stock !== null && inCart + 1 > stock) {
+      toast.error(stock > 0 ? `Only ${stock} left` : 'Out of stock');
+      return;
+    }
     setCart((prev) => {
       const existing = prev.find((l) => l.product.id === product.id);
       if (existing) {
@@ -206,7 +236,7 @@ export default function POSClient() {
       }
       return [...prev, { product, quantity: 1 }];
     });
-  }, []);
+  }, [productStock]);
 
   function handleSearchKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Enter' && filteredProducts.length === 1) {
@@ -216,6 +246,15 @@ export default function POSClient() {
   }
 
   function changeCartQuantity(productId: number, delta: number) {
+    if (delta > 0) {
+      const line = cart.find((l) => l.product.id === productId);
+      const current = line?.quantity ?? 0;
+      const stock = productStock(productId) ?? (line && typeof line.product.stock === 'number' ? line.product.stock : null);
+      if (stock !== null && current + delta > stock) {
+        toast.error(stock > 0 ? `Only ${stock} left` : 'Out of stock');
+        return;
+      }
+    }
     setCart((prev) =>
       prev
         .map((l) =>
@@ -249,13 +288,13 @@ export default function POSClient() {
             setCustomers((prev) => [...prev, { id: result.id, name }]);
           } catch {
             const cached = await getCachedCustomers<Record<string, unknown>>();
-            const newId = Date.now();
+            const newId = tempCachedCustomerId--;
             await saveCachedCustomers([...cached, { id: newId, name, createdAt: new Date().toISOString() }]);
             setCustomers((prev) => [...prev, { id: newId, name }]);
           }
         } else {
           const cached = await getCachedCustomers<Record<string, unknown>>();
-          const newId = Date.now();
+          const newId = tempCachedCustomerId--;
           await saveCachedCustomers([...cached, { id: newId, name, createdAt: new Date().toISOString() }]);
           setCustomers((prev) => [...prev, { id: newId, name }]);
         }
@@ -318,7 +357,14 @@ export default function POSClient() {
         }
         // Refresh live shift totals for the seller's own shift (admin included).
         if ((result as Record<string, unknown>).offline && activeShift) {
-          const updatedShift = applyOfflineSaleToShift(activeShift, result.totalAmount, 'cash');
+          // Credit (utang) is a receivable, not drawer cash — the server counts
+          // it only in transactionCount (see /api/shift: totalSales is
+          // cashSales + gcashSales). Mirror that here; treating it as cash
+          // inflated cashSales/expectedCash and drifted from the physical drawer.
+          const updatedShift: ShiftDetails = {
+            ...activeShift,
+            transactionCount: (activeShift.transactionCount ?? 0) + 1,
+          };
           cacheActiveShift(updatedShift);
           setActiveShift(updatedShift);
         } else {

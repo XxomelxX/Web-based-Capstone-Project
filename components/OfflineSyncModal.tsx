@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useOnline } from '@/components/providers/online-provider';
-import { getAllQueuedCategory1Actions, retryAdminBlockedActions } from '@/lib/client/offlineQueue';
+import { discardQueuedAction, getAllQueuedCategory1Actions, retryAdminBlockedActions, retryQueuedAction } from '@/lib/client/offlineQueue';
 import type { QueuedCategory1Action } from '@/lib/client/offlineQueue';
 import { peso } from '@/lib/money';
 
@@ -116,6 +116,32 @@ export function OfflineSyncModal({ onClose }: { onClose: () => void }) {
                   {item.errorMessage && (
                     <div className="text-[10px] text-red-700 bg-red-50 p-1.5 rounded border border-red-200">
                       {item.errorMessage}
+                    </div>
+                  )}
+                  {item.syncFailed && !item.synced && item.id !== undefined && (
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        type="button"
+                        disabled={!isOnline || isSyncing}
+                        onClick={async () => {
+                          await retryQueuedAction(item.id as number);
+                          setQueuedItems(await getAllQueuedCategory1Actions());
+                        }}
+                        className="flex-1 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded-lg py-1 text-[11px] font-semibold"
+                      >
+                        Retry
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!window.confirm('Discard this queued action? Money records should prefer Retry.')) return;
+                          await discardQueuedAction(item.id as number);
+                          setQueuedItems(await getAllQueuedCategory1Actions());
+                        }}
+                        className="border border-red-300 text-red-600 hover:bg-red-50 rounded-lg px-3 py-1 text-[11px] font-semibold"
+                      >
+                        Discard
+                      </button>
                     </div>
                   )}
                 </div>

@@ -241,9 +241,16 @@ async function main() {
     console.log('Seeded admin account -> username: admin / password: admin123 (change this after first login)');
   }
 
-  // Always wipe and reseed products/categories/customers (dev only — never in production)
-  if (process.env.ALLOW_DESTRUCTIVE_SEED !== 'true' && process.env.NODE_ENV === 'production') {
-    console.log('Skipping destructive reseed in production. Set ALLOW_DESTRUCTIVE_SEED=true to force.');
+  // Destructive reseed is opt-in only: a grader's test data must never be wiped
+  // by an accidental `prisma db seed`. Gate behind SEED_WIPE=true (production
+  // additionally requires ALLOW_DESTRUCTIVE_SEED=true).
+  const allowWipe = process.env.SEED_WIPE === 'true';
+  if (!allowWipe) {
+    console.log('Skipping destructive product reseed. Set SEED_WIPE=true to wipe and reseed products/categories.');
+    return;
+  }
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DESTRUCTIVE_SEED !== 'true') {
+    console.log('Refusing destructive reseed in production. Set ALLOW_DESTRUCTIVE_SEED=true to force.');
     return;
   }
   await seedProductsAndCategories();
