@@ -41,7 +41,7 @@ if (content.includes(startUrlNetworkFirst)) {
 // a bare `NetworkOnly` route with NO handlerDidError plugin, which hard-failed
 // offline with ERR_FAILED. If that legacy shape is present, inject the fallback
 // plugin so it behaves like every other route.
-const bareAuthRoute = 'e.registerRoute(/\\/(dashboard|products|categories|orders|credit|expenses|reports|users|settings|lowstock|transaction-log|item-log)/,new e.NetworkOnly,"GET")';
+const bareAuthRoute = 'e.registerRoute(/\\/(dashboard|products|categories|orders|credit|expenses|reports|users|settings|lowstock|transaction-log|item-log|inventory)/,new e.NetworkOnly,"GET")';
 if (content.includes(bareAuthRoute)) {
   content = content.replace(
     bareAuthRoute,
@@ -89,9 +89,10 @@ if (!content.includes('setCatchHandler')) failures.push('missing setCatchHandler
 if (!content.includes('self.fallback')) failures.push('missing self.fallback (/offline)');
 if (!content.includes('registerRoute(/\\/pos/')) failures.push('missing /pos route (offline POS shell)');
 if (!content.includes('_rsc=')) failures.push('missing _rsc rule (App Router RSC offline coverage)');
+const moduleShellRe = '/(dashboard|products|categories|orders|credit|expenses|reports|users|settings|lowstock|transaction-log|item-log|inventory)/';
 const authShellOk =
-  content.includes('/(dashboard|products|categories|orders|credit|expenses|reports|users|settings|lowstock|transaction-log|item-log)/,new e.NetworkFirst(') ||
-  content.includes('/(dashboard|products|categories|orders|credit|expenses|reports|users|settings|lowstock|transaction-log|item-log)/,new e.NetworkOnly({plugins');
+  content.includes(`${moduleShellRe},new e.NetworkFirst(`) ||
+  content.includes(`${moduleShellRe},new e.NetworkOnly({plugins`);
 if (!authShellOk) failures.push('auth module shells not offline-capable (need NetworkFirst or patched NetworkOnly)');
 if (failures.length) {
   console.error('[patch-sw] ASSERT FAILED: ' + failures.join(', '));

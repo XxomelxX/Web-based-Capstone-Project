@@ -118,7 +118,7 @@ const withPWA = withPWAInit({
         // Dexie/cache wipe on logout (see TopNavbar/MobileTopBar) — a cached
         // shell without a session renders the login prompt, never data.
         // MUST come before the catch-all below.
-        urlPattern: /\/(dashboard|products|categories|orders|credit|expenses|reports|users|settings|lowstock|transaction-log|item-log)/,
+        urlPattern: /\/(dashboard|products|categories|orders|credit|expenses|reports|users|settings|lowstock|transaction-log|item-log|inventory)/,
         handler: 'NetworkFirst',
         options: {
           cacheName: 'pages-cache-v3',

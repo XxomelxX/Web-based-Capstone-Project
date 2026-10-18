@@ -194,9 +194,9 @@ export default function UsersClient() {
                   </span>
                 </td>
                 <td className="p-3">
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${u.status === 'inactive' ? 'bg-rose-500/20 text-rose-300' : 'bg-emerald-500/20 text-emerald-300'}`}>
-                    {u.status || 'active'}
-                  </span>
+              <span className={`text-xs px-2 py-0.5 rounded-full ${u.status === 'inactive' ? 'bg-rose-500/20 text-rose-300' : 'bg-emerald-500/20 text-emerald-300'}`}>
+                {u.status === 'inactive' ? 'Deactivated' : 'Active'}
+              </span>
                 </td>
                 <td className="p-3 space-x-2">
                   <button onClick={() => openEdit(u)} disabled={isOffline} className="text-xs text-cyan-400 hover:underline disabled:opacity-40 cursor-pointer">Edit</button>
@@ -278,15 +278,23 @@ export default function UsersClient() {
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-xl max-w-md w-full p-6 space-y-4 text-slate-200">
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-              <h3 className="font-bold text-lg text-white">Delete User: {deleteTarget.fullName}</h3>
+              <h3 className="font-bold text-lg text-white">
+                {canDeactivate ? 'Deactivate User: ' : 'Delete User: '}{deleteTarget.fullName}
+              </h3>
               <button onClick={() => setDeleteTarget(null)} className="text-slate-400 hover:text-white cursor-pointer">✕</button>
             </div>
-            {deleteError && <p className="text-sm text-rose-400">{deleteError}</p>}
-            <p className="text-sm text-slate-300">Are you sure you want to delete user <strong>@{deleteTarget.username}</strong>?</p>
+            {deleteError && <p className={`text-sm ${canDeactivate ? 'text-amber-400' : 'text-rose-400'}`}>{deleteError}</p>}
+            {canDeactivate ? (
+              <p className="text-sm text-slate-300">
+                Are you sure you want to deactivate <strong>@{deleteTarget.username}</strong>? They won&apos;t be able to sign in until reactivated.
+              </p>
+            ) : (
+              <p className="text-sm text-slate-300">Are you sure you want to delete user <strong>@{deleteTarget.username}</strong>?</p>
+            )}
             <div className="flex gap-2 justify-end pt-2">
               <button onClick={() => setDeleteTarget(null)} className="border border-slate-700 rounded-xl px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 cursor-pointer">Cancel</button>
               {canDeactivate ? (
-                <button onClick={handleDeactivate} disabled={isOffline} className="bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold cursor-pointer">Deactivate User</button>
+                <button onClick={handleDeactivate} disabled={isOffline} className="bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold cursor-pointer">Deactivate Account</button>
               ) : (
                 <button onClick={handleDelete} disabled={isOffline} className="bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white rounded-xl px-4 py-2 text-sm font-semibold cursor-pointer">Delete Account</button>
               )}

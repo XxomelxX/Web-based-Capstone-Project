@@ -699,8 +699,12 @@ export async function deleteUser(id: number): Promise<void> {
   }
   const res = await fetch(`/api/users/${id}`, { method: 'DELETE' });
   if (!res.ok) {
-    const errData = await res.json().catch(() => ({}));
-    throw new Error(errData.error || 'Failed to delete user');
+    // The 409 carries canDeactivate: true (user has history) — the modal
+    // needs that flag to switch its confirm button to "Deactivate Account".
+    const errData = await res.json().catch(() => ({})) as { error?: string; canDeactivate?: boolean };
+    const err = new Error(errData.error || 'Failed to delete user') as Error & { canDeactivate?: boolean };
+    if (errData.canDeactivate) err.canDeactivate = true;
+    throw err;
   }
 }
 
