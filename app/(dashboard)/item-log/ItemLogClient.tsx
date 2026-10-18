@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { getItemLog } from '@/lib/client/api/inventory';
+import { adjustmentTypeLabel } from '@/lib/adjustment';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { formatDateTime } from '@/lib/client/timeUtils';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
@@ -10,6 +11,7 @@ import { WifiOff } from 'lucide-react';
 
 interface ItemLogEntry {
   id: number; createdAt: string; action: string; quantity: number;
+  adjustType?: string | null; note?: string | null;
   product: { name: string }; user: { fullName: string };
 }
 
@@ -119,9 +121,9 @@ export default function ItemLogClient() {
       </div>
 
       <div className="bg-white rounded-xl shadow overflow-hidden overflow-x-auto">
-        <table className="min-w-[600px] w-full text-sm">
+        <table className="min-w-[720px] w-full text-sm">
           <thead className="bg-gray-50 text-left text-gray-500">
-            <tr><th className="p-3">Date</th><th className="p-3">Product</th><th className="p-3">Action</th><th className="p-3">Quantity</th><th className="p-3">Performed By</th></tr>
+            <tr><th className="p-3">Date</th><th className="p-3">Product</th><th className="p-3">Action</th><th className="p-3">Quantity</th><th className="p-3">Details</th><th className="p-3">Performed By</th></tr>
           </thead>
           <tbody>
             {sorted.map((l) => (
@@ -130,6 +132,11 @@ export default function ItemLogClient() {
                 <td className="p-3">{l.product?.name}</td>
                 <td className="p-3"><span className={`text-xs px-2 py-1 rounded-full capitalize ${ACTION_COLORS[l.action] ?? 'bg-gray-100'}`}>{l.action}</span></td>
                 <td className="p-3">{l.quantity}</td>
+                <td className="p-3 text-gray-500">
+                  {l.action === 'adjusted'
+                    ? `${adjustmentTypeLabel(l.adjustType) || 'Adjustment'}${l.note ? ` — ${l.note}` : ''}`
+                    : '—'}
+                </td>
                 <td className="p-3">{l.user?.fullName}</td>
               </tr>
             ))}

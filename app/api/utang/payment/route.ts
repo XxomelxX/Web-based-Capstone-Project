@@ -17,8 +17,8 @@ export async function POST(request: Request) {
   };
   const amount = Number(amountRaw);
 
-  if (!customerName || Number.isNaN(amount) || amount <= 0) {
-    return NextResponse.json({ error: 'customerName and a positive amount are required' }, { status: 400 });
+  if (!customerName || !Number.isInteger(amount) || amount <= 0) {
+    return NextResponse.json({ error: 'customerName and a positive integer amount (centavos) are required' }, { status: 400 });
   }
 
   // Idempotency: replay returns the original payment + allocations.
@@ -86,7 +86,7 @@ export async function POST(request: Request) {
       }
 
       return { payment, allocations, unallocatedRemainder: remainingPayment };
-    });
+    }, { maxWait: 15000, timeout: 25000 });
 
     broadcastRealtime('utang', { action: 'payment', result });
     return NextResponse.json(result, { status: 201 });

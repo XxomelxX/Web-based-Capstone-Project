@@ -112,7 +112,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
       // Detach completed sales so the customer row can be removed.
       await tx.transaction.updateMany({ where: { customerId: id }, data: { customerId: null } });
       await tx.customer.delete({ where: { id } });
-    });
+    }, { maxWait: 15000, timeout: 25000 });
 
     broadcastRealtime('customers', { action: 'deleted', customerId: id });
 

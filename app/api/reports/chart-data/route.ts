@@ -1,6 +1,7 @@
 ﻿import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/server/prisma';
 import { requireSession } from '@/lib/server/require-session';
+import { isDbUnreachable, DB_UNAVAILABLE_MESSAGE } from '@/lib/server/db-unreachable';
 
 export async function GET(request: Request) {
   const guard = await requireSession();
@@ -108,8 +109,14 @@ export async function GET(request: Request) {
       topProducts,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unable to load chart data.';
     console.error('[CHART-DATA] GET error:', error);
+    if (isDbUnreachable(error)) {
+      return NextResponse.json(
+        { error: DB_UNAVAILABLE_MESSAGE },
+        { status: 503, headers: { 'Retry-After': '5' } }
+      );
+    }
+    const message = error instanceof Error ? error.message : 'Unable to load chart data.';
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

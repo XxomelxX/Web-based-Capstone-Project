@@ -11,6 +11,7 @@ export type RealtimeChannel =
   | 'lowstock'
   | 'reports'
   | 'restock'
+  | 'shift'
   | 'connected'
   | 'keep-alive';
 

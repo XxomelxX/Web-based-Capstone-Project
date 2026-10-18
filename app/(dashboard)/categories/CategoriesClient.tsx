@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/client/offline';
-import { getCategories, addCategory, updateCategory, Category } from '@/lib/client/api/categories';
+import { getCategories, addCategory, updateCategory, deleteCategory, Category } from '@/lib/client/api/categories';
 import { getActiveProducts, Product } from '@/lib/client/api/products';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
@@ -26,10 +26,14 @@ export default function CategoriesClient() {
   const [showModal, setShowModal] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [search, setSearch] = useState('');
-  const [form, setForm] = useState({ name: '', description: '', archived: false });
+  const [form, setForm] = useState({ name: '', description: '', isActive: true });
   const [error, setError] = useState('');
   const [isCached, setIsCached] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
+  // Designed delete alert (replaces the browser's native confirm()).
+  const [pendingDelete, setPendingDelete] = useState<Category | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const categories: Category[] = (liveCategories ?? []) as any;
@@ -42,9 +46,13 @@ export default function CategoriesClient() {
     if (offlineNow) return;
 
     try {
-      // getActiveProducts() merges without clearing, so archived rows survive.
+      // Side-effect-free fetch: categories get an authoritative clear+put so
+      // rows deleted on the server (or another client) disappear locally.
       const [cats, prods] = await Promise.all([getCategories(), getActiveProducts()]);
-      await db.categories.bulkPut(cats as unknown as Record<string, unknown>[]);
+      await db.transaction('rw', db.categories, async () => {
+        await db.categories.clear();
+        await db.categories.bulkPut(cats as unknown as Record<string, unknown>[]);
+      });
       await db.products.bulkPut(prods as unknown as Record<string, unknown>[]);
       setIsCached(false);
     } catch {
@@ -73,7 +81,7 @@ export default function CategoriesClient() {
   function openAdd() {
     if (!checkOnlineOrSetError()) return;
     setEditingCategory(null);
-    setForm({ name: '', description: '', archived: false });
+    setForm({ name: '', description: '', isActive: true });
     setError('');
     setShowModal(true);
   }
@@ -81,7 +89,7 @@ export default function CategoriesClient() {
   function openEdit(c: Category) {
     if (!checkOnlineOrSetError()) return;
     setEditingCategory(c);
-    setForm({ name: c.name, description: c.description ?? '', archived: c.archived ?? false });
+    setForm({ name: c.name, description: c.description ?? '', isActive: !(c.archived ?? false) });
     setError('');
     setShowModal(true);
   }
@@ -95,7 +103,7 @@ export default function CategoriesClient() {
         await updateCategory(editingCategory.id, {
           name: form.name,
           description: form.description || null,
-          archived: form.archived,
+          archived: !form.isActive,
         });
       } else {
         await addCategory({ name: form.name, description: form.description || undefined });
@@ -120,15 +128,31 @@ export default function CategoriesClient() {
   const activeCategories = categories.filter((c) => !c.archived && categoryMatches(c));
   const archivedCategories = categories.filter((c) => c.archived && categoryMatches(c));
 
-  async function handleArchive(id: number) {
-    if (!checkOnlineOrSetError()) return;
+  function openDelete(c: Category) {
+    setPendingDelete(c);
+    setDeleteError('');
+  }
+
+  function closeDelete() {
+    if (deleting) return;
+    setPendingDelete(null);
+    setDeleteError('');
+  }
+
+  async function confirmDelete() {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    setDeleteError('');
     try {
-      await db.categories.update(id, { archived: true });
-      await updateCategory(id, { archived: true });
+      await deleteCategory(pendingDelete.id);
+      await db.categories.delete(pendingDelete.id);
+      setPendingDelete(null);
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to archive category');
-      await refresh();
+      // Keep the alert open so the refusal (e.g. 409 products) is readable.
+      setDeleteError(err instanceof Error ? err.message : 'Failed to delete category');
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -209,12 +233,12 @@ export default function CategoriesClient() {
                           </svg>
                         </button>
                         <button
-                          onClick={() => handleArchive(c.id)}
-                          className="text-slate-400 hover:text-amber-400 disabled:opacity-40 transition cursor-pointer"
-                          title="Archive category"
+                          onClick={() => openDelete(c)}
+                          className="text-slate-400 hover:text-rose-400 disabled:opacity-40 transition cursor-pointer"
+                          title="Delete category"
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                           </svg>
                         </button>
                       </div>
@@ -237,7 +261,7 @@ export default function CategoriesClient() {
                 onClick={() => handleUnarchive(c.id)}
                 className="text-xs text-emerald-400 font-medium hover:underline disabled:opacity-40 cursor-pointer"
               >
-                ↩ Unarchive (Edit)
+                ↩ Unarchive
               </button>
             </td>
           </tr>
@@ -266,15 +290,33 @@ export default function CategoriesClient() {
               <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-cyan-500 mt-1" />
             </div>
             {editingCategory && (
-              <label className="flex items-center gap-2 text-sm text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={form.archived}
-                  onChange={(e) => setForm({ ...form, archived: e.target.checked })}
-                  className="rounded bg-slate-950 border-slate-700"
-                />
-                Archive this category
-              </label>
+              <>
+                <div className="flex items-center justify-between bg-slate-950 border border-slate-700 rounded-xl px-3 py-3">
+                  <span className="font-medium text-slate-300">Status</span>
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, isActive: !form.isActive })}
+                    aria-pressed={form.isActive}
+                    className="flex items-center gap-2.5 cursor-pointer"
+                  >
+                    <span
+                      className={`relative inline-block w-11 h-6 rounded-full transition-colors ${form.isActive ? 'bg-emerald-600' : 'bg-slate-600'}`}
+                    >
+                      <span
+                        className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${form.isActive ? 'translate-x-5' : ''}`}
+                      />
+                    </span>
+                    <span className={`text-sm font-semibold ${form.isActive ? 'text-emerald-400' : 'text-slate-400'}`}>
+                      {form.isActive ? 'Active' : 'Not active'}
+                    </span>
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500">
+                  {form.isActive
+                    ? 'Active — listed with your active categories.'
+                    : 'Not active — moved to Archived Categories; products keep their grouping.'}
+                </p>
+              </>
             )}
             <div className="flex gap-2 justify-end pt-2">
               <button type="button" onClick={() => setShowModal(false)} className="border border-slate-700 rounded-xl px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 cursor-pointer">Cancel</button>
@@ -283,6 +325,79 @@ export default function CategoriesClient() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {pendingDelete && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-category-title"
+            className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4"
+          >
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h2 id="delete-category-title" className="text-lg font-bold text-white flex items-center gap-2.5">
+                <span className="w-8 h-8 rounded-full bg-rose-500/15 text-rose-400 flex items-center justify-center shrink-0">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </span>
+                Delete Category?
+              </h2>
+              <button
+                type="button"
+                onClick={closeDelete}
+                disabled={deleting}
+                className="text-slate-400 hover:text-white cursor-pointer disabled:opacity-40"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-300">
+              <span className="font-semibold text-slate-100">{pendingDelete.name}</span>
+              {' · '}
+              {(() => {
+                const count = allProducts.filter((p) => p.categoryId === pendingDelete.id).length;
+                return `${count} product${count !== 1 ? 's' : ''}`;
+              })()}
+            </div>
+
+            <p className="text-sm text-slate-400 leading-relaxed">
+              This permanently removes the category.{' '}
+              <span className="text-slate-200 font-medium">This can&apos;t be undone.</span>
+              <br />
+              Categories with products can&apos;t be deleted — reassign those products first, or
+              set the category to <span className="text-slate-200 font-medium">Not active</span> instead.
+            </p>
+
+            {deleteError && (
+              <p className="text-sm text-rose-400 bg-rose-950/40 border border-rose-800/50 rounded-md px-3 py-2">
+                {deleteError}
+              </p>
+            )}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={closeDelete}
+                disabled={deleting}
+                className="px-4 py-2 border border-slate-700 text-slate-300 hover:bg-slate-800 rounded-xl font-medium cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                disabled={deleting}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white rounded-xl font-semibold cursor-pointer"
+              >
+                {deleting ? 'Deleting…' : 'Delete Category'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

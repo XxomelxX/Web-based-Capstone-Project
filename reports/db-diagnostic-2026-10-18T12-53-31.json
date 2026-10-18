@@ -1,0 +1,82 @@
+{
+  "ranAt": "2026-10-18T12:53:18.696Z",
+  "checks": {
+    "rowCounts": {},
+    "stock_fifoMismatches": {
+      "count": 0,
+      "sample": []
+    },
+    "stock_impossibleBatches": {
+      "count": 0,
+      "sample": []
+    },
+    "stock_futureBatchDates": {
+      "count": 0,
+      "sample": []
+    },
+    "utang_ledgerMismatches": {
+      "count": 0,
+      "sample": []
+    },
+    "utang_statusMismatches": {
+      "count": 0,
+      "sample": []
+    },
+    "utang_itemsTotalMismatch": {
+      "count": 0,
+      "sample": []
+    },
+    "tx_itemMathErrors": {
+      "count": 0,
+      "sample": []
+    },
+    "tx_subtotalMismatch": {
+      "count": 0,
+      "sample": []
+    },
+    "tx_voidAuditGaps": {
+      "count": 0,
+      "sample": []
+    },
+    "payment_allocNonPositive": {
+      "count": 0,
+      "sample": []
+    },
+    "payment_overallocation": {
+      "count": 0,
+      "sample": []
+    },
+    "shift_anomalies": {
+      "count": 0,
+      "sample": []
+    },
+    "cashMovement_anomalies": {
+      "count": 0,
+      "sample": []
+    },
+    "settings_rows": {
+      "count": 1
+    },
+    "product_priceAnomalies": {
+      "count": 0,
+      "sample": []
+    },
+    "tx_strangeDates": {
+      "count": 0,
+      "sample": []
+    },
+    "customer_blankNames": {
+      "count": 0,
+      "sample": []
+    },
+    "passwordReset_staleCount": {
+      "count": 1
+    }
+  },
+  "meta": [
+    {
+      "db": "neondb",
+      "ver": "PostgreSQL 18.6 (653b019) on aarch64-unknown-linux-gnu, compiled by gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0"
+    }
+  ]
+}

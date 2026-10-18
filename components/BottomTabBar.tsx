@@ -26,7 +26,7 @@ export function BottomTabBar() {
       ? [
           { href: '/products', label: 'Products' },
           { href: '/categories', label: 'Categories' },
-          { href: '/lowstock', label: 'Low Stock' },
+          { href: '/inventory', label: 'Inventory' },
           { href: '/transaction-log', label: 'Transaction Log' },
           { href: '/item-log', label: 'Item Log' },
           { href: '/expenses', label: 'Expenses' },
@@ -36,7 +36,7 @@ export function BottomTabBar() {
         ]
       : role === 'cashier'
       ? [
-          { href: '/lowstock', label: 'Low Stock' },
+          { href: '/inventory', label: 'Inventory' },
         ]
       : [];
 

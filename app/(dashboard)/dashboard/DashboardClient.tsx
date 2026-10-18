@@ -7,9 +7,11 @@ import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { getCategory2Cache, saveCategory2Cache } from '@/lib/client/localStorageCache';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
 import { PWAInstallBanner } from '@/components/PWAInstallBanner';
+import { PageSkeleton } from '@/components/PageSkeleton';
 import { WifiOff } from 'lucide-react';
 import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
 import dynamic from 'next/dynamic';
+import { peso } from '@/lib/money';
 
 const RevenueChart = dynamic(() => import('@/components/charts/RevenueChart'), { ssr: false });
 const PaymentMethodChart = dynamic(() => import('@/components/charts/PaymentMethodChart'), { ssr: false });
@@ -61,40 +63,56 @@ export default function DashboardClient() {
   }, []);
 
   const loadReports = useCallback(async (selectedRange: 'today' | 'week' | 'month' | 'year' | 'all') => {
-    setLoading(true);
-    setSlowLoad(false);
     setError('');
     const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
     setIsOffline(offlineNow);
 
+    // Instant paint: the synchronous localStorage snapshot always renders
+    // first, so the page is visible before any network round trip.
+    const cached = getCategory2Cache<ReportData>(`dashboard_${selectedRange}`);
+    if (cached.data) {
+      setData(cached.data);
+      setIsCached(true);
+      setLoading(false);
+    } else {
+      setLoading(true);
+      setSlowLoad(false);
+    }
+
+    if (offlineNow) {
+      if (!cached.data) {
+        setError('You are offline and no cached data is available. Data will appear after you reconnect and the dashboard loads at least once.');
+        setData(null);
+        setLoading(false);
+      }
+      return;
+    }
+
     const slowTimer = setTimeout(() => setSlowLoad(true), 8000);
     try {
-      if (offlineNow) {
-        const cached = getCategory2Cache<ReportData>(`dashboard_${selectedRange}`);
-        if (cached.data) {
-          setData(cached.data);
-          setIsCached(true);
-        } else {
-          setError('You are offline and no cached data is available. Data will appear after you reconnect and the dashboard loads at least once.');
-          setData(null);
-        }
-      } else {
-        const reportData = await withTimeout(getReports<ReportData>(selectedRange), 25000, 'Dashboard report');
-        setData(reportData);
-        saveCategory2Cache(`dashboard_${selectedRange}`, reportData);
-        setIsCached(false);
-      }
+      let stale = false;
+      const reportData = await withTimeout(
+        getReports<ReportData>(selectedRange, { onStale: () => { stale = true; } }),
+        25000,
+        'Dashboard report'
+      );
+      setData(reportData);
+      saveCategory2Cache(`dashboard_${selectedRange}`, reportData);
+      setIsCached(stale);
     } catch (err) {
       console.error('Failed to fetch reports:', err);
-      const cached = getCategory2Cache<ReportData>(`dashboard_${selectedRange}`);
-      if (cached.data) {
-        setData(cached.data);
-        setIsCached(true);
-      } else {
-        const msg = err instanceof Error ? err.message : 'Unable to load reports';
-        setError(offlineNow ? `Offline: ${msg}. Data will appear after you reconnect.` : msg);
-        setData(null);
+      if (!cached.data) {
+        const fallback = getCategory2Cache<ReportData>(`dashboard_${selectedRange}`);
+        if (fallback.data) {
+          setData(fallback.data);
+          setIsCached(true);
+        } else {
+          const msg = err instanceof Error ? err.message : 'Unable to load reports';
+          setError(msg);
+          setData(null);
+        }
       }
+      // With cached data already on screen, keep it — the banner marks it stale.
     } finally {
       clearTimeout(slowTimer);
       setSlowLoad(false);
@@ -103,12 +121,13 @@ export default function DashboardClient() {
   }, [withTimeout]);
 
   const loadChartData = useCallback(async (selectedRange: 'today' | 'week' | 'month' | 'year' | 'all') => {
+    // Instant paint: show the last known charts before the network answers.
+    const cached = getCategory2Cache<ChartData>(`chart_${selectedRange}`);
+    if (cached.data) setChartData(cached.data);
+
     const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
-    if (offlineNow) {
-      const cached = getCategory2Cache<ChartData>(`chart_${selectedRange}`);
-      if (cached.data) setChartData(cached.data);
-      return;
-    }
+    if (offlineNow) return;
+
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 25000);
@@ -119,15 +138,11 @@ export default function DashboardClient() {
           setChartData(data);
           saveCategory2Cache(`chart_${selectedRange}`, data);
         }
-      } catch {
-        const cached = getCategory2Cache<ChartData>(`chart_${selectedRange}`);
-        if (cached.data) setChartData(cached.data);
       } finally {
         clearTimeout(timer);
       }
     } catch {
-      const cached = getCategory2Cache<ChartData>(`chart_${selectedRange}`);
-      if (cached.data) setChartData(cached.data);
+      // Cache (if any) is already on screen — nothing else to do.
     }
   }, []);
 
@@ -198,10 +213,10 @@ export default function DashboardClient() {
       </section>
 
       {loading ? (
-        <div className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-8 ">
-          <p className="text-slate-400">Loading dashboard analytics…</p>
+        <div className="space-y-4">
+          <PageSkeleton variant="dashboard" />
           {slowLoad && (
-            <div className="mt-4 flex flex-col gap-2">
+            <div className="flex flex-col gap-2 rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-6">
               <p className="text-sm text-amber-300">This is taking longer than usual. You can wait or retry.</p>
               <button
                 type="button"
@@ -231,13 +246,13 @@ export default function DashboardClient() {
       ) : (
         <>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            <DashboardStatCard label="Revenue" value={`₱${data.totalRevenue.toFixed(2)}`} accent="text-emerald-300" />
+            <DashboardStatCard label="Revenue" value={peso(data.totalRevenue)} accent="text-emerald-300" />
             <DashboardStatCard label="Transactions" value={String(data.totalTransactions)} accent="text-[#f59e0b]" />
             <DashboardStatCard label="Items Sold" value={String(data.totalItemsSold)} accent="text-emerald-400" />
             <DashboardStatCard label="Low Stock Alerts" value={String(lowStockCount)} accent={lowStockCount > 0 ? 'text-rose-400' : 'text-slate-300'} />
             <DashboardStatCard
               label="Outstanding Credit"
-              value={`₱${(data.totalOutstandingCredit ?? 0).toFixed(2)}`}
+              value={peso(data.totalOutstandingCredit ?? 0)}
               accent={(data.totalOutstandingCredit ?? 0) > 0 ? 'text-violet-300' : 'text-slate-300'}
             />
           </div>
@@ -326,7 +341,7 @@ export default function DashboardClient() {
                           <p className="text-sm text-slate-400">{index + 1}. {product.name}</p>
                           <p className="mt-1 text-sm text-slate-500">{product.unitsSold} units sold</p>
                         </div>
-                        <p className="text-sm font-semibold text-slate-200">₱{product.revenue.toFixed(2)}</p>
+                        <p className="text-sm font-semibold text-slate-200">{peso(product.revenue)}</p>
                       </div>
                     </li>
                   ))}

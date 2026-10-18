@@ -74,17 +74,83 @@ Visit http://localhost:3000 — it redirects to `/login`.
 npx prisma studio
 ```
 
+## Local development database (embedded Postgres)
+
+When the Neon pooler is unreachable from your network, `.env` points
+`DATABASE_URL` at a **local embedded Postgres on port 5433**. It is not started
+by `npm run dev` — start it yourself, or start both together:
+
+```bash
+npm run dev:all   # database first, then Next.js (recommended)
+npm run dev:db    # database only (leave this terminal running)
+```
+
+- Data lives in `.local-pg-data/` (gitignored) so OS temp cleanup can't wipe it.
+- If any API returns **503 "Database temporarily unavailable"** (the old console
+  error was `Can't reach database server at localhost:5433`), the Postgres
+  process died — stop `npm run dev` and run `npm run dev:all` again.
+- The dashboard automatically falls back to the last saved report and shows the
+  "cached data" banner while the database is down.
+
 ## If a page 404s
 Every module listed above has both its API route AND its page built. If you
 still see a 404 on one of these paths, it usually means you're running an
 older extracted copy — re-extract this zip fresh over your project folder.
 
-## Deploying later
-- Push this to GitHub
-- Deploy on Vercel (https://vercel.com) — connects directly to your GitHub repo
-- Add the same `DATABASE_URL` / `NEXTAUTH_SECRET` / `NEXTAUTH_URL` (use your live
-  Vercel URL) as Environment Variables in the Vercel project settings
-- Add `NEXT_PUBLIC_DISABLE_REALTIME=true` and `DISABLE_REALTIME=true`
+## Deploy to production (region-matched, verified)
 
-This app disables SSE-based realtime on Vercel because Vercel edge/serverless
-functions do not support long-lived `EventSource` connections reliably.
+The production pipeline is verified green as of 2026-10-18: `npm run build`
+compiles with webpack, type-checks, prerenders every module shell as static, and
+the `postbuild` step (`scripts/patch-sw.js`) ASSERTS the offline service-worker
+contract (fallback document, /pos offline shell, `_rsc` coverage). A build fails
+loudly if any of those offline rules regress — nothing extra is needed pre-deploy.
+
+### Why region matters (biggest speed lever)
+The production DB is Neon in AWS us-east-1. From outside that region each DB
+round trip costs ~400-500 ms, which is why the API already batches queries and
+caps payloads. Hosting the Next.js server in the SAME region as Neon drops
+app-to-DB latency to low single-digit milliseconds.
+
+### Vercel (recommended; realtime-off is designed-in)
+1. Push the repo to GitHub.
+2. vercel.com → import the repo. Framework preset: Next.js — Vercel runs
+   `npm run build`, which includes `postbuild`, so the offline assertions run
+   on every deploy.
+3. Project Settings → Functions → Region: **iad1 (Washington DC)** — the
+   Vercel region closest to Neon us-east-1.
+4. Environment Variables (Production + Preview scopes):
+   - `DATABASE_URL` — the same Neon **pooled** connection string already in use
+     (keep the `-pooler.c-9.us-east-1.aws.neon.tech` host; pgbouncer-friendly).
+     Never let Vercel "migrate" the DB or swap to an unconvinced/direct host.
+   - `NEXTAUTH_SECRET` — reuse the current production secret (rotating it logs
+     every device out).
+   - `NEXTAUTH_URL` — final URL, e.g. `https://<project>.vercel.app`; set it
+     and redeploy once the first URL exists.
+   - `DISABLE_REALTIME=true` and `NEXT_PUBLIC_DISABLE_REALTIME=true` — REQUIRED
+     on Vercel: serverless SSE fan-out cannot span lambda instances. Set these
+     BEFORE the first deploy so the client hook never builds the EventSource
+     path; clients refresh via their regular fetch cadence instead.
+5. Apply pending migrations once, idempotent, from a machine with `.env` present:
+   `npx prisma migrate deploy`
+   - This points at the LIVE Neon DB. Do NOT run `prisma seed` — production
+     already has real data.
+   - `node_modules` is shared local tooling; `postinstall` runs `prisma generate`
+     automatically on install (works without a DB).
+6. Smoke checklist after the first deploy:
+   - `GET /api/health` → `{"status":"ok","database":"connected"}`
+   - admin login works (credentials auth; no OAuth dependencies)
+   - one POS sale; a void request + admin approval; an offline sale →
+     reconnect → queue sync (idempotency via `clientUuid`)
+   - PWA: first visit registers the service worker; airplane-mode navigation
+     serves cached shells; `/pos` keeps selling offline
+7. Custom domain (optional): add it in Vercel, update `NEXTAUTH_URL`, redeploy.
+
+### Alternative: single-process Node host
+Railway / Fly.io / a small VPS in or near us-east-1 keeps SSE realtime WORKING
+with no env flags (the broadcast `Map` is process-local by design). Same env
+vars; run `npm run build && npm run start`.
+
+### Queued (non-blocking)
+- `middleware.ts` → `proxy.ts`: Next 16 emits a deprecation warning for the
+  middleware file convention. Behavior is fully supported on 16.2.10; migrate
+  at leisure.

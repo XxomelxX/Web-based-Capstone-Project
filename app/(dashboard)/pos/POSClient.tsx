@@ -15,6 +15,8 @@ import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
 import { LiveClock } from '@/components/LiveClock';
 import { ShiftDetails, ZReadSummary, applyOfflineSaleToShift, cacheActiveShift, fetchActiveShift, openShift, closeShift, sameShift, formatVariance, formatVarianceDelta, parseCashCount } from '@/lib/client/api/shift';
+import { ShiftReadingModal } from './ShiftReadingModal';
+import { peso, toPesos, parsePesosToCents } from '@/lib/money';
 
 interface CartLine {
   product: Product;
@@ -50,7 +52,9 @@ export default function POSClient() {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [search, setSearch] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'gcash' | 'credit'>('cash');
-  const [tendered, setTendered] = useState(0);
+  // Cash tendered: raw string as typed (pesos). Derived to integer centavos for
+  // all math / API payloads — keeps typing UX (no eager reformat while typing).
+  const [tenderedInput, setTenderedInput] = useState('');
   // GCash reference number is a string identifier — never money. Kept separate
   // from `tendered` so it can't leak into Tendered/Change math or the receipt.
   // Manual GCash: cashier types the ref from the customer's GCash receipt.
@@ -66,7 +70,7 @@ export default function POSClient() {
   const [newCustomerName, setNewCustomerName] = useState('');
   const [showNewCustomer, setShowNewCustomer] = useState(false);
   const [creditNote, setCreditNote] = useState('');
-  // Optional custom deadline (datetime-local string) for credit sales.
+  // Optional deadline (date-only, stored as end of day) for credit sales.
   const [creditDue, setCreditDue] = useState('');
 
   const [utangEntries, setUtangEntries] = useState<Array<{ customerId: number; remainingBalance: number; status: string }>>([]);
@@ -83,6 +87,7 @@ export default function POSClient() {
   const [activeShift, setActiveShift] = useState<ShiftDetails | null>(null);
   const [showOpenShiftModal, setShowOpenShiftModal] = useState(false);
   const [showEndShiftModal, setShowEndShiftModal] = useState(false);
+  const [showReadingModal, setShowReadingModal] = useState(false);
   const [zReadReceipt, setZReadReceipt] = useState<ZReadSummary | null>(null);
   const [openFloatInput, setOpenFloatInput] = useState<string>('1000');
   const [shiftNotes, setShiftNotes] = useState('');
@@ -136,6 +141,8 @@ export default function POSClient() {
     products: refresh,
     settings: refresh,
     utang: refresh,
+    // Cash movements recorded on another device refresh the live totals.
+    shift: loadShiftData,
   });
 
   useEffect(() => {
@@ -222,7 +229,9 @@ export default function POSClient() {
 
   const totalItems = cart.reduce((s, l) => s + l.quantity, 0);
   const total = cart.reduce((s, l) => s + l.quantity * l.product.price, 0);
-  const change = tendered - total;
+  // Derived centavos from the raw input; blank/invalid → 0 (treated as not yet tendered).
+  const tenderedCents = tenderedInput.trim() === '' ? 0 : parsePesosToCents(tenderedInput) || 0;
+  const change = tenderedCents - total;
 
   async function resolveCustomerName(): Promise<string | null> {
     if (showNewCustomer) {
@@ -276,13 +285,8 @@ export default function POSClient() {
           return;
         }
         const items = cart.map((l) => ({ productId: l.product.id, quantity: l.quantity, unitPrice: l.product.price }));
-        // datetime-local → ISO; empty = no deadline. Past values rejected server-side.
-        const dueIso = creditDue ? new Date(creditDue).toISOString() : undefined;
-        if (creditDue && Number.isNaN(new Date(creditDue).getTime())) {
-          setError('Invalid deadline date/time.');
-          setProcessing(false);
-          return;
-        }
+        // Date-only (YYYY-MM-DD) → end-of-day ISO so picking "today" stays valid.
+        const dueIso = creditDue ? new Date(`${creditDue}T23:59:59`).toISOString() : undefined;
         const result = await addUtangOffline(customerName, items, creditNote || undefined, dueIso ?? undefined);
         setReceipt({
           id: result.id,
@@ -300,7 +304,7 @@ export default function POSClient() {
           offline: (result as Record<string, unknown>).offline as boolean | undefined,
         });
         setCart([]);
-        setTendered(0);
+        setTenderedInput('');
         setCreditNote('');
         setCreditDue('');
         setSelectedCustomerId(0);
@@ -331,7 +335,7 @@ export default function POSClient() {
           setProcessing(false);
           return;
         }
-        const finalTendered = paymentMethod === 'gcash' ? total : tendered;
+        const finalTendered = paymentMethod === 'gcash' ? total : tenderedCents;
         const cartItems = cart.map((l) => ({ productId: l.product.id, quantity: l.quantity, unitPrice: l.product.price }));
 
         const result = await checkout(
@@ -347,7 +351,7 @@ export default function POSClient() {
             : result
         );
         setCart([]);
-        setTendered(0);
+        setTenderedInput('');
         setGcashRef('');
         // Online only — offline stock already lives in Dexie (see above).
         if (!result.offline) {
@@ -403,8 +407,8 @@ export default function POSClient() {
         customerName = found.name;
       }
 
-      const amount = parseFloat(payAmount);
-      if (!amount || amount <= 0) {
+      const amount = parsePesosToCents(payAmount);
+      if (!Number.isFinite(amount) || amount <= 0) {
         setPayError('Enter a valid amount');
         return;
       }
@@ -456,7 +460,7 @@ export default function POSClient() {
     e.preventDefault();
     setShiftError('');
     setShiftActionLoading(true);
-    const amount = Math.max(0, parseFloat(openFloatInput) || 0);
+    const amount = Math.max(0, parsePesosToCents(openFloatInput) || 0);
     try {
       const res = await openShift(amount, shiftNotes);
       if (!res.success) {
@@ -540,11 +544,11 @@ export default function POSClient() {
             </div>
             <div className="text-xs text-slate-400 flex flex-wrap gap-x-4 gap-y-1 mt-0.5">
               {activeShift && (
-                <span>Float: <strong className="text-slate-200">₱{(activeShift.openingFloat ?? 0).toFixed(2)}</strong></span>
+                <span>Float: <strong className="text-slate-200">{peso(activeShift.openingFloat ?? 0)}</strong></span>
               )}
-              <span>Cash Sales: <strong className="text-slate-200">₱{(activeShift?.cashSales ?? 0).toFixed(2)}</strong></span>
-              <span>GCash Sales: <strong className="text-slate-200">₱{(activeShift?.gcashSales ?? 0).toFixed(2)}</strong></span>
-              <span>Expected Cash: <strong className="text-cyan-400">₱{(activeShift?.expectedCash ?? 0).toFixed(2)}</strong></span>
+              <span>Cash Sales: <strong className="text-slate-200">{peso(activeShift?.cashSales ?? 0)}</strong></span>
+              <span>GCash Sales: <strong className="text-slate-200">{peso(activeShift?.gcashSales ?? 0)}</strong></span>
+              <span>Expected Cash: <strong className="text-cyan-400">{peso(activeShift?.expectedCash ?? 0)}</strong></span>
             </div>
             {shiftError && (
               <div className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 px-2 py-1 rounded-md mt-1.5 inline-block">
@@ -577,16 +581,27 @@ export default function POSClient() {
               </button>
             )
           ) : (
-            <button
-              onClick={() => {
-                setShiftError('');
-                setClosingCashInput('');
-                setShowEndShiftModal(true);
-              }}
-              className="bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 rounded-lg text-sm font-semibold transition shadow-lg shadow-rose-950/30 cursor-pointer flex items-center gap-1.5"
-            >
-              {isAdmin ? 'End of the Day' : 'End Shift'}
-            </button>
+            <>
+              <button
+                onClick={() => {
+                  setShiftError('');
+                  setShowReadingModal(true);
+                }}
+                className="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-lg text-sm font-semibold transition shadow-lg shadow-cyan-950/30 cursor-pointer flex items-center gap-1.5"
+              >
+                 Reading
+              </button>
+              <button
+                onClick={() => {
+                  setShiftError('');
+                  setClosingCashInput('');
+                  setShowEndShiftModal(true);
+                }}
+                className="bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 rounded-lg text-sm font-semibold transition shadow-lg shadow-rose-950/30 cursor-pointer flex items-center gap-1.5"
+              >
+                {isAdmin ? 'End of the Day' : 'End Shift'}
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -658,7 +673,7 @@ export default function POSClient() {
                     >
                       +
                     </button>
-                    <span className="min-w-[70px] text-right">₱{(l.quantity * l.product.price).toFixed(2)}</span>
+                    <span className="min-w-[70px] text-right">{peso(l.quantity * l.product.price)}</span>
                   </div>
                 </div>
               ))}
@@ -666,7 +681,7 @@ export default function POSClient() {
           )}
 
           <div className="border-t pt-3 space-y-1 text-sm">
-            <div className="flex justify-between font-bold text-lg text-orange-700"><span>Total</span><span>₱{total.toFixed(2)}</span></div>
+            <div className="flex justify-between font-bold text-lg text-orange-700"><span>Total</span><span>{peso(total)}</span></div>
           </div>
 
           <div>
@@ -681,7 +696,7 @@ export default function POSClient() {
               <button
                 onClick={() => {
                   setPaymentMethod('gcash');
-                  setTendered(total);
+                  setTenderedInput(toPesos(total));
                 }}
                 className={`border rounded-md py-2 text-sm ${paymentMethod === 'gcash' ? 'bg-green-700 text-white' : ''} cursor-pointer`}
               >
@@ -720,7 +735,7 @@ export default function POSClient() {
                   >
                     <option value="">Select customer</option>
                     {customers.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}{customerBalances.get(c.id) ? ` — ₱${customerBalances.get(c.id)!.toFixed(2)} owed` : ''}</option>
+                      <option key={c.id} value={c.id}>{c.name}{customerBalances.get(c.id) ? ` — ${peso(customerBalances.get(c.id)!)} owed` : ''}</option>
                     ))}
                   </select>
                   <button type="button" onClick={() => setShowNewCustomer(true)} className="text-xs text-amber-600 font-semibold hover:underline whitespace-nowrap cursor-pointer">+ New</button>
@@ -735,7 +750,7 @@ export default function POSClient() {
               <div className="mt-2">
                 <label className="text-sm font-medium">Deadline (optional)</label>
                 <input
-                  type="datetime-local"
+                  type="date"
                   value={creditDue}
                   onChange={(e) => setCreditDue(e.target.value)}
                   className="w-full border rounded-md px-3 py-2 mt-1 text-sm"
@@ -750,8 +765,10 @@ export default function POSClient() {
                 <label className="text-sm font-medium">Cash Tendered</label>
                 <input
                   type="number"
-                  value={tendered || ''}
-                  onChange={(e) => setTendered(Number(e.target.value))}
+                  step="0.01"
+                  min="0"
+                  value={tenderedInput}
+                  onChange={(e) => setTenderedInput(e.target.value)}
                   className="w-full border rounded-md px-3 py-2 mt-1"
                   placeholder="0.00"
                 />
@@ -760,7 +777,7 @@ export default function POSClient() {
               <div className="flex justify-between text-sm">
                 <span>Change</span>
                 <span className="font-semibold">
-                  {change > 0 ? `₱${change.toFixed(2)}` : '₱0.00'}
+                  {change > 0 ? peso(change) : peso(0)}
                 </span>
               </div>
             </>
@@ -789,7 +806,7 @@ export default function POSClient() {
 
           <button
             onClick={handleCompleteSale}
-            disabled={cart.length === 0 || (!isCredit && paymentMethod === 'cash' && tendered < total) || (!isCredit && paymentMethod === 'gcash' && !gcashRef.trim()) || (isCredit && !selectedCustomerId && !showNewCustomer) || processing || (!activeShift && !isAdmin)}
+            disabled={cart.length === 0 || (!isCredit && paymentMethod === 'cash' && tenderedCents < total) || (!isCredit && paymentMethod === 'gcash' && !gcashRef.trim()) || (isCredit && !selectedCustomerId && !showNewCustomer) || processing || (!activeShift && !isAdmin)}
             className={`w-full text-white rounded-md py-3 font-medium disabled:opacity-40 transition cursor-pointer ${isCredit ? 'bg-amber-600 hover:bg-amber-500' : 'bg-green-700 hover:bg-green-600'}`}
           >
             {processing ? 'Processing...' : (!activeShift && !isAdmin) ? 'Open Shift to Complete Sale' : isCredit ? '✓ Record Credit Sale' : '✓ Complete Sale'}
@@ -850,8 +867,8 @@ export default function POSClient() {
                     >
                       <option value="">Select customer</option>
                       {customers.map((c) => (
-                        <option key={c.id} value={c.id}>{c.name}{customerBalances.get(c.id) ? ` — ₱${customerBalances.get(c.id)!.toFixed(2)} owed` : ''}</option>
-                      ))}
+                      <option key={c.id} value={c.id}>{c.name}{customerBalances.get(c.id) ? ` — ${peso(customerBalances.get(c.id)!)} owed` : ''}</option>
+                    ))}
                     </select>
                     <button type="button" onClick={() => setPayShowNewCustomer(true)} className="text-xs text-cyan-400 font-semibold hover:underline whitespace-nowrap cursor-pointer">+ New</button>
                   </div>
@@ -984,20 +1001,32 @@ export default function POSClient() {
                 <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Live X-Read Summary</div>
                 <div className="flex justify-between text-slate-300">
                   <span>Opening Cash Float</span>
-                  <span className="font-medium">₱{activeShift.openingFloat.toFixed(2)}</span>
+                  <span className="font-medium">{peso(activeShift.openingFloat)}</span>
                 </div>
                 <div className="flex justify-between text-slate-300">
                   <span>Cash Sales (+)</span>
-                  <span className="font-medium text-emerald-400">+₱{(activeShift.cashSales ?? 0).toFixed(2)}</span>
+                  <span className="font-medium text-emerald-400">+{peso(activeShift.cashSales ?? 0)}</span>
+                </div>
+                <div className="flex justify-between text-slate-300">
+                  <span>Cash In (+)</span>
+                  <span className="font-medium text-emerald-400">+{peso(activeShift.cashIn ?? 0)}</span>
+                </div>
+                <div className="flex justify-between text-slate-300">
+                  <span>Cash Out (−)</span>
+                  <span className="font-medium text-amber-400">−{peso(activeShift.cashOut ?? 0)}</span>
+                </div>
+                <div className="flex justify-between text-slate-300">
+                  <span>Expenses (−)</span>
+                  <span className="font-medium text-rose-400">−{peso(activeShift.totalExpenses ?? 0)}</span>
                 </div>
                 <div className="flex justify-between text-slate-300">
                   <span>GCash Sales</span>
-                  <span className="font-medium text-sky-400">₱{(activeShift.gcashSales ?? 0).toFixed(2)}</span>
+                  <span className="font-medium text-sky-400">{peso(activeShift.gcashSales ?? 0)}</span>
                 </div>
                 <hr className="border-slate-800 my-1" />
                 <div className="flex justify-between font-bold text-slate-100">
                   <span>Expected Cash in Drawer</span>
-                  <span className="text-cyan-400">₱{expectedCashAmount.toFixed(2)}</span>
+                  <span className="text-cyan-400">{peso(expectedCashAmount)}</span>
                 </div>
                 {/* Live variance — appears as soon as a cash count is typed.
                     Same helper the printed Z-Read uses, so preview === receipt. */}
@@ -1034,7 +1063,7 @@ export default function POSClient() {
                     min="0"
                     value={closingCashInput}
                     onChange={(e) => setClosingCashInput(e.target.value)}
-                    placeholder={isAdmin ? String(expectedCashAmount.toFixed(2)) : 'Leave blank to close without a count'}
+                    placeholder={isAdmin ? toPesos(expectedCashAmount) : 'Leave blank to close without a count'}
                     className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm font-semibold text-cyan-400"
                   />
                   <p className="text-[11px] text-slate-500 mt-1">
@@ -1088,6 +1117,15 @@ export default function POSClient() {
               </form>
             </div>
           </div>
+        )}
+
+        {showReadingModal && activeShift && (
+          <ShiftReadingModal
+            shift={activeShift}
+            isAdmin={isAdmin}
+            onClose={() => setShowReadingModal(false)}
+            onChanged={loadShiftData}
+          />
         )}
 
         {zReadReceipt && (
@@ -1152,7 +1190,7 @@ const ProductGrid = memo(function ProductGrid({
                 </span>
               )}
               <div className="flex justify-between items-center mt-2">
-                <span className="text-green-700 font-bold">₱{product.price}</span>
+                <span className="text-green-700 font-bold">{peso(product.price)}</span>
                 <span className={`text-xs px-2 py-0.5 rounded-full ${product.stock < 20 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>
                   {product.stock} stk
                 </span>
@@ -1197,13 +1235,13 @@ function ReceiptModal({
         )}
         <div className="flex justify-between"><span className="text-slate-400">Payment</span><span className={`capitalize font-bold ${receipt.paymentMethod === 'credit' ? 'text-amber-400' : 'text-cyan-400'}`}>{receipt.paymentMethod === 'credit' ? 'Credit / Utang' : receipt.paymentMethod}</span></div>
         <hr className="border-dashed border-slate-800 my-1" />
-        <div className="flex justify-between"><span className="text-slate-400">Subtotal</span><span>₱{receipt.subtotal.toFixed(2)}</span></div>
-        <div className="flex justify-between"><span className="text-slate-400">VAT</span><span>₱{receipt.vat.toFixed(2)}</span></div>
-        <div className="flex justify-between font-bold text-sm text-slate-100"><span>Total</span><span className="text-emerald-400">₱{receipt.total.toFixed(2)}</span></div>
+        <div className="flex justify-between"><span className="text-slate-400">Subtotal</span><span>{peso(receipt.subtotal)}</span></div>
+        <div className="flex justify-between"><span className="text-slate-400">VAT</span><span>{peso(receipt.vat)}</span></div>
+        <div className="flex justify-between font-bold text-sm text-slate-100"><span>Total</span><span className="text-emerald-400">{peso(receipt.total)}</span></div>
         {receipt.paymentMethod === 'cash' && (
           <>
-            <div className="flex justify-between"><span className="text-slate-400">Tendered</span><span>₱{receipt.tendered.toFixed(2)}</span></div>
-            <div className="flex justify-between font-bold text-cyan-300"><span>Change</span><span>₱{receipt.change.toFixed(2)}</span></div>
+            <div className="flex justify-between"><span className="text-slate-400">Tendered</span><span>{peso(receipt.tendered)}</span></div>
+            <div className="flex justify-between font-bold text-cyan-300"><span>Change</span><span>{peso(receipt.change)}</span></div>
           </>
         )}
         {receipt.paymentMethod === 'gcash' && receipt.gcashRef && (
@@ -1213,7 +1251,7 @@ function ReceiptModal({
           <div className="flex justify-between"><span className="text-slate-400">GCash Status</span><span className="font-bold text-emerald-300">PAID</span></div>
         )}
         {receipt.paymentMethod === 'credit' && (
-          <div className="flex justify-between"><span className="text-slate-400">Amount Owed</span><span className="font-bold text-amber-400">₱{receipt.total.toFixed(2)}</span></div>
+          <div className="flex justify-between"><span className="text-slate-400">Amount Owed</span><span className="font-bold text-amber-400">{peso(receipt.total)}</span></div>
         )}
 
         {receipt.offline && (
@@ -1279,18 +1317,21 @@ function ZReadModal({
         <hr className="border-slate-200" />
 
         <div className="text-sm space-y-1">
-          <Row label="Opening Float" value={`₱${summary.openingFloat.toFixed(2)}`} />
-          <Row label="Cash Sales" value={`₱${summary.cashSales.toFixed(2)}`} />
-          <Row label="GCash Sales" value={`₱${summary.gcashSales.toFixed(2)}`} />
-          <Row label="Total Sales" value={`₱${summary.totalSales.toFixed(2)}`} bold />
+          <Row label="Opening Float" value={peso(summary.openingFloat)} />
+          <Row label="Cash Sales" value={peso(summary.cashSales)} />
+          <Row label="Cash In" value={`+${peso(summary.cashIn)}`} />
+          <Row label="Cash Out" value={`-${peso(summary.cashOut)}`} />
+          <Row label="Expenses" value={`-${peso(summary.expenses)}`} />
+          <Row label="GCash Sales" value={peso(summary.gcashSales)} />
+          <Row label="Total Sales" value={peso(summary.totalSales)} bold />
         </div>
 
         <hr className="border-slate-200" />
 
         <div className="text-sm space-y-1">
-          <Row label="Expected Cash" value={`₱${summary.expectedCash.toFixed(2)}`} />
+          <Row label="Expected Cash" value={peso(summary.expectedCash)} />
           {summary.closingCash !== null && (
-            <Row label="Counted Cash" value={`₱${summary.closingCash.toFixed(2)}`} />
+            <Row label="Counted Cash" value={peso(summary.closingCash)} />
           )}
         </div>
 

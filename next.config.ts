@@ -60,7 +60,7 @@ const withPWA = withPWAInit({
         urlPattern: /\/api\/(products|categories|lowstock|reports)/,
         handler: 'NetworkFirst',
         options: {
-          cacheName: 'api-cache-v1',
+          cacheName: 'api-cache-v2',
           networkTimeoutSeconds: 3,
           expiration: { maxEntries: 50, maxAgeSeconds: 86400 },
         },
@@ -73,7 +73,7 @@ const withPWA = withPWAInit({
         urlPattern: /\/_next\/data\//,
         handler: 'NetworkFirst',
         options: {
-          cacheName: 'pages-cache-v2',
+          cacheName: 'pages-cache-v3',
           networkTimeoutSeconds: 3,
         },
       },
@@ -83,7 +83,7 @@ const withPWA = withPWAInit({
         urlPattern: /\/pos.*_rsc=/,
         handler: 'NetworkFirst',
         options: {
-          cacheName: 'pages-cache-v2',
+          cacheName: 'pages-cache-v3',
           networkTimeoutSeconds: 1,
         },
       },
@@ -95,7 +95,7 @@ const withPWA = withPWAInit({
         urlPattern: /_rsc=/,
         handler: 'NetworkFirst',
         options: {
-          cacheName: 'pages-cache-v2',
+          cacheName: 'pages-cache-v3',
           networkTimeoutSeconds: 3,
         },
       },
@@ -107,7 +107,7 @@ const withPWA = withPWAInit({
         urlPattern: /\/pos/,
         handler: 'NetworkFirst',
         options: {
-          cacheName: 'pages-cache-v2',
+          cacheName: 'pages-cache-v3',
           networkTimeoutSeconds: 1,
         },
       },
@@ -121,7 +121,7 @@ const withPWA = withPWAInit({
         urlPattern: /\/(dashboard|products|categories|orders|credit|expenses|reports|users|settings|lowstock|transaction-log|item-log)/,
         handler: 'NetworkFirst',
         options: {
-          cacheName: 'pages-cache-v2',
+          cacheName: 'pages-cache-v3',
           networkTimeoutSeconds: 3,
         },
       },
@@ -129,7 +129,7 @@ const withPWA = withPWAInit({
         urlPattern: /.*/,
         handler: 'NetworkFirst',
         options: {
-          cacheName: 'pages-cache-v2',
+          cacheName: 'pages-cache-v3',
           networkTimeoutSeconds: 3,
         },
       },

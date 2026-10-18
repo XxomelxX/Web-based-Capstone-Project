@@ -47,7 +47,7 @@ export default function RootLayout({
               if(!('caches'in window)||!('serviceWorker'in navigator))return;
               caches.keys().then(function(names){
                 names.forEach(function(n){
-                  if(n==='pages'||n==='pages-cache-v1')caches.delete(n);
+                  if(n==='pages'||n==='pages-cache-v1'||n==='pages-cache-v2')caches.delete(n);
                 });
               });
               if(!navigator.onLine)return;
@@ -56,7 +56,9 @@ export default function RootLayout({
                 tries++;
                 if(!navigator.serviceWorker.controller){if(tries<15)setTimeout(warm,2000);return;}
                 var pages=['/login','/offline','/pos'];
-                caches.open('pages-cache-v2').then(function(cache){
+                // Pages are read by the SW runtime rules from pages-cache-v3;
+                // the old pages-cache-v2 writer was dead storage nothing served.
+                caches.open('pages-cache-v3').then(function(cache){
                   pages.forEach(function(url){
                     cache.match(url,{ignoreVary:true}).then(function(hit){
                       if(hit)return;

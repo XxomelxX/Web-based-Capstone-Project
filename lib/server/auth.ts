@@ -11,7 +11,7 @@ export const authOptions: NextAuthOptions = {
     CredentialsProvider({
       name: 'Credentials',
       credentials: {
-        username: { label: 'Username', type: 'text' },
+        username: { label: 'Username or Email', type: 'text' },
         password: { label: 'Password', type: 'password' },
       },
       async authorize(credentials) {
@@ -22,30 +22,38 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        const username = credentials.username.trim();
-        if (!username || !credentials.password) return null;
+        const identifier = credentials.username.trim();
+        if (!identifier || !credentials.password) return null;
 
-        const users = await prisma.user.findMany({
-          where: {
-            username: { equals: username, mode: 'insensitive' },
-          },
-          take: 2,
-        });
+        try {
+          const users = await prisma.user.findMany({
+            where: {
+              OR: [
+                { username: { equals: identifier, mode: 'insensitive' } },
+                { email: { equals: identifier, mode: 'insensitive' } },
+              ],
+            },
+            take: 2,
+          });
 
-        if (users.length !== 1) return null;
+          if (users.length !== 1) return null;
 
-        const user = users[0];
-        if (user.status !== 'active') return null;
+          const user = users[0];
+          if (user.status !== 'active') return null;
 
-        const isValid = await compare(credentials.password, user.passwordHash);
-        if (!isValid) return null;
+          const isValid = await compare(credentials.password, user.passwordHash);
+          if (!isValid) return null;
 
-        return {
-          id: String(user.id),
-          name: user.fullName,
-          email: user.email,
-          role: user.role,
-        } as { id: string; name: string; email: string; role: string };
+          return {
+            id: String(user.id),
+            name: user.fullName,
+            email: user.email,
+            role: user.role,
+          } as { id: string; name: string; email: string; role: string };
+        } catch (error) {
+          console.error('Authentication database error:', error);
+          throw new Error('Database unavailable. Please try again later.');
+        }
       },
     }),
   ],

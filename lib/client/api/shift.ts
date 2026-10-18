@@ -1,6 +1,7 @@
-import { queueCloseShift, queueOpenShift } from '@/lib/client/offlineQueue';
+import { queueCashMovement, queueCloseShift, queueOpenShift } from '@/lib/client/offlineQueue';
 import { saveCategory2Cache, getCategory2Cache } from '@/lib/client/localStorageCache';
 import { readIdentity } from '@/lib/client/identity';
+import { peso, parsePesosToCents } from '@/lib/money';
 
 export interface ShiftDetails {
   id: number;
@@ -17,6 +18,11 @@ export interface ShiftDetails {
   closedAt: string | null;
   totalSales?: number;
   transactionCount?: number;
+  // Cash movement totals (centavos) — live from CashMovement rows while the
+  // shift is open, persisted snapshots after close.
+  cashIn?: number;
+  cashOut?: number;
+  totalExpenses?: number;
   cashier?: {
     fullName: string;
     username: string;
@@ -34,6 +40,9 @@ export interface ZReadSummary {
   expectedCash: number;
   closingCash: number | null;
   overageShortage: number | null;
+  cashIn: number;
+  cashOut: number;
+  expenses: number;
 }
 
 const ACTIVE_SHIFT_CACHE_KEY = 'sari-sari-active-shift';
@@ -137,14 +146,17 @@ export function sameShift(a: ShiftDetails | null, b: ShiftDetails | null): boole
     a.gcashSales === b.gcashSales &&
     (a.expectedCash ?? null) === (b.expectedCash ?? null) &&
     (a.totalSales ?? null) === (b.totalSales ?? null) &&
-    (a.transactionCount ?? null) === (b.transactionCount ?? null)
+    (a.transactionCount ?? null) === (b.transactionCount ?? null) &&
+    (a.cashIn ?? null) === (b.cashIn ?? null) &&
+    (a.cashOut ?? null) === (b.cashOut ?? null) &&
+    (a.totalExpenses ?? null) === (b.totalExpenses ?? null)
   );
 }
 
 export type VarianceTone = 'balanced' | 'over' | 'short';
 
 export interface VarianceDisplay {
-  /** signed difference: counted − expected (round to cent precision) */
+  /** signed difference: counted − expected (integer centavos) */
   signed: number;
   /** 'BALANCED' | 'OVER' | 'SHORT' */
   label: 'BALANCED' | 'OVER' | 'SHORT';
@@ -156,40 +168,41 @@ export interface VarianceDisplay {
 }
 
 /**
- * Format an over/short variance from a signed difference.
+ * Format an over/short variance from a signed difference in CENTAVOS.
  * SINGLE SOURCE OF TRUTH for the live End-of-Day preview AND the printed
  * Z-Read receipt, so the number the admin sees before closing can never
  * disagree with the number on the receipt. The server computes the same
  * `overageShortage = counted − expected` when the shift closes.
  */
-export function formatVarianceDelta(diff: number): VarianceDisplay {
-  // Money maths: snap float error to cent precision (1000.05-1000 etc).
-  const signed = Math.round(diff * 100) / 100;
+export function formatVarianceDelta(diffCents: number): VarianceDisplay {
+  // diffCents is already integer centavos (counted − expected).
+  const signed = Math.round(diffCents);
   const abs = Math.abs(signed);
   const tone: VarianceTone = signed === 0 ? 'balanced' : signed > 0 ? 'over' : 'short';
   const label = tone === 'balanced' ? 'BALANCED' : tone === 'over' ? 'OVER' : 'SHORT';
-  const text = `₱${abs.toFixed(2)}`;
-  const signedText = signed === 0 ? '₱0.00' : `${signed > 0 ? '+' : '-'}${text}`;
+  const text = peso(abs);
+  const signedText = signed === 0 ? peso(0) : `${signed > 0 ? '+' : '-'}${text}`;
   return { signed, label, text, signedText, tone };
 }
 
 /** Live preview: variance for a physical cash count against expected cash. */
-export function formatVariance(expected: number, counted: number): VarianceDisplay {
-  const safeExpected = Number.isFinite(expected) ? expected : 0;
-  const safeCounted = Number.isFinite(counted) ? counted : 0;
+export function formatVariance(expectedCents: number, countedCents: number): VarianceDisplay {
+  const safeExpected = Number.isFinite(expectedCents) ? expectedCents : 0;
+  const safeCounted = Number.isFinite(countedCents) ? countedCents : 0;
   return formatVarianceDelta(safeCounted - safeExpected);
 }
 
 /**
- * Parse the physical cash-count input. Returns null when blank or invalid —
- * callers can then distinguish "not entered" (close without a count) from a
- * real 0.00 count.
+ * Parse the physical cash-count input (user types pesos e.g. "1500.50").
+ * Returns integer CENTAVOS, or null when blank or invalid — callers can then
+ * distinguish "not entered" (close without a count) from a real 0.00 count.
  */
 export function parseCashCount(raw: string): number | null {
   const trimmed = raw.trim();
   if (trimmed === '') return null;
   const value = Number.parseFloat(trimmed);
-  return Number.isFinite(value) && value >= 0 ? Math.round(value * 100) / 100 : null;
+  if (!Number.isFinite(value) || value < 0) return null;
+  return parsePesosToCents(value);
 }
 
 export function applyOfflineSaleToShift(
@@ -201,6 +214,9 @@ export function applyOfflineSaleToShift(
     paymentMethod === 'cash'
       ? (shift.cashSales ?? 0) + saleTotal
       : (shift.cashSales ?? 0);
+  const cashIn = shift.cashIn ?? 0;
+  const cashOut = shift.cashOut ?? 0;
+  const expenses = shift.totalExpenses ?? 0;
   return {
     ...shift,
     totalSales: (shift.totalSales ?? 0) + saleTotal,
@@ -210,10 +226,32 @@ export function applyOfflineSaleToShift(
       paymentMethod === 'gcash'
         ? (shift.gcashSales ?? 0) + saleTotal
         : shift.gcashSales,
+    cashIn,
+    cashOut,
+    totalExpenses: expenses,
     // Cached openingFloat is the drawer float the server returned, so
     // expected cash stays correct for the shared drawer while offline.
-    expectedCash: (shift.openingFloat ?? 0) + nextCashSales,
+    // Formula matches lib/server/shiftCash.ts: float + cash + in − out − expenses.
+    expectedCash: (shift.openingFloat ?? 0) + nextCashSales + cashIn - cashOut - expenses,
   };
+}
+
+/**
+ * Optimistically apply a queued cash movement to the cached active shift so
+ * the shift bar / Reading modal totals move immediately while offline. The
+ * server is the source of truth — the next fetchActiveShift() reconciles.
+ */
+export function applyOfflineMovementToShift(
+  shift: ShiftDetails,
+  movementType: 'cash_in' | 'cash_out' | 'expense',
+  amount: number
+): ShiftDetails {
+  const cashIn = (shift.cashIn ?? 0) + (movementType === 'cash_in' ? amount : 0);
+  const cashOut = (shift.cashOut ?? 0) + (movementType === 'cash_out' ? amount : 0);
+  const totalExpenses = (shift.totalExpenses ?? 0) + (movementType === 'expense' ? amount : 0);
+  const expectedCash =
+    (shift.openingFloat ?? 0) + (shift.cashSales ?? 0) + cashIn - cashOut - totalExpenses;
+  return { ...shift, cashIn, cashOut, totalExpenses, expectedCash };
 }
 
 export async function fetchActiveShift(): Promise<ShiftDetails | null> {
@@ -266,7 +304,11 @@ export async function openShift(
   // offline fallback, so open-then-fail-then-queue never creates 2 shifts.
   const clientUuid = crypto.randomUUID();
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 750);
+  // 8s (not 750ms): on this link a direct open costs several ~400ms DB round
+  // trips. The old 750ms budget aborted most ONLINE opens mid-request and
+  // pushed the client into the offline queue — the "Online (1 queued)" pill
+  // users saw after every open. Fallback still exists for true offline/broken.
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
   let response: Response;
   let data: { error?: string; shift?: ShiftDetails };
   try {
@@ -320,7 +362,12 @@ export async function closeShift(
   const gcashSales = currentShift?.gcashSales || 0;
   const totalSales = currentShift?.totalSales || cashSales + gcashSales;
   const transactionCount = currentShift?.transactionCount || 0;
-  const expectedCash = openingFloat + cashSales;
+  const cashIn = currentShift?.cashIn || 0;
+  const cashOut = currentShift?.cashOut || 0;
+  const expenses = currentShift?.totalExpenses || 0;
+  // Same formula as lib/server/shiftCash.ts — the offline Z-Read must match
+  // the summary the server produces when the queued close replays.
+  const expectedCash = openingFloat + cashSales + cashIn - cashOut - expenses;
   const hasCountedCash = typeof closingCash === 'number' && Number.isFinite(closingCash);
   const countedCash = hasCountedCash ? closingCash! : null;
   const overageShortage = hasCountedCash ? closingCash! - expectedCash : null;
@@ -336,6 +383,9 @@ export async function closeShift(
     expectedCash,
     closingCash: countedCash,
     overageShortage,
+    cashIn,
+    cashOut,
+    expenses,
   };
 
   if (canUseStorage() && !navigator.onLine) {
@@ -372,6 +422,92 @@ export async function closeShift(
     cacheActiveShift(null);
     return { success: true, summary: fallbackSummary };
   }
+}
+
+export interface CashMovement {
+  id: number;
+  clientUuid?: string | null;
+  type: 'cash_in' | 'cash_out' | 'expense';
+  amount: number; // centavos, positive
+  note: string | null;
+  expenseId?: number | null;
+  createdAt: string;
+  user?: { fullName?: string | null };
+}
+
+/** Latest cash movements on the caller's open shift (empty when offline/no shift). */
+export async function fetchCashMovements(): Promise<CashMovement[]> {
+  if (canUseStorage() && !navigator.onLine) return [];
+  try {
+    const res = await fetch('/api/shift/cash-movement', { cache: 'no-store' });
+    if (!res.ok) return [];
+    const data = (await res.json().catch(() => ({}))) as { movements?: CashMovement[] };
+    return data.movements ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Record a cash_in / cash_out / expense against the caller's OPEN shift.
+ * Offline (or on a network failure) it queues a cash_movement action and
+ * optimistically updates the cached shift so the totals move immediately.
+ * The server resolves the target shift — the caller never sends a shiftId
+ * (an offline shift id is only a temp negative until open_shift replays).
+ */
+export async function recordCashMovement(
+  type: 'cash_in' | 'cash_out' | 'expense',
+  amount: number, // centavos, positive
+  note?: string
+): Promise<{ offline?: boolean; movement?: CashMovement }> {
+  const queueIt = async (clientUuid?: string) => {
+    await queueCashMovement({ type, amount, note, clientUuid });
+    const cached = getCachedActiveShift();
+    if (cached) cacheActiveShift(applyOfflineMovementToShift(cached, type, amount));
+    return { offline: true as const };
+  };
+
+  if (canUseStorage() && !navigator.onLine) {
+    return queueIt();
+  }
+
+  const clientUuid = crypto.randomUUID();
+  try {
+    const res = await fetch('/api/shift/cash-movement', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, amount, note, clientUuid }),
+    });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      // No open shift / validation errors are real failures — don't queue.
+      throw new Error(body.error || `Failed to record cash movement (${res.status})`);
+    }
+    const data = (await res.json().catch(() => ({}))) as { movement?: CashMovement };
+    // Reconcile cached shift with the server's authoritative totals.
+    await fetchActiveShift();
+    return { movement: data.movement };
+  } catch (error) {
+    if (error instanceof TypeError) {
+      // Network failure — queue for later sync (same clientUuid as the failed
+      // request, so a lost response can't double-apply on retry).
+      return queueIt(clientUuid);
+    }
+    throw error;
+  }
+}
+
+/** Delete a cash movement (admin-only on the server). Also removes the dual-written Expense. */
+export async function deleteCashMovement(id: number): Promise<void> {
+  if (canUseStorage() && !navigator.onLine) {
+    throw new Error('Cannot delete cash movements while offline');
+  }
+  const res = await fetch(`/api/shift/cash-movement?id=${id}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error || `Failed to delete cash movement (${res.status})`);
+  }
+  await fetchActiveShift();
 }
 
 export async function fetchShiftHistory(): Promise<ShiftDetails[]> {

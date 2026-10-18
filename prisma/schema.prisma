@@ -7,13 +7,24 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// MONEY CONVENTION: every money column is an INTEGER of CENTAVOS
+// (₱25.50 === 2550). Never use Float for money — binary floats drift by
+// fractions of a centavo. Display via lib/money.ts (peso/toPesos); parse
+// user input via parsePesosToCents. Quantities/counts stay plain Int.
+// Settings.taxRate is a PERCENTAGE (12 === 12%), not money — stays Float.
+
+enum Role {
+  admin
+  cashier
+}
+
 model User {
   id           Int      @id @default(autoincrement())
   fullName     String
   username     String   @unique
   email        String   @unique
   passwordHash    String
-  role            String   // "admin" | "cashier"
+  role            Role
   status          String   @default("active")
   resetToken      String?
   resetTokenExpiry DateTime?
@@ -22,6 +33,11 @@ model User {
   transactions Transaction[]
   itemLogs     ItemLog[]
   shifts       Shift[]
+  cashMovements CashMovement[]
+  verifiedShifts         Shift[]        @relation("ShiftVerified")
+  voidedTransactions     Transaction[]  @relation("TxnVoided")
+  voidRequestsMade       VoidRequest[]  @relation("VoidRequested")
+  voidRequestsReviewed   VoidRequest[]  @relation("VoidReviewed")
 }
 
 model PasswordResetCode {
@@ -46,9 +62,9 @@ model Product {
   id         Int      @id @default(autoincrement())
   name       String
   categoryId Int
-  category   Category @relation(fields: [categoryId], references: [id])
-  price      Float
-  cost       Float
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  price      Int      // centavos
+  cost       Int      // centavos
   stock      Int
   packSize   String?
   unit       String?
@@ -63,24 +79,27 @@ model Product {
   stockBatches     StockBatch[]
   utangEntryItems  UtangEntryItem[]
   itemLogs         ItemLog[]
+
+  @@index([archived])
 }
 
 model Transaction {
-  id            Int       @id @default(autoincrement())
-  clientUuid    String?   @unique
+  id            Int      @id @default(autoincrement())
+  clientUuid    String?  @unique
   cashierId     Int
-  cashier       User      @relation(fields: [cashierId], references: [id])
+  cashier       User     @relation(fields: [cashierId], references: [id], onDelete: Restrict)
   customerId    Int?
   customer      Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
   paymentMethod String    // "cash" | "gcash"
-  subtotal      Float
-  vat           Float
-  total         Float
-  tendered      Float
-  change        Float
+  subtotal      Int      // centavos
+  vat           Int      // centavos
+  total         Int      // centavos
+  tendered      Int      // centavos
+  change        Int      // centavos
   status        String    @default("complete") // "complete" | "voided"
   voidReason    String?
   voidedBy      Int?
+  voidedByUser  User?     @relation("TxnVoided", fields: [voidedBy], references: [id], onDelete: SetNull)
   voidedAt      DateTime?
   createdAt DateTime  @default(now())
   // Manual GCash reference number (typed from customer receipt, no verification)
@@ -88,42 +107,57 @@ model Transaction {
 
   items TransactionItem[]
   voidRequests VoidRequest[]
+
+  @@index([createdAt])
+  @@index([cashierId, createdAt])
+  @@index([status, createdAt])
+  @@index([customerId])
 }
 
 model VoidRequest {
   id            Int         @id @default(autoincrement())
   clientUuid    String?     @unique
   transactionId Int
-  transaction   Transaction @relation(fields: [transactionId], references: [id])
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
   reason        String
   requestedBy   Int
+  requestedByUser User      @relation("VoidRequested", fields: [requestedBy], references: [id], onDelete: Restrict)
   requestedAt   DateTime    @default(now())
   status        String      @default("pending") // "pending" | "approved" | "rejected" | "cancelled"
   reviewedBy    Int?
+  reviewedByUser User?      @relation("VoidReviewed", fields: [reviewedBy], references: [id], onDelete: SetNull)
   reviewedAt    DateTime?
   reviewNote    String?
+
+  @@index([transactionId, status])
+  @@index([status])
 }
 
 model TransactionItem {
   id            Int         @id @default(autoincrement())
   transactionId Int
-  transaction   Transaction @relation(fields: [transactionId], references: [id])
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
   productId     Int
-  product       Product     @relation(fields: [productId], references: [id])
+  product       Product     @relation(fields: [productId], references: [id], onDelete: Restrict)
   quantity      Int
-  unitPrice     Float
-  lineTotal     Float
+  unitPrice     Int         // centavos
+  lineTotal     Int         // centavos
+
+  @@index([transactionId])
+  @@index([productId])
 }
 
 model StockBatch {
   id                Int      @id @default(autoincrement())
   productId         Int
-  product           Product  @relation(fields: [productId], references: [id])
+  product           Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   quantityReceived  Int
   quantityRemaining Int
   dateReceived      DateTime @default(now())
   supplier          String?
-  costPerUnit       Float?
+  costPerUnit       Int?     // centavos
+
+  @@index([productId, dateReceived])
 }
 
 model Customer {
@@ -140,10 +174,10 @@ model UtangEntry {
   id               Int                 @id @default(autoincrement())
   clientUuid       String?             @unique
   customerId       Int
-  customer         Customer            @relation(fields: [customerId], references: [id])
-  totalAmount      Float
-  amountPaid       Float               @default(0)
-  remainingBalance Float
+  customer         Customer            @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  totalAmount      Int                 // centavos
+  amountPaid       Int                 @default(0) // centavos
+  remainingBalance Int                 // centavos
   note             String?
   status           String              @default("unpaid") // "unpaid" | "partial" | "paid"
   dueDate          DateTime?
@@ -151,57 +185,76 @@ model UtangEntry {
 
   items             UtangEntryItem[]
   paymentAllocations PaymentAllocation[]
+
+  @@index([customerId, status])
+  @@index([dueDate])
 }
 
 model UtangEntryItem {
   id           Int        @id @default(autoincrement())
   utangEntryId Int
-  utangEntry   UtangEntry @relation(fields: [utangEntryId], references: [id])
+  utangEntry   UtangEntry @relation(fields: [utangEntryId], references: [id], onDelete: Cascade)
   productId    Int
-  product      Product    @relation(fields: [productId], references: [id])
+  product      Product    @relation(fields: [productId], references: [id], onDelete: Restrict)
   quantity     Int
-  unitPrice    Float
-  lineTotal    Float
+  unitPrice    Int        // centavos
+  lineTotal    Int        // centavos
+
+  @@index([utangEntryId])
+  @@index([productId])
 }
 
 model Payment {
-  id            Int                  @id @default(autoincrement())
-  clientUuid    String?              @unique
-  amount        Float
-  note          String?
-  createdAt     DateTime             @default(now())
-  
+  id           Int                  @id @default(autoincrement())
+  clientUuid   String?              @unique
+  amount       Int                  // centavos
+  note         String?
+  createdAt    DateTime             @default(now())
+
   allocations   PaymentAllocation[]
+
+  @@index([createdAt])
 }
 
 model PaymentAllocation {
-  id            Int        @id @default(autoincrement())
-  paymentId     Int
-  payment       Payment    @relation(fields: [paymentId], references: [id])
-  utangEntryId  Int
-  utangEntry    UtangEntry @relation(fields: [utangEntryId], references: [id])
-  amountApplied Float
-  createdAt     DateTime   @default(now())
+  id           Int        @id @default(autoincrement())
+  paymentId    Int
+  payment      Payment    @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  utangEntryId Int
+  utangEntry   UtangEntry @relation(fields: [utangEntryId], references: [id], onDelete: Cascade)
+  amountApplied Int       // centavos
+  createdAt    DateTime   @default(now())
+
+  @@index([utangEntryId])
+  @@index([paymentId])
 }
 
 model Expense {
   id        Int      @id @default(autoincrement())
   type      String
-  amount    Float
+  amount    Int      // centavos
   period    String
   note      String?
   createdAt DateTime @default(now())
+
+  @@index([createdAt])
 }
 
 model ItemLog {
   id          Int      @id @default(autoincrement())
   productId   Int
-  product     Product  @relation(fields: [productId], references: [id])
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
   action      String   // "sold" | "restocked" | "adjusted" | "voided"
   quantity    Int
+  // Stock adjustments only (action = "adjusted"):
+  adjustType  String?  // "breakage" | "expired" | "theft" | "found" | "correction" | "other"
+  note        String?  // free-text reason (max 200 chars)
   performedBy Int
-  user        User     @relation(fields: [performedBy], references: [id])
+  user        User     @relation(fields: [performedBy], references: [id], onDelete: Restrict)
   createdAt   DateTime @default(now())
+
+  @@index([productId, createdAt])
+  @@index([performedBy])
 }
 
 model Settings {
@@ -209,7 +262,7 @@ model Settings {
   storeName         String @default("J & J Merchandise Store")
   currency          String @default("PHP")
   address           String?
-  taxRate           Float  @default(12)
+  taxRate           Float  @default(12) // percentage, NOT money
   lowStockThreshold Int    @default(20)
 }
 
@@ -217,19 +270,52 @@ model Shift {
   id              Int       @id @default(autoincrement())
   clientUuid      String?   @unique
   cashierId       Int
-  cashier         User      @relation(fields: [cashierId], references: [id])
-  openingFloat    Float
-  closingCash     Float?
-  expectedCash    Float?
-  cashSales       Float?
-  gcashSales      Float?
-  overageShortage Float?
-  status          String    @default("open") // "open" | "closed"
-  notes           String?
-  openedAt        DateTime  @default(now())
-  closedAt        DateTime?
+  cashier         User      @relation(fields: [cashierId], references: [id], onDelete: Restrict)
+  openingFloat    Int       // centavos
+  closingCash     Int?      // centavos
+  expectedCash    Int?      // centavos
+  cashSales       Int?      // centavos
+  gcashSales      Int?      // centavos
+  overageShortage Int?      // centavos
+  status        String    @default("open") // "open" | "closed"
+  notes         String?
+  openedAt      DateTime  @default(now())
+  closedAt      DateTime?
+  // Drawer cash movement snapshots (centavos) taken at close — cash movements
+  // are the source of truth while open (see CashMovement), snapshotted here so
+  // the Z-read/history stay self-contained after the shift ends.
+  cashIn        Int?
+  cashOut       Int?
+  totalExpenses Int?
   verifiedBy      Int?
+  verifiedByUser  User?     @relation("ShiftVerified", fields: [verifiedBy], references: [id], onDelete: SetNull)
   verifiedAt      DateTime?
   verificationNotes String?
   verificationStatus String   @default("pending") // "pending" | "verified" | "flagged"
+
+  cashMovements CashMovement[]
+
+  @@index([cashierId, status])
+  @@index([status])
+}
+
+// Drawer cash movements during a shift: cash added, cash removed, and
+// drawer-funded expenses. expectedCash = float + cashSales + cashIn − cashOut
+// − expenses. Amounts are always POSITIVE centavos; the type carries the
+// direction. Expenses dual-write an Expense row (linked via expenseId) so the
+// store-wide Expenses page / profit reports include shift spending.
+model CashMovement {
+  id          Int      @id @default(autoincrement())
+  clientUuid  String?  @unique // offline-queue idempotency key
+  shiftId     Int
+  shift       Shift    @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  type        String   // "cash_in" | "cash_out" | "expense"
+  amount      Int      // centavos, always positive
+  note        String?
+  expenseId   Int?     // dual-written Expense row (only for type = "expense")
+  performedBy Int
+  user        User     @relation(fields: [performedBy], references: [id], onDelete: Restrict)
+  createdAt   DateTime @default(now())
+
+  @@index([shiftId, createdAt])
 }

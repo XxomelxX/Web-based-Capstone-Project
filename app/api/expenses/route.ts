@@ -23,8 +23,8 @@ export async function POST(request: Request) {
     }
 
     const amt = Number(amount);
-    if (!Number.isFinite(amt) || amt <= 0) {
-      return NextResponse.json({ error: 'Amount must be greater than zero' }, { status: 400 });
+    if (!Number.isInteger(amt) || amt <= 0) {
+      return NextResponse.json({ error: 'Amount must be a positive integer in centavos' }, { status: 400 });
     }
 
     const expense = await prisma.expense.create({

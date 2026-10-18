@@ -1,0 +1,23 @@
+{
+  "before": [
+    {
+      "id": 216,
+      "name": "ddad",
+      "stock": 24,
+      "archived": false
+    },
+    {
+      "id": 219,
+      "name": "buwad",
+      "stock": 54,
+      "archived": false
+    },
+    {
+      "id": 224,
+      "name": "shin",
+      "stock": 34,
+      "archived": false
+    }
+  ],
+  "archivedAt": "2026-10-18T13:53:54.964Z"
+}

@@ -1,6 +1,7 @@
 'use client';
 
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
+import { peso } from '@/lib/money';
 
 interface PaymentData {
   method: string;
@@ -19,7 +20,7 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<
   return (
     <div className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 shadow-xl">
       <p className="text-xs uppercase tracking-wider text-slate-400">{d.method}</p>
-      <p className="mt-1 text-sm font-semibold text-white">₱{d.total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</p>
+      <p className="mt-1 text-sm font-semibold text-white">{peso(d.total)}</p>
       <p className="text-xs text-slate-500">{d.count} transaction{d.count !== 1 ? 's' : ''}</p>
     </div>
   );

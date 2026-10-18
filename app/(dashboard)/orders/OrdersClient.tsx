@@ -12,6 +12,7 @@ import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
 import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
+import { peso } from '@/lib/money';
 
 interface OrderItem { productId: number; quantity: number; unitPrice: number; lineTotal: number; product: { name: string } }
 interface Order {
@@ -118,7 +119,9 @@ export default function OrdersClient() {
   });
 
   useEffect(() => {
-    refresh().catch(() => setIsLoading(false));
+    // Deferred so the effect body stays set-state-free (refresh()'s
+    // setIsOffline etc. run before its first await).
+    const t = setTimeout(() => { refresh().catch(() => setIsLoading(false)); }, 0);
     function handleReconnect() { refresh().catch(() => {}); }
     function handleOnline() { setIsOffline(false); refresh().catch(() => {}); }
     function handleOffline() { setIsOffline(true); }
@@ -126,6 +129,7 @@ export default function OrdersClient() {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     return () => {
+      clearTimeout(t);
       window.removeEventListener(RECONNECT_EVENT_NAME, handleReconnect);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
@@ -241,7 +245,7 @@ export default function OrdersClient() {
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
         <StatCard label="Total Orders" value={completeOrders.length} />
         <StatCard label="Items Sold" value={totalItems} />
-        <StatCard label="Revenue" value={`₱${totalRevenue.toFixed(2)}`} accent="text-emerald-400" />
+        <StatCard label="Revenue" value={peso(totalRevenue)} accent="text-emerald-400" />
       </div>
 
       {loadError && (
@@ -263,7 +267,7 @@ export default function OrdersClient() {
             {pendingRequests.map((r) => (
               <div key={r.id < 0 ? `temp-${r.id}` : r.id} className="flex flex-wrap items-center gap-2 bg-slate-950/60 border border-slate-800 rounded-lg px-3 py-2 text-sm">
                 <span className="text-cyan-400 font-semibold">#{r.transactionId}</span>
-                <span className="text-slate-300">₱{(Number(r.orderTotal) || 0).toFixed(2)}</span>
+                <span className="text-slate-300">{peso(Number(r.orderTotal) || 0)}</span>
                 <span className="text-slate-400 text-xs">by {r.cashierName ?? `user #${r.requestedBy}`}</span>
                 <span className="text-slate-300 text-xs italic truncate max-w-[220px]">“{r.reason}”</span>
                 {(r.pendingSync || r.id < 0) && (
@@ -289,7 +293,7 @@ export default function OrdersClient() {
         </div>
       )}
 
-      {isLoading ? (
+      {(isLoading && sortedOrders.length === 0) ? (
         <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-8 text-center text-slate-400 text-sm">Loading orders…</div>
       ) : sortedOrders.length === 0 ? (
         <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-8 text-center">
@@ -319,7 +323,7 @@ export default function OrdersClient() {
                 <td className="p-3 text-slate-400">{new Date(o.createdAt).toLocaleString()}</td>
                 <td className="p-3 text-slate-300">{o.cashier?.fullName || '—'}</td>
                 <td className="p-3 text-right text-slate-300">{o.items.reduce((s, i) => s + (Number(i.quantity) || 0), 0)}</td>
-                <td className="p-3 text-right font-semibold text-emerald-400">₱{(Number(o.total) || 0).toFixed(2)}</td>
+                <td className="p-3 text-right font-semibold text-emerald-400">{peso(Number(o.total) || 0)}</td>
                 <td className="p-3">
                   <span className={`text-xs px-2 py-1 rounded-full ${o.status === 'voided' ? 'bg-slate-800 text-slate-400' : requestedTxnIds.has(o.id) ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'}`}>
                     {o.status === 'voided' ? o.status : requestedTxnIds.has(o.id) ? 'void requested' : o.status}{o.pendingSync ? ' · sync pending' : ''}
@@ -351,12 +355,12 @@ export default function OrdersClient() {
             <div className="border-t border-slate-800 pt-2 space-y-1 text-sm">
               {viewing.items.map((i) => (
                 <div key={i.productId} className="flex justify-between">
-                  <span className="text-slate-300">{i.product.name} · {i.quantity} x ₱{i.unitPrice}</span>
-                  <span className="text-slate-200">₱{(Number(i.lineTotal) || 0).toFixed(2)}</span>
+                  <span className="text-slate-300">{i.product.name} · {i.quantity} x {peso(i.unitPrice)}</span>
+                  <span className="text-slate-200">{peso(Number(i.lineTotal) || 0)}</span>
                 </div>
               ))}
             </div>
-            <div className="border-t border-slate-800 pt-2 flex justify-between font-bold text-white"><span>Total</span><span className="text-emerald-400">₱{(Number(viewing.total) || 0).toFixed(2)}</span></div>
+            <div className="border-t border-slate-800 pt-2 flex justify-between font-bold text-white"><span>Total</span><span className="text-emerald-400">{peso(Number(viewing.total) || 0)}</span></div>
             {viewing.voidReason && <p className="text-xs text-rose-400">Voided: {viewing.voidReason}</p>}
           </div>
         </div>
@@ -369,7 +373,7 @@ export default function OrdersClient() {
               <h3 className="font-bold text-white">{isAdmin ? `Void Order #${voiding.id}` : `Request Void — Order #${voiding.id}`}</h3>
               <button type="button" onClick={() => setVoiding(null)} className="text-slate-400 hover:text-white cursor-pointer">✕</button>
             </div>
-            <p className="text-xs text-slate-400">Total: ₱{(Number(voiding.total) || 0).toFixed(2)} · This will restore stock for all items.</p>
+            <p className="text-xs text-slate-400">Total: {peso(Number(voiding.total) || 0)} · This will restore stock for all items.</p>
             {!isAdmin && (
               <p className="text-xs text-amber-400 bg-amber-950/40 p-2 rounded border border-amber-800/40">
                 {isOffline
@@ -402,7 +406,7 @@ export default function OrdersClient() {
               <button type="button" onClick={() => setReviewing(null)} className="text-slate-400 hover:text-white cursor-pointer">✕</button>
             </div>
             <p className="text-xs text-slate-400">
-              Total: ₱{(Number(reviewing.orderTotal) || 0).toFixed(2)} · Requested by {reviewing.cashierName ?? `user #${reviewing.requestedBy}`}
+              Total: {peso(Number(reviewing.orderTotal) || 0)} · Requested by {reviewing.cashierName ?? `user #${reviewing.requestedBy}`}
             </p>
             <p className="text-sm text-slate-200 italic">“{reviewing.reason}”</p>
             {isOffline && (

@@ -5,6 +5,7 @@ import { getTransactions } from '@/lib/client/api/inventory';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
 import { WifiOff } from 'lucide-react';
+import { peso } from '@/lib/money';
 
 interface Transaction {
   id: number; createdAt: string; cashier: { fullName: string };
@@ -121,7 +122,7 @@ export default function TransactionLogClient() {
                 <td className="p-3">{new Date(t.createdAt).toLocaleString()}</td>
                 <td className="p-3">{t.cashier?.fullName}</td>
                 <td className="p-3 capitalize">{t.paymentMethod}</td>
-                <td className="p-3">₱{t.total.toFixed(2)}</td>
+                <td className="p-3">{peso(t.total)}</td>
                 <td className="p-3">
                   <span className={`text-xs px-2 py-1 rounded-full ${t.status === 'voided' ? 'bg-gray-200 text-gray-600' : 'bg-green-100 text-green-700'}`}>{t.status}</span>
                 </td>

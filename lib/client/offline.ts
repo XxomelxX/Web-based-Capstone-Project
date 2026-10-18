@@ -83,6 +83,33 @@ class SariSariPOSOfflineDB extends Dexie {
     this.version(4).stores({
       voidRequests: 'id, transactionId, status, clientUuid',
     });
+    // v5: money became INTEGER CENTAVOS (was float pesos). Cached rows with
+    // old peso values would render 2500x too large / 100x too small, so every
+    // money-bearing table is cleared and re-pulled from the server in cents.
+    // The action queue is NOT cleared (real offline sales must survive);
+    // legacy float payloads fail zod validation loudly at sync time instead.
+    this.version(5).stores({
+      products: 'id',
+      categories: 'id',
+      expenses: 'id',
+      transactions: 'id',
+      utang: 'id',
+      customers: 'id',
+      itemlog: 'id',
+      users: 'id',
+      settings: 'key',
+      reportCache: 'key',
+      queue: '++id, status, action, createdAt',
+      cachedCredentials: 'username',
+      queuedActions: '++id, type, createdAt, synced, syncFailed, clientUuid',
+      syncMeta: 'key',
+      voidRequests: 'id, transactionId, status, clientUuid',
+    }).upgrade(async (tx) => {
+      for (const table of ['products', 'transactions', 'utang', 'expenses', 'settings', 'reportCache']) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (tx.table(table) as any).clear();
+      }
+    });
   }
 }
 
@@ -325,7 +352,10 @@ export async function warmStaticAssets() {
 export async function warmPagesCache() {
   if (!canUseWindow() || !navigator.onLine) return;
   try {
-    const cache = await caches.open('pages-cache-v2');
+    // Pages are served by the SW runtime rules from pages-cache-v3
+    // (see next.config.ts runtimeCaching) — warm the cache the SW actually
+    // reads, not the legacy v2 name nothing serves from.
+    const cache = await caches.open('pages-cache-v3');
     await Promise.allSettled(
       PAGES_TO_CACHE.map(async (url) => {
         const existing = await cache.match(url);

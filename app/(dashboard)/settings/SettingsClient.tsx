@@ -2,9 +2,11 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { getSettings, updateSettings } from '@/lib/client/api/inventory';
+import { getCachedSettings } from '@/lib/client/offline';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
+import { PageSkeleton } from '@/components/PageSkeleton';
 import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
 import { WifiOff } from 'lucide-react';
 
@@ -21,6 +23,10 @@ export default function SettingsClient() {
   const refresh = useCallback(() => {
     const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
     setIsOffline(offlineNow);
+    // Instant paint from the local snapshot, then refresh from the server.
+    getCachedSettings<Settings>()
+      .then((cached) => { if (cached) setSettings(cached); })
+      .catch(() => { /* best-effort */ });
     getSettings<Settings>().then(setSettings).catch(() => {});
   }, []);
 
@@ -28,6 +34,7 @@ export default function SettingsClient() {
     settings: refresh,
   });
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     refresh();
     function handleReconnect() { refresh(); }
@@ -64,7 +71,7 @@ export default function SettingsClient() {
     }
   }
 
-  if (!settings) return <p className="text-slate-400">Loading settings...</p>;
+  if (!settings) return <PageSkeleton variant="form" />;
 
   if (!isAdmin) {
     return (

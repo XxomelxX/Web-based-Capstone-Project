@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/server/prisma';
+import { restoreFifoStock } from '@/lib/server/fifo';
 
 // Shared implementation for executing a void: online void API, approval API,
 // and sync engine all funnel through here so stock-restore/audit can't drift.
@@ -37,6 +38,9 @@ export async function executeVoidTransaction(
         where: { id: item.productId },
         data: { stock: { increment: item.quantity } },
       });
+
+      // Reverse of FIFO consumption: restore the newest layers first.
+      await restoreFifoStock(tx, item.productId, item.quantity);
 
       await tx.itemLog.create({
         data: {

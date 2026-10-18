@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useOnline } from '@/components/providers/online-provider';
 import { getAllQueuedCategory1Actions, retryAdminBlockedActions } from '@/lib/client/offlineQueue';
 import type { QueuedCategory1Action } from '@/lib/client/offlineQueue';
+import { peso } from '@/lib/money';
 
 const actionTitles: Record<QueuedCategory1Action['type'], string> = {
   pos_sale: 'POS Complete Sale',
@@ -11,6 +12,7 @@ const actionTitles: Record<QueuedCategory1Action['type'], string> = {
   record_payment: 'Utang — Record Payment',
   open_shift: 'Shift — Open Shift',
   close_shift: 'Shift — Close Shift',
+  cash_movement: 'Shift — Cash Movement',
   product_upsert: 'Product — Update Product',
   product_delete: 'Product — Delete Product',
   category_upsert: 'Category — Update Category',
@@ -70,13 +72,15 @@ export function OfflineSyncModal({ onClose }: { onClose: () => void }) {
                 : item.type === 'add_utang'
                 ? `Customer: ${item.payload.customerName} · Items: ${item.payload.items?.length || 0}`
                 : item.type === 'record_payment'
-                ? `Customer: ${item.payload.customerName} · Amount: ₱${item.payload.amount?.toFixed(2) || '0.00'}`
+                ? `Customer: ${item.payload.customerName} · Amount: ${peso(item.payload.amount ?? 0)}`
                 : item.type === 'open_shift'
-                ? `Float: ₱${item.payload.openingFloat?.toFixed(2) || '0.00'}`
+                ? `Float: ${peso(item.payload.openingFloat ?? 0)}`
                 : item.type === 'close_shift'
                 ? item.payload.closingCash !== undefined && item.payload.closingCash !== null
-                  ? `Cash: ₱${item.payload.closingCash.toFixed(2)}`
+                  ? `Cash: ${peso(item.payload.closingCash)}`
                   : 'No physical count'
+                : item.type === 'cash_movement'
+                ? `${(item.payload.movementType ?? 'movement').replace('_', ' ')} · ${peso(item.payload.amount ?? 0)}`
                 : '';
               const needsAdmin = item.errorMessage?.startsWith('Admin only') ?? false;
 

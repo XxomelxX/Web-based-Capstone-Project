@@ -6,7 +6,8 @@ export type Category1ActionType =
   | 'add_utang'
   | 'record_payment'
   | 'open_shift'
-  | 'close_shift';
+  | 'close_shift'
+  | 'cash_movement';
 
 export type Category2ActionType =
   | 'product_upsert'
@@ -28,7 +29,7 @@ export type QueuedActionType = Category1ActionType | Category2ActionType;
 export interface QueuedSaleItem {
   productId: number;
   quantity: number;
-  unitPrice: number;
+  unitPrice: number; // centavos
 }
 
 export interface QueuedActionPayload {
@@ -38,22 +39,25 @@ export interface QueuedActionPayload {
   dueDate?: string;
   utangEntryId?: number;
   paymentMethod?: 'cash' | 'gcash' | string;
-  tendered?: number;
+  tendered?: number; // centavos
   // GCash reference number (manual, typed from customer receipt)
   gcashRef?: string;
   customerId?: number | null;
   customerName?: string;
   note?: string;
-  amount?: number;
-  expectedBalance?: number;
-  expectedSubtotal?: number;
+  amount?: number; // centavos
+  expectedBalance?: number; // centavos
+  expectedSubtotal?: number; // centavos
 
   // Shift items
-  openingFloat?: number;
-  closingCash?: number;
+  openingFloat?: number; // centavos
+  closingCash?: number; // centavos
   notes?: string;
   openedAt?: string;
   closedAt?: string;
+  // Cash movement against the open shift (cash_in | cash_out | expense).
+  // amount is always POSITIVE centavos; the type carries the direction.
+  movementType?: 'cash_in' | 'cash_out' | 'expense';
 
   // Category-2 entity mutations (server-wins)
   entityId?: number;
@@ -243,6 +247,20 @@ export async function queueCloseShift(shift: {
     notes: shift.notes,
     closedAt: shift.closedAt || new Date().toISOString(),
     clientUuid: shift.clientUuid,
+  });
+}
+
+export async function queueCashMovement(movement: {
+  type: 'cash_in' | 'cash_out' | 'expense';
+  amount: number; // centavos, positive
+  note?: string;
+  clientUuid?: string;
+}): Promise<number> {
+  return queueCategory1Action('cash_movement', {
+    movementType: movement.type,
+    amount: movement.amount,
+    note: movement.note,
+    clientUuid: movement.clientUuid,
   });
 }
 

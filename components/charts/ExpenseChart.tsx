@@ -1,6 +1,7 @@
 'use client';
 
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
+import { peso } from '@/lib/money';
 
 interface ExpenseData {
   type: string;
@@ -15,7 +16,7 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<
   return (
     <div className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 shadow-xl">
       <p className="text-xs text-slate-400">{d.type}</p>
-      <p className="mt-1 text-sm font-semibold text-rose-300">₱{d.amount.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</p>
+      <p className="mt-1 text-sm font-semibold text-rose-300">{peso(d.amount)}</p>
     </div>
   );
 }
@@ -59,7 +60,7 @@ export default function ExpenseChart({ data }: { data: ExpenseData[] }) {
             />
             <div>
               <p className="text-sm font-medium text-slate-200">{entry.type}</p>
-              <p className="text-xs text-slate-500">₱{entry.amount.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</p>
+              <p className="text-xs text-slate-500">{peso(entry.amount)}</p>
             </div>
           </div>
         ))}

@@ -1,6 +1,12 @@
 import LoginFormClient from './LoginFormClient';
 
-export default function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ callbackUrl?: string }>;
+}) {
+  const resolved = await searchParams;
+  const callbackUrl = resolved?.callbackUrl ?? '/dashboard';
   return (
     <div className="min-h-screen flex bg-white overflow-hidden">
       {/* Left Side — Dark Green + White Wave */}
@@ -51,7 +57,7 @@ export default function LoginPage() {
 
       {/* Right Side — Form */}
       <div className="w-full lg:w-1/2 flex items-center justify-center bg-white px-8">
-        <LoginFormClient />
+        <LoginFormClient callbackUrl={callbackUrl} />
       </div>
     </div>
   );

@@ -2,10 +2,12 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { getExpenses, addExpense } from '@/lib/client/api/inventory';
+import { getCachedExpenses } from '@/lib/client/offline';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
 import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
 import { WifiOff } from 'lucide-react';
+import { peso, parsePesosToCents } from '@/lib/money';
 
 
 interface Expense { id: number; type: string; amount: number; period: string; note?: string; createdAt: string }
@@ -40,6 +42,10 @@ export default function ExpensesClient() {
   const refresh = useCallback(() => {
     const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
     setIsOffline(offlineNow);
+    // Instant paint from the local snapshot, then refresh from the server.
+    getCachedExpenses<Expense>()
+      .then((cached) => { if (cached?.length) setExpenses(cached); })
+      .catch(() => { /* best-effort */ });
     getExpenses().then(setExpenses).catch(() => {});
   }, []);
 
@@ -68,7 +74,7 @@ export default function ExpensesClient() {
     e.preventDefault();
     setError('');
     try {
-      const saved = await addExpense({ type: form.type, amount: Number(form.amount), period: form.period, note: form.note });
+      const saved = await addExpense({ type: form.type, amount: parsePesosToCents(form.amount), period: form.period, note: form.note });
       setShowModal(false);
       setForm({ type: '', amount: '', period: '', note: '' });
       refresh();
@@ -128,9 +134,9 @@ export default function ExpensesClient() {
       {error && <p className="text-sm text-rose-400 bg-rose-950/40 border border-rose-800/50 rounded-md px-3 py-2">{error}</p>}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-        <StatCard label="This Month" value={`₱${totalThisMonth.toFixed(2)}`} accent="text-cyan-400" />
-        <StatCard label="This Year" value={`₱${totalThisYear.toFixed(2)}`} accent="text-emerald-400" />
-        <StatCard label="Showing" value={`₱${totalFiltered.toFixed(2)}`} accent={dateFilter !== 'all' ? 'text-amber-400' : 'text-slate-200'} />
+        <StatCard label="This Month" value={peso(totalThisMonth)} accent="text-cyan-400" />
+        <StatCard label="This Year" value={peso(totalThisYear)} accent="text-emerald-400" />
+        <StatCard label="Showing" value={peso(totalFiltered)} accent={dateFilter !== 'all' ? 'text-amber-400' : 'text-slate-200'} />
       </div>
 
       <div className="flex gap-1 bg-slate-900 rounded-lg p-1 w-fit border border-slate-800">
@@ -157,7 +163,7 @@ export default function ExpensesClient() {
               filtered.map((e) => (
                 <tr key={e.id} className="hover:bg-slate-900/50">
                   <td className="p-3 font-medium text-slate-100">{e.type}</td>
-                  <td className="p-3 font-semibold text-rose-400">₱{e.amount.toFixed(2)}</td>
+                  <td className="p-3 font-semibold text-rose-400">{peso(e.amount)}</td>
                   <td className="p-3 text-slate-400">{e.period}</td>
                   <td className="p-3 text-slate-400">{e.note || '—'}</td>
                   <td className="p-3 text-slate-400">{new Date(e.createdAt).toLocaleDateString()}</td>

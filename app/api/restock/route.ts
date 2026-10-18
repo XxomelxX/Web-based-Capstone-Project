@@ -20,8 +20,8 @@ export async function POST(request: Request) {
   if (!Number.isInteger(pid) || pid <= 0 || !Number.isFinite(qty) || qty <= 0) {
     return NextResponse.json({ error: 'productId and a positive quantity are required' }, { status: 400 });
   }
-  if (costPerUnit != null && (!Number.isFinite(Number(costPerUnit)) || Number(costPerUnit) < 0)) {
-    return NextResponse.json({ error: 'costPerUnit must be a non-negative number' }, { status: 400 });
+  if (costPerUnit != null && (!Number.isInteger(Number(costPerUnit)) || Number(costPerUnit) < 0)) {
+    return NextResponse.json({ error: 'costPerUnit must be a non-negative integer in centavos' }, { status: 400 });
   }
 
   const cashierId = Number(session!.user.id);
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
       });
 
       return { batch, product };
-    });
+    }, { maxWait: 15000, timeout: 25000 });
 
     broadcastRealtime('restock', { action: 'created', result });
     broadcastRealtime('products', { action: 'updated', product: result.product });

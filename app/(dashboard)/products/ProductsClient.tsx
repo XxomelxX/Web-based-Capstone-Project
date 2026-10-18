@@ -8,7 +8,7 @@ import {
   fetchArchivedProductsOnline,
   addProduct,
   updateProduct,
-  archiveProduct,
+  deleteProduct,
   unarchiveProduct,
   Product,
 } from '@/lib/client/api/products';
@@ -19,6 +19,7 @@ import { CachedDataBanner } from '@/components/CachedDataBanner';
 import { ArchivedSection } from '@/components/ArchivedSection';
 import { SearchInput } from '@/components/SearchInput';
 import { formatDate } from '@/lib/client/timeUtils';
+import { peso, parsePesosToCents } from '@/lib/money';
 
 function useDebouncedValue(value: string, delayMs: number): string {
   const [debounced, setDebounced] = useState(value);
@@ -71,10 +72,15 @@ export default function ProductsClient() {
     goodsType: 'non-perishable',
     vatType: 'exempt',
     expiryDate: '',
+    isActive: true,
   });
   const [error, setError] = useState('');
   const [isCached, setIsCached] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
+  // Designed delete alert (replaces the browser's native confirm()).
+  const [pendingDelete, setPendingDelete] = useState<Product | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const allProducts: Product[] = (liveProducts ?? []) as any;
@@ -160,7 +166,7 @@ export default function ProductsClient() {
   function openAdd() {
     if (!checkOnlineOrSetError()) return;
     setEditingProduct(null);
-    setForm({ name: '', categoryId: '', price: '', stock: '', goodsType: 'non-perishable', vatType: 'exempt', expiryDate: '' });
+    setForm({ name: '', categoryId: '', price: '', stock: '', goodsType: 'non-perishable', vatType: 'exempt', expiryDate: '', isActive: true });
     setError('');
     setShowModal(true);
   }
@@ -168,15 +174,8 @@ export default function ProductsClient() {
   function openEdit(p: Product) {
     if (!checkOnlineOrSetError()) return;
     setEditingProduct(p);
-    setForm({
-      name: p.name,
-      categoryId: String(p.categoryId),
-      price: String(p.price),
-      stock: String(p.stock),
-      goodsType: p.goodsType || 'non-perishable',
-      vatType: p.vatType || 'exempt',
-      expiryDate: p.expiryDate ? new Date(p.expiryDate).toISOString().split('T')[0] : '',
-    });
+    // Edit mode only flips Active/Not active (maps to the archived flag).
+    setForm((f) => ({ ...f, isActive: !p.archived }));
     setError('');
     setShowModal(true);
   }
@@ -187,20 +186,13 @@ export default function ProductsClient() {
     setError('');
     try {
       if (editingProduct) {
-        await updateProduct(editingProduct.id, {
-          name: form.name,
-          categoryId: Number(form.categoryId),
-          price: Number(form.price),
-          stock: Number(form.stock),
-          goodsType: form.goodsType,
-          vatType: form.vatType,
-          expiryDate: form.expiryDate || null,
-        });
+        // Edit mode = status only: archived flag behind the Active/Not active toggle.
+        await updateProduct(editingProduct.id, { archived: !form.isActive });
       } else {
         await addProduct({
           name: form.name,
           categoryId: Number(form.categoryId),
-          price: Number(form.price),
+          price: parsePesosToCents(form.price),
           stock: Number(form.stock),
           goodsType: form.goodsType,
           vatType: form.vatType,
@@ -214,16 +206,30 @@ export default function ProductsClient() {
     }
   }
 
-  async function handleArchive(id: number) {
-    if (!checkOnlineOrSetError()) return;
+  function openDelete(p: Product) {
+    setPendingDelete(p);
+    setDeleteError('');
+  }
+
+  function closeDelete() {
+    if (deleting) return;
+    setPendingDelete(null);
+    setDeleteError('');
+  }
+
+  async function confirmDelete() {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    setDeleteError('');
     try {
-      // Optimistic Dexie update so the row moves immediately without a reload.
-      await db.products.update(id, { archived: true });
-      await archiveProduct(id);
+      await deleteProduct(pendingDelete.id);
+      setPendingDelete(null);
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to archive product');
-      await refresh();
+      // Keep the alert open so the refusal (e.g. 409 sales history) is readable.
+      setDeleteError(err instanceof Error ? err.message : 'Failed to delete product');
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -294,7 +300,7 @@ export default function ProductsClient() {
                 <tr key={p.id} className="hover:bg-slate-900/50">
                   <td className="p-3 font-medium text-slate-100">{p.name}</td>
                   <td className="p-3 text-slate-400">{p.category?.name || 'Uncategorized'}</td>
-                  <td className="p-3 font-semibold text-emerald-400">₱{p.price}</td>
+                  <td className="p-3 font-semibold text-emerald-400">{peso(p.price)}</td>
                   <td className="p-3">
                     <span className={p.stock < 20 ? 'text-rose-400 font-semibold' : 'text-slate-300'}>{p.stock}</span>
                   </td>
@@ -323,19 +329,19 @@ export default function ProductsClient() {
                       <button
                         onClick={() => openEdit(p)}
                         className="text-slate-400 hover:text-cyan-400 disabled:opacity-40 transition cursor-pointer"
-                        title="Edit product"
+                        title="Change status"
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                         </svg>
                       </button>
                       <button
-                        onClick={() => handleArchive(p.id)}
-                        className="text-slate-400 hover:text-amber-400 disabled:opacity-40 transition cursor-pointer"
-                        title="Archive product"
+                        onClick={() => openDelete(p)}
+                        className="text-slate-400 hover:text-rose-400 disabled:opacity-40 transition cursor-pointer"
+                        title="Delete product"
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
                       </button>
                     </div>
@@ -355,7 +361,7 @@ export default function ProductsClient() {
               {p.category?.name
                 ?? categories.find((c) => c.id === p.categoryId)?.name
                 ?? 'Uncategorized'}
-              {' · '}₱{p.price}
+              {' · '}{peso(p.price)}
               {' · '}Stock: {p.stock}
               {p.barcode ? ` · ${p.barcode}` : ''}
             </td>
@@ -365,7 +371,7 @@ export default function ProductsClient() {
                 className="text-xs text-emerald-400 font-medium hover:underline disabled:opacity-40 cursor-pointer"
                 title="Unarchive product"
               >
-                ↩ Unarchive (Edit)
+                ↩ Unarchive
               </button>
             </td>
           </tr>
@@ -384,6 +390,41 @@ export default function ProductsClient() {
               </p>
             )}
             <form onSubmit={handleSubmit} className="space-y-3 text-sm">
+              {editingProduct ? (
+                <>
+                  <p className="text-xs text-slate-400 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2">
+                    <span className="text-slate-200 font-semibold">{editingProduct.name}</span>
+                    {' · '}{peso(editingProduct.price)}{' · '}Stock: {editingProduct.stock}
+                  </p>
+
+                  <div className="flex items-center justify-between bg-slate-950 border border-slate-700 rounded-xl px-3 py-3">
+                    <span className="font-medium text-slate-300">Status</span>
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, isActive: !form.isActive })}
+                      aria-pressed={form.isActive}
+                      className="flex items-center gap-2.5 cursor-pointer"
+                    >
+                      <span
+                        className={`relative inline-block w-11 h-6 rounded-full transition-colors ${form.isActive ? 'bg-emerald-600' : 'bg-slate-600'}`}
+                      >
+                        <span
+                          className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${form.isActive ? 'translate-x-5' : ''}`}
+                        />
+                      </span>
+                      <span className={`text-sm font-semibold ${form.isActive ? 'text-emerald-400' : 'text-slate-400'}`}>
+                        {form.isActive ? 'Active' : 'Not active'}
+                      </span>
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    {form.isActive
+                      ? 'Active — visible on the POS.'
+                      : 'Not active — hidden from the POS, listed under Archived Products.'}
+                  </p>
+                </>
+              ) : (
+                <>
               <div>
                 <label className="block font-medium text-slate-300 mb-1">Product Name</label>
                 <input
@@ -471,6 +512,8 @@ export default function ProductsClient() {
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-cyan-500"
                 />
               </div>
+                </>
+              )}
 
               <div className="flex justify-end gap-2 pt-3">
                 <button
@@ -488,6 +531,77 @@ export default function ProductsClient() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Designed delete alert — styled confirmation in place of window.confirm */}
+      {pendingDelete && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-product-title"
+            className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4"
+          >
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h2 id="delete-product-title" className="text-lg font-bold text-white flex items-center gap-2.5">
+                <span className="w-8 h-8 rounded-full bg-rose-500/15 text-rose-400 flex items-center justify-center shrink-0">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </span>
+                Delete Product?
+              </h2>
+              <button
+                type="button"
+                onClick={closeDelete}
+                disabled={deleting}
+                className="text-slate-400 hover:text-white cursor-pointer disabled:opacity-40"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-300">
+              <span className="font-semibold text-slate-100">{pendingDelete.name}</span>
+              {' · '}{peso(pendingDelete.price)}
+              {' · '}Stock: {pendingDelete.stock}
+            </div>
+
+            <p className="text-sm text-slate-400 leading-relaxed">
+              This permanently removes the product and its stock layers.{' '}
+              <span className="text-slate-200 font-medium">This can&apos;t be undone.</span>
+              <br />
+              Products with sales history can&apos;t be deleted — set them to{' '}
+              <span className="text-slate-200 font-medium">Not active</span> instead.
+            </p>
+
+            {deleteError && (
+              <p className="text-sm text-rose-400 bg-rose-950/40 border border-rose-800/50 rounded-md px-3 py-2">
+                {deleteError}
+              </p>
+            )}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={closeDelete}
+                disabled={deleting}
+                className="px-4 py-2 border border-slate-700 text-slate-300 hover:bg-slate-800 rounded-xl font-medium cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                disabled={deleting}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white rounded-xl font-semibold cursor-pointer"
+              >
+                {deleting ? 'Deleting…' : 'Delete Product'}
+              </button>
+            </div>
           </div>
         </div>
       )}

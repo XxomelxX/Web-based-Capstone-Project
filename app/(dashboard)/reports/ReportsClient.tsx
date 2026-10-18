@@ -6,9 +6,11 @@ import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { ShiftDetails } from '@/lib/client/api/shift';
 import { getCategory2Cache, saveCategory2Cache } from '@/lib/client/localStorageCache';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
+import { PageSkeleton } from '@/components/PageSkeleton';
 import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
 import { useOnline } from '@/components/providers/online-provider';
 import { WifiOff } from 'lucide-react';
+import { peso } from '@/lib/money';
 
 interface ShiftHistoryItem extends ShiftDetails {
   verificationStatus?: 'verified' | 'flagged' | null;
@@ -36,35 +38,46 @@ export default function ReportsClient() {
   const [isOffline, setIsOffline] = useState(false);
 
   const loadReports = useCallback(async (selectedRange: 'today' | 'week' | 'month' | 'year' | 'all') => {
-    setLoading(true);
     setError('');
     const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
     setIsOffline(offlineNow);
 
-    try {
-      if (offlineNow) {
-        const cached = getCategory2Cache<ReportData>(`reports_${selectedRange}`);
-        if (cached.data) {
-          setData(cached.data);
-          setIsCached(true);
-        } else {
-          throw new Error('Offline and no cached report snapshot available');
-        }
-      } else {
-        const reportData = await getReports<ReportData>(selectedRange);
-        setData(reportData);
-        saveCategory2Cache(`reports_${selectedRange}`, reportData);
-        setIsCached(false);
+    // Instant paint: the synchronous snapshot renders before any network trip.
+    const cached = getCategory2Cache<ReportData>(`reports_${selectedRange}`);
+    if (cached.data) {
+      setData(cached.data);
+      setIsCached(true);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+
+    if (offlineNow) {
+      if (!cached.data) {
+        setError('Offline and no cached report snapshot available');
+        setData(null);
+        setLoading(false);
       }
+      return;
+    }
+
+    try {
+      let stale = false;
+      const reportData = await getReports<ReportData>(selectedRange, { onStale: () => { stale = true; } });
+      setData(reportData);
+      saveCategory2Cache(`reports_${selectedRange}`, reportData);
+      setIsCached(stale);
     } catch (err) {
       console.error('Failed to fetch reports:', err);
-      const cached = getCategory2Cache<ReportData>(`reports_${selectedRange}`);
-      if (cached.data) {
-        setData(cached.data);
-        setIsCached(true);
-      } else {
-        setError(err instanceof Error ? err.message : 'Unable to load reports');
-        setData(null);
+      if (!cached.data) {
+        const fallback = getCategory2Cache<ReportData>(`reports_${selectedRange}`);
+        if (fallback.data) {
+          setData(fallback.data);
+          setIsCached(true);
+        } else {
+          setError(err instanceof Error ? err.message : 'Unable to load reports');
+          setData(null);
+        }
       }
     } finally {
       setLoading(false);
@@ -137,9 +150,7 @@ export default function ReportsClient() {
       </section>
 
       {loading ? (
-        <div className="rounded-[2rem] border border-slate-800/70 bg-slate-950/90 p-8 shadow-[0_24px_80px_-46px_rgba(0,0,0,0.85)]">
-          <p className="text-slate-400">Loading report details…</p>
-        </div>
+        <PageSkeleton variant="dashboard" />
       ) : error ? (
         <div className="rounded-[2rem] border border-rose-500/20 bg-rose-500/5 p-6 text-rose-100 shadow-[0_24px_80px_-46px_rgba(139,0,0,0.45)]">
           <p className="text-sm">{error}</p>
@@ -158,7 +169,7 @@ export default function ReportsClient() {
       ) : (
         <>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            <DashboardStatCard label="Revenue" value={`₱${data.totalRevenue.toFixed(2)}`} accent="text-emerald-300" />
+            <DashboardStatCard label="Revenue" value={peso(data.totalRevenue)} accent="text-emerald-300" />
             <DashboardStatCard label="Transactions" value={String(data.totalTransactions)} accent="text-cyan-300" />
             <DashboardStatCard label="Items Sold" value={String(data.totalItemsSold)} accent="text-violet-300" />
             <DashboardStatCard label="Low Stock Alerts" value={String(lowStockCount)} accent={lowStockCount > 0 ? 'text-rose-400' : 'text-slate-300'} />
@@ -167,7 +178,7 @@ export default function ReportsClient() {
                 period (see /api/reports). */}
             <DashboardStatCard
               label="Outstanding Credit"
-              value={`₱${(data.totalOutstandingCredit ?? 0).toFixed(2)}`}
+              value={peso(data.totalOutstandingCredit ?? 0)}
               accent={(data.totalOutstandingCredit ?? 0) > 0 ? 'text-violet-300' : 'text-slate-300'}
             />
           </div>
@@ -195,7 +206,7 @@ export default function ReportsClient() {
                           <p className="text-sm text-slate-400">{index + 1}. {product.name}</p>
                           <p className="mt-1 text-sm text-slate-500">{product.unitsSold} units sold</p>
                         </div>
-                        <p className="text-sm font-semibold text-slate-200">₱{product.revenue.toFixed(2)}</p>
+                        <p className="text-sm font-semibold text-slate-200">{peso(product.revenue)}</p>
                       </div>
                     </li>
                   ))}
@@ -348,12 +359,12 @@ function ActiveSpotCheckSection() {
 
           <div className="space-y-1.5 text-xs">
             <div className="flex justify-between text-slate-400"><span>Opened At</span><span className="text-slate-200">{new Date(s.openedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div>
-            <div className="flex justify-between text-slate-400"><span>Starting Float</span><span className="text-slate-200">₱{s.openingFloat.toFixed(2)}</span></div>
-            <div className="flex justify-between text-slate-400"><span>Cash Sales (+)</span><span className="text-emerald-400">+₱{s.cashSales.toFixed(2)}</span></div>
-            <div className="flex justify-between text-slate-400"><span>GCash Sales</span><span className="text-sky-400">₱{s.gcashSales.toFixed(2)}</span></div>
+            <div className="flex justify-between text-slate-400"><span>Starting Float</span><span className="text-slate-200">{peso(s.openingFloat)}</span></div>
+            <div className="flex justify-between text-slate-400"><span>Cash Sales (+)</span><span className="text-emerald-400">+{peso(s.cashSales)}</span></div>
+            <div className="flex justify-between text-slate-400"><span>GCash Sales</span><span className="text-sky-400">{peso(s.gcashSales)}</span></div>
             <div className="flex justify-between text-slate-400"><span>Transactions</span><span className="text-slate-200">{s.transactionCount}</span></div>
             <hr className="border-slate-800 my-1" />
-            <div className="flex justify-between font-bold text-sm text-slate-100"><span>Live Expected Cash</span><span className="text-cyan-400">₱{s.expectedCash.toFixed(2)}</span></div>
+            <div className="flex justify-between font-bold text-sm text-slate-100"><span>Live Expected Cash</span><span className="text-cyan-400">{peso(s.expectedCash)}</span></div>
           </div>
         </div>
       ))}
@@ -471,19 +482,19 @@ function ShiftHistoryTable() {
                   <td className="py-3 px-2 font-medium text-slate-100">{s.cashier?.fullName || s.cashier?.username || `User #${s.cashierId}`}</td>
                   <td className="py-3 px-2 text-xs text-slate-400">{new Date(s.openedAt).toLocaleString()}</td>
                   <td className="py-3 px-2 text-xs text-slate-400">{s.closedAt ? new Date(s.closedAt).toLocaleString() : '—'}</td>
-                  <td className="py-3 px-2 font-mono">₱{s.openingFloat.toFixed(2)}</td>
-                  <td className="py-3 px-2 font-mono text-emerald-400">₱{(s.cashSales ?? 0).toFixed(2)}</td>
-                  <td className="py-3 px-2 font-mono text-cyan-300">₱{(s.expectedCash ?? s.openingFloat).toFixed(2)}</td>
-                  <td className="py-3 px-2 font-mono">{s.closingCash !== null ? `₱${s.closingCash.toFixed(2)}` : '—'}</td>
+                  <td className="py-3 px-2 font-mono">{peso(s.openingFloat)}</td>
+                  <td className="py-3 px-2 font-mono text-emerald-400">{peso(s.cashSales ?? 0)}</td>
+                  <td className="py-3 px-2 font-mono text-cyan-300">{peso(s.expectedCash ?? s.openingFloat)}</td>
+                  <td className="py-3 px-2 font-mono">{s.closingCash !== null ? peso(s.closingCash) : '—'}</td>
                   <td className="py-3 px-2 font-mono font-bold">
                     {s.overageShortage === null ? (
                       <span className="text-slate-500">—</span>
                     ) : isBalanced ? (
-                      <span className="text-emerald-400">₱0.00</span>
+                      <span className="text-emerald-400">{peso(0)}</span>
                     ) : isOverage ? (
-                      <span className="text-sky-400">+₱{s.overageShortage.toFixed(2)}</span>
+                      <span className="text-sky-400">+{peso(s.overageShortage)}</span>
                     ) : (
-                      <span className="text-rose-400">-₱{Math.abs(s.overageShortage).toFixed(2)}</span>
+                      <span className="text-rose-400">-{peso(Math.abs(s.overageShortage))}</span>
                     )}
                   </td>
                   <td className="py-3 px-2">
@@ -539,10 +550,10 @@ function ShiftHistoryTable() {
 
             <div className="text-xs text-slate-300 space-y-1 bg-slate-950 p-3 rounded-xl border border-slate-800">
               <div><strong className="text-slate-400">Cashier:</strong> {verifyingShift.cashier?.fullName}</div>
-              <div><strong className="text-slate-400">Opening Float:</strong> ₱{(verifyingShift.openingFloat ?? 0).toFixed(2)}</div>
-              <div><strong className="text-slate-400">Expected Cash:</strong> ₱{(verifyingShift.expectedCash ?? 0).toFixed(2)}</div>
-              <div><strong className="text-slate-400">Counted Cash:</strong> {verifyingShift.closingCash !== null ? `₱${verifyingShift.closingCash.toFixed(2)}` : '—'}</div>
-              <div><strong className="text-slate-400">Variance:</strong> {verifyingShift.overageShortage === null ? '—' : verifyingShift.overageShortage >= 0 ? `+₱${verifyingShift.overageShortage.toFixed(2)}` : `-₱${Math.abs(verifyingShift.overageShortage).toFixed(2)}`}</div>
+              <div><strong className="text-slate-400">Opening Float:</strong> {peso(verifyingShift.openingFloat ?? 0)}</div>
+              <div><strong className="text-slate-400">Expected Cash:</strong> {peso(verifyingShift.expectedCash ?? 0)}</div>
+              <div><strong className="text-slate-400">Counted Cash:</strong> {verifyingShift.closingCash !== null ? peso(verifyingShift.closingCash) : '—'}</div>
+              <div><strong className="text-slate-400">Variance:</strong> {verifyingShift.overageShortage === null ? '—' : verifyingShift.overageShortage >= 0 ? `+${peso(verifyingShift.overageShortage)}` : `-${peso(Math.abs(verifyingShift.overageShortage))}`}</div>
             </div>
 
             <div>

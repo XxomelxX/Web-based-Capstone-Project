@@ -80,6 +80,7 @@ export const config = {
     '/reports/:path*',
     '/users/:path*',
     '/settings/:path*',
+    '/inventory/:path*',
     '/lowstock/:path*',
     '/transaction-log/:path*',
     '/item-log/:path*',

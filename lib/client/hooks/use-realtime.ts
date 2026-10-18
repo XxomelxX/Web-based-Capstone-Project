@@ -25,7 +25,7 @@ export function useRealtime(handlers: RealtimeHandlers) {
     const eventNames: RealtimeChannel[] = [
       'products', 'categories', 'settings', 'transactions',
       'utang', 'expenses', 'users', 'customers',
-      'itemlog', 'lowstock', 'reports', 'restock',
+      'itemlog', 'lowstock', 'reports', 'restock', 'shift',
     ];
 
     const handleEvent = (event: MessageEvent, channel: RealtimeChannel) => {

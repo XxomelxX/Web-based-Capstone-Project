@@ -7,26 +7,80 @@ import { User, Lock, Eye, EyeOff } from 'lucide-react';
 import bcrypt from 'bcryptjs';
 import { db } from '@/lib/client/offline';
 
-async function checkRealConnectivity(): Promise<boolean> {
-  if (typeof window === 'undefined') return false;
-  if (!navigator.onLine) return false;
+type LoginConnectivity = 'online' | 'offline' | 'server-unavailable' | 'database-unavailable';
+
+async function checkRealConnectivity(): Promise<LoginConnectivity> {
+  if (typeof window === 'undefined' || !navigator.onLine) return 'offline';
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2500);
     const res = await fetch('/api/health', {
       method: 'GET',
       cache: 'no-store',
       signal: controller.signal,
     });
-    clearTimeout(timeoutId);
-    return res.ok;
+
+    const data = (await res.json().catch(() => null)) as { database?: string } | null;
+    if (!res.ok) {
+      if (res.status === 503 || data?.database === 'disconnected') return 'database-unavailable';
+      return 'server-unavailable';
+    }
+
+    return data?.database === 'disconnected' ? 'database-unavailable' : 'online';
   } catch {
-    return false;
+    return 'server-unavailable';
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
-export default function LoginFormClient() {
+function getSafeCallbackUrl(raw?: string | null): string {
+  const fallback = '/dashboard';
+  if (!raw) return fallback;
+  try {
+    // Absolute URL (middleware sets full request.url) — allow same-origin only.
+    if (/^https?:\/\//i.test(raw)) {
+      const url = new URL(raw);
+      if (typeof window !== 'undefined' && url.origin !== window.location.origin) return fallback;
+      const path = `${url.pathname}${url.search}${url.hash}`;
+      return path.startsWith('/') && !path.startsWith('//') ? path : fallback;
+    }
+    // Relative path — must start with single slash.
+    if (raw.startsWith('/') && !raw.startsWith('//')) return raw;
+    return fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function getFriendlyAuthError(rawError?: string | null): string {
+  if (!rawError) {
+    return 'Invalid username or password.';
+  }
+
+  const normalized = rawError.toLowerCase();
+
+  if (
+    normalized.includes('database unavailable') ||
+    normalized.includes('can\'t reach database server') ||
+    normalized.includes('database server') ||
+    normalized.includes('prisma.') ||
+    normalized.includes('connection') ||
+    normalized.includes('timeout') ||
+    normalized.includes('ecconnrefused') ||
+    normalized.includes('econnreset') ||
+    normalized.includes('eai_again')
+  ) {
+    return 'The server could not reach the database. Please try again in a moment.';
+  }
+
+  return 'Invalid username or password.';
+}
+
+export default function LoginFormClient({ callbackUrl }: { callbackUrl?: string }) {
   const router = useRouter();
+  const safeCallbackUrl = getSafeCallbackUrl(callbackUrl);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -36,14 +90,26 @@ export default function LoginFormClient() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
-    const cleanUsername = username.trim().toLowerCase();
+    const cleanIdentifier = username.trim().toLowerCase();
     setLoading(true);
 
-    const reallyOnline = await checkRealConnectivity();
+    const connectivity = await checkRealConnectivity();
 
-    if (!reallyOnline) {
+    // Only hard-block when the browser itself is offline and we must use the
+    // cached-credential path. When the server or DB is degraded, still attempt
+    // online signIn once — NextAuth returns the real error (invalid credentials
+    // vs DB down) instead of a misleading pre-check abort stranding users.
+    if (connectivity === 'server-unavailable') {
+      console.warn('Health pre-check unreachable; attempting online sign-in anyway.');
+    }
+
+    if (connectivity === 'database-unavailable') {
+      console.warn('Health reports database disconnected; attempting online sign-in anyway.');
+    }
+
+    if (connectivity === 'offline') {
       try {
-        const cached = await db.cachedCredentials.get(cleanUsername);
+        const cached = await db.cachedCredentials.get(cleanIdentifier);
 
         if (!cached) {
           setError(
@@ -108,17 +174,15 @@ export default function LoginFormClient() {
 
     try {
       const result = await signIn('credentials', {
-        username: cleanUsername,
+        username: cleanIdentifier,
         password,
         redirect: false,
-        callbackUrl: '/dashboard',
+        callbackUrl: safeCallbackUrl,
       });
 
       if (!result || !result.ok) {
         setLoading(false);
-        setError(
-          `Invalid username or password. ${result?.error ? `(${result.error})` : ''}`
-        );
+        setError(getFriendlyAuthError(result?.error));
         return;
       }
 
@@ -131,7 +195,7 @@ export default function LoginFormClient() {
           try {
             const prevRaw = sessionStorage.getItem('offlineSession');
             const prevUser = prevRaw ? (JSON.parse(prevRaw) as { username?: string }) : null;
-            if (!prevUser || prevUser.username !== cleanUsername) {
+            if (!prevUser || prevUser.username !== cleanIdentifier) {
               const { wipeOfflineData } = await import('@/lib/client/offline');
               await wipeOfflineData();
             }
@@ -142,13 +206,13 @@ export default function LoginFormClient() {
           saveIdentity({
             id: Number(session.user.id || 0),
             name: session.user.name || username,
-            username: cleanUsername,
+            username: cleanIdentifier,
             role: (session.user.role as 'admin' | 'cashier') || 'cashier',
           });
 
           const localHash = await bcrypt.hash(password, 10);
           await db.cachedCredentials.put({
-            username: cleanUsername,
+            username: cleanIdentifier,
             passwordHash: localHash,
             role: (session.user.role as 'admin' | 'cashier') || 'cashier',
             fullName: session.user.name || username,
@@ -161,8 +225,9 @@ export default function LoginFormClient() {
       }
 
       setLoading(false);
-      const destination = result.url ?? '/dashboard';
+      const destination = result.url ?? safeCallbackUrl;
       router.push(destination);
+      router.refresh();
     } catch (networkErr) {
       console.error('signIn() threw unexpectedly (likely actually offline):', networkErr);
       setError(
@@ -183,10 +248,10 @@ export default function LoginFormClient() {
 
       {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-5">
-        {/* Username */}
+        {/* Username or email */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Username
+            Username or Email
           </label>
           <div className="relative">
             <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">

@@ -21,7 +21,7 @@ const ADMIN_LINKS = [
 ];
 
 const ADMIN_MORE = [
-  { href: '/lowstock', label: 'Low Stock' },
+  { href: '/inventory', label: 'Inventory' },
   { href: '/transaction-log', label: 'Transaction Log' },
   { href: '/item-log', label: 'Item Log' },
   { href: '/expenses', label: 'Expenses' },
@@ -38,7 +38,7 @@ const CASHIER_LINKS = [
 ];
 
 const CASHIER_MORE = [
-  { href: '/lowstock', label: 'Low Stock' },
+  { href: '/inventory', label: 'Inventory' },
 ];
 
 export function TopNavbar() {

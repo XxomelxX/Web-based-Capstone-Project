@@ -7,7 +7,9 @@ import { getUtangEntries } from '@/lib/client/api/inventory';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
+import { SearchInput } from '@/components/SearchInput';
 import { Wallet, Users, TrendingUp, FileText } from 'lucide-react';
+import { peso } from '@/lib/money';
 
 interface UtangItem {
   id: number;
@@ -62,15 +64,16 @@ function num(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function safeTime(v: unknown, fallback = ''): number {
+function safeTime(v: unknown): number {
   if (!v) return NaN;
   const t = new Date(v as string).getTime();
   return Number.isFinite(t) ? t : NaN;
 }
 
-// Debt-warning policy (tunable). An explicit datetime deadline takes
-// precedence when set; otherwise fall back to age tiers: unpaid older than
-// AGING_DAYS flags as aging (amber), older than OVERDUE_DAYS as overdue (red).
+// Debt-warning policy (tunable). An explicit deadline (a date, stored at
+// local midnight, set from /credit) takes precedence when set; otherwise fall
+// back to age tiers: unpaid older than AGING_DAYS flags as aging (amber),
+// older than OVERDUE_DAYS as overdue (red).
 const AGING_DAYS = 7;
 const OVERDUE_DAYS = 30;
 // A deadline within this many hours counts as "due soon" (amber, urgent).
@@ -105,7 +108,13 @@ function dueTime(iso: unknown): number | null {
 function formatDue(iso: unknown): string {
   const t = dueTime(iso);
   if (t === null) return '';
-  return new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const d = new Date(t);
+  // Credit deadlines are saved date-only (local midnight). Legacy entries and
+  // POS-created deadlines may still carry a time — show it only when present.
+  if (d.getHours() === 0 && d.getMinutes() === 0) {
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  }
+  return d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 // Human "time left / overdue by" with day+hour precision (deadlines carry time).
@@ -118,19 +127,20 @@ function dueDeltaLabel(dueMs: number): string {
   return diff < 0 ? `Overdue by ${core}` : core;
 }
 
-// datetime-local value (device-local) for inputs.
-function toDatetimeLocalValue(iso: unknown): string {
+// date input value (YYYY-MM-DD, device-local) for the deadline picker.
+function toDateLocalValue(iso: unknown): string {
   const t = dueTime(iso);
   if (t === null) return '';
   const d = new Date(t);
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 export default function CreditClient() {
   const liveUtang = useLiveQuery(() => db.utang.toArray());
   const [selectedCustomer, setSelectedCustomer] = useState<number | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | 'unpaid' | 'partial' | 'paid'>('all');
+  const [customerSearch, setCustomerSearch] = useState('');
   const [isCached, setIsCached] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
   const [deadlineEntry, setDeadlineEntry] = useState<Activity | null>(null);
@@ -199,7 +209,7 @@ export default function CreditClient() {
   function openDeadlineModal(a: Activity) {
     setDeadlineError('');
     setDeadlineEntry(a);
-    setDeadlineValue(toDatetimeLocalValue(a.dueDate));
+    setDeadlineValue(toDateLocalValue(a.dueDate));
   }
 
   async function handleSaveDeadline(e: React.FormEvent) {
@@ -209,9 +219,12 @@ export default function CreditClient() {
     // Empty = clear the deadline.
     let iso: string | null = null;
     if (deadlineValue) {
-      const parsed = new Date(deadlineValue);
+      // Date input yields YYYY-MM-DD. Parse as device-local midnight —
+      // new Date('YYYY-MM-DD') is UTC midnight and drifts a day in +08:00.
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(deadlineValue);
+      const parsed = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(NaN);
       if (Number.isNaN(parsed.getTime())) {
-        setDeadlineError('Invalid date/time.');
+        setDeadlineError('Invalid date.');
         return;
       }
       iso = parsed.toISOString();
@@ -231,10 +244,12 @@ export default function CreditClient() {
   }
 
   useEffect(() => {
-    refresh();
+    // Deferred so the effect body stays set-state-free (the initial pull's
+    // setIsOffline/setNowMs run before refresh()'s first await).
+    const t = setTimeout(() => { void refresh(); }, 0);
     function handleReconnect() { refresh(); }
     window.addEventListener(RECONNECT_EVENT_NAME, handleReconnect);
-    return () => window.removeEventListener(RECONNECT_EVENT_NAME, handleReconnect);
+    return () => { clearTimeout(t); window.removeEventListener(RECONNECT_EVENT_NAME, handleReconnect); };
   }, [refresh]);
 
   const customerSummaries = useMemo(() => {
@@ -263,12 +278,16 @@ export default function CreditClient() {
   }, [entries]);
 
   const filteredCustomers = useMemo(() => {
-    if (statusFilter === 'all') return customerSummaries;
-    return customerSummaries.filter((c) => {
-      const customerEntries = entries.filter((e) => e.customerId === c.id && e.status === statusFilter);
-      return customerEntries.length > 0;
-    });
-  }, [customerSummaries, entries, statusFilter]);
+    const byStatus = statusFilter === 'all'
+      ? customerSummaries
+      : customerSummaries.filter((c) => {
+          const customerEntries = entries.filter((e) => e.customerId === c.id && e.status === statusFilter);
+          return customerEntries.length > 0;
+        });
+    const q = customerSearch.trim().toLowerCase();
+    if (!q) return byStatus;
+    return byStatus.filter((c) => c.name.toLowerCase().includes(q));
+  }, [customerSummaries, entries, statusFilter, customerSearch]);
 
   // Per-customer debt flags. An explicit datetime deadline takes precedence:
   // past-due (+balance) = overdue; within DUE_SOON_HOURS = due-soon (amber).
@@ -427,7 +446,7 @@ export default function CreditClient() {
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <StatCard
           label="Total Outstanding"
-          value={`₱${num(totalOutstanding).toFixed(2)}`}
+          value={peso(totalOutstanding)}
           accent="text-amber-400"
           icon={<Wallet size={20} className="text-amber-400" />}
         />
@@ -439,7 +458,7 @@ export default function CreditClient() {
         />
         <StatCard
           label="Collected This Month"
-          value={`₱${num(collectedThisMonth).toFixed(2)}`}
+          value={peso(collectedThisMonth)}
           accent="text-emerald-400"
           icon={<TrendingUp size={20} className="text-emerald-400" />}
         />
@@ -453,12 +472,12 @@ export default function CreditClient() {
 
       {paidTodaySummary.customers > 0 && (
         <div className="text-sm text-emerald-300 bg-emerald-950/40 border border-emerald-800/50 rounded-md px-3 py-2">
-          ✓ {paidTodaySummary.customers} {paidTodaySummary.customers === 1 ? 'customer' : 'customers'} paid today · ₱{num(paidTodaySummary.total).toFixed(2)} collected
+          ✓ {paidTodaySummary.customers} {paidTodaySummary.customers === 1 ? 'customer' : 'customers'} paid today · {peso(paidTodaySummary.total)} collected
         </div>
       )}
       {overdueSummary.customers > 0 && (
         <div className="text-sm text-amber-300 bg-amber-950/40 border border-amber-800/50 rounded-md px-3 py-2">
-          ⚠️ {overdueSummary.customers} {overdueSummary.customers === 1 ? 'customer' : 'customers'} overdue (unpaid &gt; {OVERDUE_DAYS} days) · ₱{num(overdueSummary.total).toFixed(2)} at risk
+          ⚠️ {overdueSummary.customers} {overdueSummary.customers === 1 ? 'customer' : 'customers'} overdue (unpaid &gt; {OVERDUE_DAYS} days) · {peso(overdueSummary.total)} at risk
         </div>
       )}
 
@@ -479,6 +498,15 @@ export default function CreditClient() {
               </select>
             </div>
 
+            <div className="mb-2">
+              <SearchInput
+                value={customerSearch}
+                onChange={setCustomerSearch}
+                placeholder="Search customer name…"
+                ariaLabel="Search customers by name"
+              />
+            </div>
+
             <button
               onClick={() => setSelectedCustomer(null)}
               className={`w-full text-left px-3 py-2 rounded-lg text-sm mb-1 transition cursor-pointer ${
@@ -492,7 +520,7 @@ export default function CreditClient() {
 
             <div className="space-y-1 max-h-[400px] overflow-y-auto">
               {filteredCustomers.length === 0 ? (
-                <p className="text-sm text-slate-500 text-center py-4">No customers found</p>
+                <p className="text-sm text-slate-500 text-center py-4">{customerSearch.trim() ? `No customers match "${customerSearch.trim()}"` : 'No customers found'}</p>
               ) : (
                 filteredCustomers.map((c) => {
                   const flag = debtFlags.get(c.id);
@@ -511,7 +539,7 @@ export default function CreditClient() {
                   >
                     <div className="flex justify-between items-center">
                       <span className="font-medium truncate">{c.name}</span>
-                      <span className="text-amber-400 font-bold">₱{num(c.totalOutstanding).toFixed(2)}</span>
+                      <span className="text-amber-400 font-bold">{peso(c.totalOutstanding)}</span>
                     </div>
                     <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
                       <span>{c.entryCount} {c.entryCount === 1 ? 'entry' : 'entries'}</span>
@@ -530,7 +558,7 @@ export default function CreditClient() {
                         </span>
                       )}
                       {flag && flag.paidToday > 0 && (
-                        <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 font-semibold">✓ Paid today −₱{num(flag.paidToday).toFixed(2)}</span>
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 font-semibold">✓ Paid today −{peso(flag.paidToday)}</span>
                       )}
                     </div>
                   </button>
@@ -643,7 +671,7 @@ export default function CreditClient() {
                       </div>
                       <div className="text-right shrink-0">
                         <p className={`font-bold ${a.type === 'sale' ? 'text-amber-400' : 'text-emerald-400'}`}>
-                          {a.type === 'sale' ? '+' : '-'}₱{num(a.amount).toFixed(2)}
+                          {a.type === 'sale' ? '+' : '-'}{peso(a.amount)}
                         </p>
                         <p className="text-[10px] text-slate-500 mt-0.5">
                           {(() => { const t = safeTime(a.date); return Number.isNaN(t) ? '' : new Date(t).toLocaleDateString(); })()}
@@ -666,7 +694,7 @@ export default function CreditClient() {
               <h3 className="font-bold text-white">Deadline — {deadlineEntry.customerName}</h3>
               <button type="button" onClick={() => setDeadlineEntry(null)} className="text-slate-400 hover:text-white cursor-pointer">✕</button>
             </div>
-            <p className="text-xs text-slate-400">Amount: ₱{num(deadlineEntry.amount).toFixed(2)}</p>
+            <p className="text-xs text-slate-400">Amount: {peso(deadlineEntry.amount)}</p>
             {isOffline && (
               <p className="text-xs text-amber-400 bg-amber-950/40 p-2 rounded border border-amber-800/40">
                 Offline — deadline change queues and syncs on reconnect.
@@ -674,9 +702,9 @@ export default function CreditClient() {
             )}
             {deadlineError && <p className="text-sm text-rose-400">{deadlineError}</p>}
             <div>
-              <label className="text-sm font-medium text-slate-300">Date &amp; time</label>
+              <label className="text-sm font-medium text-slate-300">Date</label>
               <input
-                type="datetime-local"
+                type="date"
                 value={deadlineValue}
                 onChange={(e) => setDeadlineValue(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-cyan-500 mt-1"

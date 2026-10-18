@@ -1,0 +1,532 @@
+{
+  "changes": {
+    "openingBatchesCreated": [
+      {
+        "id": 119,
+        "name": "Nescafe 3in1 Original",
+        "units": 189
+      },
+      {
+        "id": 121,
+        "name": "Great Taste White",
+        "units": 139
+      },
+      {
+        "id": 122,
+        "name": "Milo 3in1",
+        "units": 129
+      },
+      {
+        "id": 123,
+        "name": "C2 Green Tea 500ml",
+        "units": 40
+      },
+      {
+        "id": 124,
+        "name": "Zesto Orange Juice",
+        "units": 90
+      },
+      {
+        "id": 125,
+        "name": "Tang Orange 25g",
+        "units": 98
+      },
+      {
+        "id": 126,
+        "name": "Nature Spring Water 500ml",
+        "units": 120
+      },
+      {
+        "id": 127,
+        "name": "Wilkins Distilled Water 1L",
+        "units": 60
+      },
+      {
+        "id": 128,
+        "name": "Pop Cola 1.5L",
+        "units": 25
+      },
+      {
+        "id": 129,
+        "name": "Gatorade Blue 500ml",
+        "units": 30
+      },
+      {
+        "id": 130,
+        "name": "Lucky Me Pancit Canton Original",
+        "units": 150
+      },
+      {
+        "id": 131,
+        "name": "Lucky Me Pancit Canton Chilimansi",
+        "units": 140
+      },
+      {
+        "id": 132,
+        "name": "Lucky Me Beef na Beef",
+        "units": 130
+      },
+      {
+        "id": 133,
+        "name": "Lucky Me Chicken",
+        "units": 128
+      },
+      {
+        "id": 134,
+        "name": "Payless Sotanghon",
+        "units": 90
+      },
+      {
+        "id": 135,
+        "name": "Nissin Cup Noodles Seafood",
+        "units": 58
+      },
+      {
+        "id": 136,
+        "name": "Quickchow Chicken Noodle Soup",
+        "units": 99
+      },
+      {
+        "id": 137,
+        "name": "Ho-Mi Instant Noodles",
+        "units": 85
+      },
+      {
+        "id": 138,
+        "name": "Piattos Cheese 40g",
+        "units": 70
+      },
+      {
+        "id": 139,
+        "name": "Nova Multigrain Chips",
+        "units": 65
+      },
+      {
+        "id": 140,
+        "name": "Chippy BBQ",
+        "units": 90
+      },
+      {
+        "id": 141,
+        "name": "Clover Chips Barbecue",
+        "units": 80
+      },
+      {
+        "id": 142,
+        "name": "Boy Bawang Cornick",
+        "units": 100
+      },
+      {
+        "id": 143,
+        "name": "Rebisco Crackers",
+        "units": 120
+      },
+      {
+        "id": 144,
+        "name": "Skyflakes Crackers",
+        "units": 110
+      },
+      {
+        "id": 145,
+        "name": "Oreo Original",
+        "units": 75
+      },
+      {
+        "id": 146,
+        "name": "Fita Crackers",
+        "units": 60
+      },
+      {
+        "id": 147,
+        "name": "Cloud 9 Chocolate Bar",
+        "units": 90
+      },
+      {
+        "id": 148,
+        "name": "Nips Candy Chocolate",
+        "units": 200
+      },
+      {
+        "id": 149,
+        "name": "Mentos Mint Roll",
+        "units": 70
+      },
+      {
+        "id": 150,
+        "name": "Yakult 5s",
+        "units": 25
+      },
+      {
+        "id": 151,
+        "name": "Mister Popcorn Cheese",
+        "units": 80
+      },
+      {
+        "id": 152,
+        "name": "Ding Dong Mixed Nuts",
+        "units": 65
+      },
+      {
+        "id": 153,
+        "name": "555 Sardines Hot Chili",
+        "units": 95
+      },
+      {
+        "id": 154,
+        "name": "555 Sardines Original",
+        "units": 100
+      },
+      {
+        "id": 155,
+        "name": "Century Tuna Flakes in Oil",
+        "units": 80
+      },
+      {
+        "id": 156,
+        "name": "Argentina Corned Beef",
+        "units": 70
+      },
+      {
+        "id": 157,
+        "name": "CDO Corned Beef",
+        "units": 65
+      },
+      {
+        "id": 159,
+        "name": "Ligo Sardines in Tomato Sauce",
+        "units": 89
+      },
+      {
+        "id": 160,
+        "name": "Mega Sardines",
+        "units": 95
+      },
+      {
+        "id": 161,
+        "name": "Alaska Evaporated Milk",
+        "units": 85
+      },
+      {
+        "id": 162,
+        "name": "Angel Condensed Milk",
+        "units": 75
+      },
+      {
+        "id": 163,
+        "name": "Tide Powder 70g",
+        "units": 100
+      },
+      {
+        "id": 164,
+        "name": "Surf Powder 70g",
+        "units": 95
+      },
+      {
+        "id": 165,
+        "name": "Ariel Powder 65g",
+        "units": 90
+      },
+      {
+        "id": 166,
+        "name": "Joy Dishwashing Liquid 250ml",
+        "units": 60
+      },
+      {
+        "id": 167,
+        "name": "Downy Fabric Conditioner 27ml",
+        "units": 150
+      },
+      {
+        "id": 168,
+        "name": "Zonrox Bleach 250ml",
+        "units": 50
+      },
+      {
+        "id": 169,
+        "name": "Domex Toilet Bowl Cleaner",
+        "units": 30
+      },
+      {
+        "id": 170,
+        "name": "Baygon Insect Spray",
+        "units": 20
+      },
+      {
+        "id": 171,
+        "name": "Champion Detergent Bar",
+        "units": 80
+      },
+      {
+        "id": 172,
+        "name": "Trash Bag Roll (Medium)",
+        "units": 100
+      },
+      {
+        "id": 173,
+        "name": "Safeguard Soap 130g",
+        "units": 70
+      },
+      {
+        "id": 174,
+        "name": "Palmolive Naturals Soap",
+        "units": 65
+      },
+      {
+        "id": 175,
+        "name": "Head & Shoulders Shampoo 12ml",
+        "units": 150
+      },
+      {
+        "id": 176,
+        "name": "Sunsilk Shampoo Sachet",
+        "units": 160
+      },
+      {
+        "id": 177,
+        "name": "Colgate Total Toothpaste 20g",
+        "units": 100
+      },
+      {
+        "id": 178,
+        "name": "Close Up Toothpaste",
+        "units": 90
+      },
+      {
+        "id": 179,
+        "name": "Rexona Deodorant Roll-On",
+        "units": 40
+      },
+      {
+        "id": 180,
+        "name": "Johnson Baby Powder 50g",
+        "units": 55
+      },
+      {
+        "id": 181,
+        "name": "Modess Sanitary Napkin",
+        "units": 70
+      },
+      {
+        "id": 182,
+        "name": "Nice n Fluffy Fabric Softener",
+        "units": 100
+      },
+      {
+        "id": 183,
+        "name": "Bear Brand Milk 33g",
+        "units": 85
+      },
+      {
+        "id": 184,
+        "name": "Alaska Fresh Milk 200ml",
+        "units": 50
+      },
+      {
+        "id": 185,
+        "name": "Anchor Butter 25g",
+        "units": 60
+      },
+      {
+        "id": 186,
+        "name": "Eden Cheese 165g",
+        "units": 35
+      },
+      {
+        "id": 187,
+        "name": "Magnolia Ice Cream Cup",
+        "units": 40
+      },
+      {
+        "id": 188,
+        "name": "Yakult Original",
+        "units": 100
+      },
+      {
+        "id": 189,
+        "name": "Datu Puti Vinegar 350ml",
+        "units": 60
+      },
+      {
+        "id": 190,
+        "name": "Datu Puti Soy Sauce 350ml",
+        "units": 60
+      },
+      {
+        "id": 191,
+        "name": "Silver Swan Soy Sauce",
+        "units": 55
+      },
+      {
+        "id": 192,
+        "name": "Golden Fiesta Cooking Oil 250ml",
+        "units": 50
+      },
+      {
+        "id": 193,
+        "name": "Minola Cooking Oil 250ml",
+        "units": 55
+      },
+      {
+        "id": 194,
+        "name": "Maggi Magic Sarap 8g",
+        "units": 157
+      },
+      {
+        "id": 195,
+        "name": "Knorr Sinigang Mix",
+        "units": 80
+      },
+      {
+        "id": 196,
+        "name": "UFC Banana Ketchup",
+        "units": 65
+      },
+      {
+        "id": 197,
+        "name": "Del Monte Tomato Sauce",
+        "units": 70
+      },
+      {
+        "id": 198,
+        "name": "Lorins Vetsin (MSG) 10g",
+        "units": 199
+      },
+      {
+        "id": 199,
+        "name": "Sinandomeng Rice (1kg)",
+        "units": 100
+      },
+      {
+        "id": 200,
+        "name": "Dinorado Rice (1kg)",
+        "units": 80
+      },
+      {
+        "id": 201,
+        "name": "Jasmine Rice (1kg)",
+        "units": 60
+      },
+      {
+        "id": 202,
+        "name": "Mongo Beans (500g)",
+        "units": 40
+      },
+      {
+        "id": 203,
+        "name": "Gardenia Classic White Bread",
+        "units": 30
+      },
+      {
+        "id": 204,
+        "name": "Pan de Sal (piece)",
+        "units": 200
+      },
+      {
+        "id": 205,
+        "name": "Rebisco Sandwich Cracker",
+        "units": 100
+      },
+      {
+        "id": 206,
+        "name": "Pampers Diaper (Medium, single)",
+        "units": 80
+      },
+      {
+        "id": 207,
+        "name": "Bonakid Milk Powder Sachet",
+        "units": 48
+      },
+      {
+        "id": 208,
+        "name": "Baby Cologne Small Bottle",
+        "units": 34
+      },
+      {
+        "id": 212,
+        "name": "Pancit Canton",
+        "units": 48
+      },
+      {
+        "id": 213,
+        "name": "Pancit Canton",
+        "units": 50
+      },
+      {
+        "id": 214,
+        "name": "Surf Powder",
+        "units": 26
+      },
+      {
+        "id": 215,
+        "name": "Chicharon",
+        "units": 47
+      },
+      {
+        "id": 216,
+        "name": "ddad",
+        "units": 24
+      },
+      {
+        "id": 218,
+        "name": "beef loaf",
+        "units": 49
+      },
+      {
+        "id": 219,
+        "name": "buwad",
+        "units": 54
+      },
+      {
+        "id": 220,
+        "name": "Kopiko 3in1",
+        "units": 46
+      },
+      {
+        "id": 224,
+        "name": "shin",
+        "units": 34
+      }
+    ],
+    "correctionBatchesCreated": [
+      {
+        "id": 118,
+        "name": "Mountain Dew 500ml",
+        "units": 4
+      }
+    ],
+    "batchesReduced": [
+      {
+        "productId": 115,
+        "batchId": 17,
+        "reducedBy": 10
+      },
+      {
+        "productId": 116,
+        "batchId": 14,
+        "reducedBy": 33
+      },
+      {
+        "productId": 117,
+        "batchId": 21,
+        "reducedBy": 16
+      },
+      {
+        "productId": 120,
+        "batchId": 19,
+        "reducedBy": 50
+      },
+      {
+        "productId": 120,
+        "batchId": 18,
+        "reducedBy": 12
+      },
+      {
+        "productId": 211,
+        "batchId": 16,
+        "reducedBy": 8
+      }
+    ],
+    "negativeStockFixed": []
+  },
+  "remaining": []
+}

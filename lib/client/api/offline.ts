@@ -176,21 +176,42 @@ export async function getUtangEntriesOffline<T = Record<string, unknown>>(): Pro
   );
 }
 
-export async function getReportsOffline<T = Record<string, unknown>>(range: 'today' | 'week' | 'month' | 'year' | 'all' = 'all'): Promise<T> {
-  return cachedGet(
-    () => getCachedReport<T>(range),
-    async () => {
+export async function getReportsOffline<T = Record<string, unknown>>(
+  range: 'today' | 'week' | 'month' | 'year' | 'all' = 'all',
+  options?: { onStale?: () => void }
+): Promise<T> {
+  const loadCached = async (): Promise<T | null> => {
+    const cached = await getCachedReport<T>(range);
+    if (cached === null || cached === undefined) return null;
+    options?.onStale?.();
+    return cached;
+  };
+
+  if (isOnline()) {
+    try {
       const res = await fetch(`/api/reports?range=${range}`);
       if (!res.ok) {
+        if (res.status === 503) {
+          throw new Error(
+            'The database is temporarily unavailable, so the dashboard may show older data.'
+          );
+        }
         const body = await res.text();
         throw new Error(`Failed to load reports (${res.status}): ${body || res.statusText}`);
       }
       const data = (await res.json()) as T;
       await saveReport(range, data);
       return data;
-    },
-    (data) => saveReport(range, data)
-  );
+    } catch (error) {
+      const cached = await loadCached();
+      if (cached !== null) return cached;
+      throw error;
+    }
+  }
+
+  const cached = await loadCached();
+  if (cached !== null) return cached;
+  throw new Error('Offline and no cached data available');
 }
 
 export async function getLowStockOffline() {

@@ -3,11 +3,13 @@ import { prisma } from '@/lib/server/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/server/auth';
 import { broadcastRealtime } from '@/lib/server/realtime';
+import { consumeFifoStock } from '@/lib/server/fifo';
+import { peso } from '@/lib/money';
 
 interface CartItem {
   productId: number;
   quantity: number;
-  unitPrice: number;
+  unitPrice: number; // centavos (server re-prices anyway; kept for payload shape)
 }
 
 export async function POST(request: Request) {
@@ -28,8 +30,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Cart is empty' }, { status: 400 });
   }
 
-  if (Number.isNaN(tendered) || tendered < 0) {
-    tendered = 0;
+  // Money is integer centavos end-to-end; reject legacy float payloads loudly
+  // instead of silently truncating (old cached clients must reload).
+  if (!Number.isInteger(tendered) || tendered < 0) {
+    return NextResponse.json({ error: 'tendered must be an integer amount in centavos' }, { status: 400 });
   }
 
   try {
@@ -61,27 +65,28 @@ export async function POST(request: Request) {
 
       const subtotal = priced.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
 
+      // VAT-inclusive pricing: extract VAT per line (integer centavos, rounded
+      // per line so the sum of lines always equals the receipt total).
       let vat = 0;
       for (const item of priced) {
         const product = productMap.get(item.productId);
         if (product?.vatType === 'regular') {
           const lineTotal = item.quantity * item.unitPrice;
-          vat += lineTotal * (taxRate / (100 + taxRate));
+          vat += Math.round((lineTotal * taxRate) / (100 + taxRate));
         }
       }
-      vat = Number(vat.toFixed(2));
 
-      const total = Number(subtotal.toFixed(2));
+      const total = subtotal;
 
       if (paymentMethod === 'gcash' && (tendered < total || tendered === 0)) {
         tendered = total;
       }
 
       if (tendered < total) {
-        throw new Error(`Cash tendered (₱${tendered.toFixed(2)}) is less than total amount (₱${total.toFixed(2)})`);
+        throw new Error(`Cash tendered (${peso(tendered)}) is less than total amount (${peso(total)})`);
       }
 
-      const change = Number((tendered - total).toFixed(2));
+      const change = tendered - total;
 
       const cashierId = Number(session.user.id);
       if (!Number.isFinite(cashierId)) throw new Error('Invalid session');
@@ -113,7 +118,7 @@ export async function POST(request: Request) {
             productId: item.productId,
             quantity: item.quantity,
             unitPrice: item.unitPrice,
-            lineTotal: Number((item.quantity * item.unitPrice).toFixed(2)),
+            lineTotal: item.quantity * item.unitPrice,
           },
         });
 
@@ -121,6 +126,9 @@ export async function POST(request: Request) {
           where: { id: item.productId },
           data: { stock: { decrement: item.quantity } },
         });
+
+        // FIFO: consume the oldest stock layers first (same transaction).
+        await consumeFifoStock(tx, item.productId, item.quantity);
 
         await tx.itemLog.create({
           data: {

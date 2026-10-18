@@ -5,6 +5,7 @@ const prisma = new PrismaClient();
 
 interface SeedProduct {
   name: string;
+  // Pesos in source (converted to centavos at write time).
   price: number;
   cost: number;
   stock: number;
@@ -179,8 +180,9 @@ async function seedProductsAndCategories() {
       data: items.map((item) => ({
         name: item.name,
         categoryId: category.id,
-        price: item.price,
-        cost: item.cost,
+        // Seed source stays in readable pesos; DB stores integer centavos.
+        price: Math.round(item.price * 100),
+        cost: Math.round(item.cost * 100),
         stock: item.stock,
         goodsType: item.goodsType,
         vatType: item.vatType,
@@ -189,6 +191,24 @@ async function seedProductsAndCategories() {
           : null,
       })),
     });
+
+    // One opening FIFO layer per product so StockBatch totals match Product.stock.
+    const created = await prisma.product.findMany({
+      where: { categoryId: category.id },
+      select: { id: true, stock: true, cost: true },
+    });
+    for (const p of created) {
+      if (p.stock <= 0) continue;
+      await prisma.stockBatch.create({
+        data: {
+          productId: p.id,
+          quantityReceived: p.stock,
+          quantityRemaining: p.stock,
+          supplier: 'Opening stock',
+          costPerUnit: p.cost,
+        },
+      });
+    }
     totalInserted += items.length;
   }
 

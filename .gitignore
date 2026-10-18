@@ -24,6 +24,9 @@
 .DS_Store
 *.pem
 
+# local development database (embedded Postgres, port 5433)
+/.local-pg-data/
+
 # debug
 npm-debug.log*
 yarn-debug.log*
@@ -45,3 +48,8 @@ public/sw.js
 public/sw.js.map
 public/workbox-*.js
 public/workbox-*.js.map
+
+# runtime logs (dev/prod server output — kept on disk, invisible to git)
+*.log
+*.err
+

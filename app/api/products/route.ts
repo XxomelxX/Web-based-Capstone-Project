@@ -54,8 +54,8 @@ export async function POST(request: Request) {
   const price = Number(data.price);
   const cost = Number(data.cost ?? 0);
   const stock = Number(data.stock);
-  if (!Number.isFinite(price) || price < 0 || !Number.isFinite(cost) || cost < 0) {
-    return NextResponse.json({ error: 'price and cost must be non-negative numbers' }, { status: 400 });
+  if (!Number.isInteger(price) || price < 0 || !Number.isInteger(cost) || cost < 0) {
+    return NextResponse.json({ error: 'price and cost must be non-negative integers in centavos' }, { status: 400 });
   }
   if (!Number.isInteger(stock) || stock < 0) {
     return NextResponse.json({ error: 'stock must be a non-negative integer' }, { status: 400 });
@@ -65,21 +65,37 @@ export async function POST(request: Request) {
   }
 
   try {
-    const product = await prisma.product.create({
-      data: {
-        name: String(data.name).trim(),
-        categoryId: Number(data.categoryId),
-        price,
-        cost,
-        stock,
-        packSize: data.packSize ?? null,
-        unit: data.unit ?? null,
-        barcode: data.barcode ?? null,
-        goodsType: data.goodsType ?? 'non-perishable',
-        vatType: data.vatType ?? 'exempt',
-        expiryDate: data.expiryDate ? new Date(data.expiryDate) : null,
-      },
-    });
+    // Product + opening batch must be atomic: Product.stock must always equal
+    // the sum of StockBatch layers (see lib/server/fifo.ts conventions).
+    const product = await prisma.$transaction(async (tx) => {
+      const created = await tx.product.create({
+        data: {
+          name: String(data.name).trim(),
+          categoryId: Number(data.categoryId),
+          price,
+          cost,
+          stock,
+          packSize: data.packSize ?? null,
+          unit: data.unit ?? null,
+          barcode: data.barcode ?? null,
+          goodsType: data.goodsType ?? 'non-perishable',
+          vatType: data.vatType ?? 'exempt',
+          expiryDate: data.expiryDate ? new Date(data.expiryDate) : null,
+        },
+      });
+      if (stock > 0) {
+        await tx.stockBatch.create({
+          data: {
+            productId: created.id,
+            quantityReceived: stock,
+            quantityRemaining: stock,
+            supplier: 'Opening stock',
+            costPerUnit: cost,
+          },
+        });
+      }
+      return created;
+    }, { maxWait: 10_000, timeout: 15_000 });
 
     broadcastRealtime('products', { action: 'created', product });
     return NextResponse.json(product, { status: 201 });

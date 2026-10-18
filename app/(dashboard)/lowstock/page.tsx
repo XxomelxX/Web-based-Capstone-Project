@@ -1,5 +1,5 @@
-import LowStockClient from './LowStockClient';
+import { redirect } from 'next/navigation';
 
 export default function LowStockPage() {
-  return <LowStockClient />;
+  redirect('/inventory');
 }

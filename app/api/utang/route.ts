@@ -3,6 +3,7 @@ import { prisma } from '@/lib/server/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/server/auth';
 import { broadcastRealtime } from '@/lib/server/realtime';
+import { consumeFifoStock } from '@/lib/server/fifo';
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -115,6 +116,9 @@ export async function POST(request: Request) {
           where: { id: item.productId },
           data: { stock: { decrement: item.quantity } },
         });
+
+        // FIFO: utang sales consume the oldest stock layers first.
+        await consumeFifoStock(tx, item.productId, item.quantity);
 
         await tx.itemLog.create({
           data: {

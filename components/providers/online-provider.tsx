@@ -66,8 +66,12 @@ export function OnlineProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     let pinging = false;
+    const isAuthRoute = () =>
+      typeof window !== 'undefined' &&
+      (window.location.pathname === '/login' ||
+        window.location.pathname === '/forgot-password');
     const verify = async () => {
-      if (pinging) return;
+      if (pinging || isAuthRoute()) return;
       pinging = true;
       try {
         const online = await checkConnectivity();
@@ -82,8 +86,10 @@ export function OnlineProvider({ children }: { children: React.ReactNode }) {
     if (!navigator.onLine) handleConnectivityResult(false);
     void verify();
     // Initial sync pull to populate Dexie cache on first load
+    // (skip on auth routes — no session yet, and it just hammers Neon during login).
     void (async () => {
       try {
+        if (isAuthRoute()) return;
         if (!navigator.onLine || !(await checkConnectivity())) return;
         await performSync();
       } catch { /* non-critical */ }

@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/server/auth';
 import { prisma } from '@/lib/server/prisma';
 import { getDrawerFloat } from '@/lib/server/shiftDrawer';
+import { sumShiftCash, computeExpectedCash } from '@/lib/server/shiftCash';
 
 // GET /api/shift — Fetch active open shift for the logged-in cashier
 export async function GET() {
@@ -52,9 +53,11 @@ export async function GET() {
 
   const totalSales = cashSales + gcashSales;
   // Shared drawer: expected cash = admin's drawer float + this user's cash
-  // sales. The float override is returned so the client shows the drawer float.
+  // sales + cash in − cash out − expenses (see lib/server/shiftCash.ts).
+  // The float override is returned so the client shows the drawer float.
   const drawerFloat = await getDrawerFloat(session.user.role, activeShift.openingFloat);
-  const expectedCash = drawerFloat + cashSales;
+  const cashSums = await sumShiftCash(prisma, activeShift.id);
+  const expectedCash = computeExpectedCash(drawerFloat, cashSales, cashSums);
 
   return NextResponse.json({
     activeShift: {
@@ -65,6 +68,9 @@ export async function GET() {
       totalSales,
       transactionCount: shiftTransactions.length,
       expectedCash,
+      cashIn: cashSums.cashIn,
+      cashOut: cashSums.cashOut,
+      totalExpenses: cashSums.expenses,
     },
   });
 }
@@ -103,8 +109,8 @@ export async function POST(request: Request) {
       }
 
       const floatAmount = Number(openingFloat);
-      if (!Number.isFinite(floatAmount) || floatAmount < 0) {
-        return NextResponse.json({ error: 'openingFloat must be a non-negative number' }, { status: 400 });
+      if (!Number.isInteger(floatAmount) || floatAmount < 0) {
+        return NextResponse.json({ error: 'openingFloat must be a non-negative integer in centavos' }, { status: 400 });
       }
 
       try {
@@ -151,6 +157,10 @@ export async function POST(request: Request) {
               expectedCash: replayed.expectedCash ?? replayed.openingFloat,
               closingCash: replayed.closingCash,
               overageShortage: replayed.overageShortage,
+              // Snapshots persisted at close (empty shift → 0).
+              cashIn: replayed.cashIn ?? 0,
+              cashOut: replayed.cashOut ?? 0,
+              expenses: replayed.totalExpenses ?? 0,
             },
           });
         }
@@ -198,18 +208,21 @@ export async function POST(request: Request) {
       // closingCash is optional: when omitted (no physical drawer count),
       // store null so the shift closes without an over/short variance.
       const hasCountedCash = closingCash !== undefined && closingCash !== null
-        && Number.isFinite(Number(closingCash));
+        && Number.isInteger(Number(closingCash));
       let countCash: number | null = null;
       if (hasCountedCash) {
         countCash = Number(closingCash);
         if (countCash < 0) {
-          return NextResponse.json({ error: 'closingCash must be a non-negative number' }, { status: 400 });
+          return NextResponse.json({ error: 'closingCash must be a non-negative integer in centavos' }, { status: 400 });
         }
       }
       // Shared drawer: close against the admin's drawer float (fallback: own
       // float) and persist it so the closed record reconciles in history.
+      // Cash movements (cash in/out/expenses) adjust the expected cash; their
+      // totals are snapshotted on the shift row so history stays self-contained.
       const drawerFloat = await getDrawerFloat(session.user.role, activeShift.openingFloat);
-      const expectedCash = drawerFloat + cashSales;
+      const cashSums = await sumShiftCash(prisma, activeShift.id);
+      const expectedCash = computeExpectedCash(drawerFloat, cashSales, cashSums);
       const overageShortage = countCash !== null ? countCash - expectedCash : null;
 
       // Guard against double-close from two devices: only close if still open.
@@ -224,6 +237,9 @@ export async function POST(request: Request) {
             expectedCash,
             cashSales,
             gcashSales,
+            cashIn: cashSums.cashIn,
+            cashOut: cashSums.cashOut,
+            totalExpenses: cashSums.expenses,
             overageShortage,
             status: 'closed',
             closedAt: new Date(),
@@ -260,6 +276,9 @@ export async function POST(request: Request) {
           expectedCash,
           closingCash: countCash,
           overageShortage,
+          cashIn: cashSums.cashIn,
+          cashOut: cashSums.cashOut,
+          expenses: cashSums.expenses,
         },
       });
     }

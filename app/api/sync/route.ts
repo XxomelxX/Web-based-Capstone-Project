@@ -5,6 +5,8 @@ import { authOptions } from '@/lib/server/auth';
 import { queuedActionSchema } from '@/lib/client/validation';
 import { broadcastRealtime } from '@/lib/server/realtime';
 import { getDrawerFloat } from '@/lib/server/shiftDrawer';
+import { sumShiftCash, computeExpectedCash } from '@/lib/server/shiftCash';
+import { consumeFifoStock, restoreFifoStock, adjustFifoStock } from '@/lib/server/fifo';
 
 // Accepts at most 100 actions per push (matches the client-side queue cap).
 const MAX_ACTIONS = 100;
@@ -100,13 +102,15 @@ export async function POST(request: Request) {
               data: { transactionId: txn.id, productId: item.productId, quantity: item.quantity, unitPrice: item.unitPrice, lineTotal: Number((item.quantity * item.unitPrice).toFixed(2)) },
             });
             await tx.product.update({ where: { id: item.productId }, data: { stock: { decrement: item.quantity } } });
+            await consumeFifoStock(tx, item.productId, item.quantity);
             await tx.itemLog.create({ data: { productId: item.productId, action: 'sold', quantity: item.quantity, performedBy: cashierId } });
           }
           return txn;
         }, { maxWait: 15000, timeout: 25000 });
-        // Offline prices may be stale: compare client-expected vs server total.
+        // Offline prices may be stale: compare client-expected vs server total
+        // (exact integer centavo compare — no float epsilon).
         const priceConflict = p.expectedSubtotal !== undefined
-          && Math.abs(Number(p.expectedSubtotal) - Number(created.total)) > 0.009;
+          && Number(p.expectedSubtotal) !== created.total;
         broadcastRealtime('transactions', { action: 'created' });
         broadcastRealtime('products', { action: 'stock-updated' });
         broadcastRealtime('itemlog', { action: 'created' });
@@ -155,6 +159,7 @@ export async function POST(request: Request) {
               data: { utangEntryId: entry.id, productId: item.productId, quantity: item.quantity, unitPrice: item.unitPrice, lineTotal: item.quantity * item.unitPrice },
             });
             await tx.product.update({ where: { id: item.productId }, data: { stock: { decrement: item.quantity } } });
+            await consumeFifoStock(tx, item.productId, item.quantity);
             await tx.itemLog.create({ data: { productId: item.productId, action: 'sold', quantity: item.quantity, performedBy: cashierId } });
           }
 
@@ -188,7 +193,7 @@ export async function POST(request: Request) {
           return entry;
         }, { maxWait: 15000, timeout: 25000 });
         const utangPriceConflict = p.expectedSubtotal !== undefined
-          && Math.abs(Number(p.expectedSubtotal) - created.totalAmount) > 0.009;
+          && Number(p.expectedSubtotal) !== created.totalAmount;
         broadcastRealtime('utang', { action: 'created' });
         broadcastRealtime('transactions', { action: 'created' });
         broadcastRealtime('products', { action: 'stock-updated' });
@@ -199,7 +204,9 @@ export async function POST(request: Request) {
           error: utangPriceConflict ? 'Prices changed while offline — server prices applied (server-wins)' : undefined,
         });
       } else if (action.type === 'record_payment') {
-        if (!p.customerName || !p.amount || p.amount <= 0) throw new Error('customerName and positive amount required');
+        if (!p.customerName || !p.amount || !Number.isInteger(p.amount) || p.amount <= 0) {
+          throw new Error('customerName and positive integer amount (centavos) required');
+        }
         const existing = await prisma.payment.findUnique({ where: { clientUuid: action.clientUuid } });
         if (existing) {
           results.push({ clientUuid: action.clientUuid, ok: true, serverId: existing.id });
@@ -215,7 +222,7 @@ export async function POST(request: Request) {
         if (serverBalance <= 0) throw new Error('Customer has no outstanding utang');
         // Server-wins conflict: balance moved while offline — still apply FIFO
         // to current server state, but flag it for review.
-        const conflict = p.expectedBalance !== undefined && Math.abs(p.expectedBalance - serverBalance) > 0.009;
+        const conflict = p.expectedBalance !== undefined && Number(p.expectedBalance) !== serverBalance;
         const created = await prisma.$transaction(async (tx) => {
           const outstanding = await tx.utangEntry.findMany({
             where: { customerId: customer.id, status: { in: ['unpaid', 'partial'] } },
@@ -282,7 +289,7 @@ export async function POST(request: Request) {
         const created = await prisma.shift.create({
           data: {
             clientUuid: action.clientUuid, cashierId,
-            openingFloat: Number(p.openingFloat ?? 0),
+            openingFloat: Number.isInteger(p.openingFloat) ? p.openingFloat! : 0,
             status: 'open', notes: p.notes ?? null,
             ...(hasQueuedOpenedAt ? { openedAt: queuedOpenedAt } : {}),
           },
@@ -310,52 +317,127 @@ export async function POST(request: Request) {
         // closingCash is optional: when omitted (no physical drawer count at
         // close time), store null so overage/shortage stays null (not a fake 0).
         const hasCounted = p.closingCash !== undefined && p.closingCash !== null
-          && Number.isFinite(Number(p.closingCash));
-        const countCash = hasCounted ? Number(p.closingCash) : null;
+          && Number.isInteger(p.closingCash);
+        const countCash = hasCounted ? p.closingCash! : null;
         // Shared drawer: reconcile against the admin's drawer float (fallback:
         // the shift's own float) and persist it so history matches the Z-Read.
+        // Cash movements recorded offline replay first (FIFO), so their sums
+        // are already on the server by the time close replays.
         const drawerFloat = await getDrawerFloat(role, activeShift.openingFloat);
-        const expectedCash = drawerFloat + cashSales;
+        const cashSums = await sumShiftCash(prisma, activeShift.id);
+        const expectedCash = computeExpectedCash(drawerFloat, cashSales, cashSums);
         const closed = await prisma.shift.update({
           where: { id: activeShift.id },
           data: {
             clientUuid: action.clientUuid, openingFloat: drawerFloat,
             closingCash: countCash, expectedCash,
             cashSales, gcashSales,
+            cashIn: cashSums.cashIn, cashOut: cashSums.cashOut, totalExpenses: cashSums.expenses,
             overageShortage: countCash !== null ? countCash - expectedCash : null,
             status: 'closed', closedAt: new Date(), notes: p.notes ?? activeShift.notes,
           },
         });
         results.push({ clientUuid: action.clientUuid, ok: true, serverId: closed.id });
+      } else if (action.type === 'cash_movement') {
+        const existing = await prisma.cashMovement.findUnique({ where: { clientUuid: action.clientUuid } });
+        if (existing) {
+          results.push({ clientUuid: action.clientUuid, ok: true, serverId: existing.id });
+          continue;
+        }
+        const movementType = p.movementType;
+        if (movementType !== 'cash_in' && movementType !== 'cash_out' && movementType !== 'expense') {
+          throw new Error('movementType must be "cash_in", "cash_out" or "expense"');
+        }
+        const amount = Number(p.amount);
+        if (!Number.isInteger(amount) || amount <= 0) {
+          throw new Error('amount must be a positive integer in centavos');
+        }
+        // Resolve the shift server-side from the syncing session's open shift
+        // (same pattern as close_shift) — the offline client only knew a temp
+        // id, and FIFO replay guarantees open_shift ran before this action.
+        const activeShift = await prisma.shift.findFirst({
+          where: { cashierId, status: 'open' }, orderBy: { openedAt: 'desc' },
+        });
+        if (!activeShift) throw new Error('No active open shift for cash movement');
+        const created = await prisma.$transaction(async (tx) => {
+          const movement = await tx.cashMovement.create({
+            data: {
+              clientUuid: action.clientUuid, shiftId: activeShift.id,
+              type: movementType, amount, note: p.note ?? null, performedBy: cashierId,
+            },
+          });
+          if (movementType === 'expense') {
+            // Dual-write Expense so store reports include shift spending.
+            const expense = await tx.expense.create({
+              data: {
+                type: 'Shift Expense', amount,
+                period: new Date().toISOString().slice(0, 10), note: p.note ?? null,
+              },
+            });
+            return tx.cashMovement.update({ where: { id: movement.id }, data: { expenseId: expense.id } });
+          }
+          return movement;
+        }, { maxWait: 15000, timeout: 25000 });
+        broadcastRealtime('shift', { action: 'cash-movement', shiftId: activeShift.id });
+        if (movementType === 'expense') broadcastRealtime('expenses', { action: 'created' });
+        results.push({ clientUuid: action.clientUuid, ok: true, serverId: created.id });
       } else if (action.type === 'product_upsert') {
         if (requireAdmin(action.clientUuid)) continue;
         const d = (p.data ?? {}) as Record<string, unknown>;
+        if (d.stock !== undefined && (!Number.isInteger(d.stock) || (d.stock as number) < 0)) {
+          throw new Error('stock must be a non-negative integer');
+        }
         if (p.entityId) {
-          const updated = await prisma.product.update({ where: { id: p.entityId }, data: {
-            ...(typeof d.name === 'string' ? { name: d.name } : {}),
-            ...(typeof d.price === 'number' ? { price: d.price } : {}),
-            ...(typeof d.cost === 'number' ? { cost: d.cost } : {}),
-            ...(typeof d.stock === 'number' ? { stock: d.stock } : {}),
-            ...(typeof d.categoryId === 'number' ? { categoryId: d.categoryId } : {}),
-            ...(typeof d.barcode === 'string' || d.barcode === null ? { barcode: d.barcode as string | null } : {}),
-            ...(typeof d.archived === 'boolean' ? { archived: d.archived } : {}),
-            ...(typeof d.goodsType === 'string' ? { goodsType: d.goodsType } : {}),
-            ...(typeof d.vatType === 'string' ? { vatType: d.vatType } : {}),
-          } });
+          // Server-wins field update. A stock edit reconciles the FIFO layers
+          // (same rule as online PATCH /api/products/:id) — a bare absolute
+          // write used to desync Product.stock from the layer sum.
+          const updated = await prisma.$transaction(async (tx) => {
+            const current = await tx.product.findUnique({
+              where: { id: p.entityId },
+            });
+            if (!current) throw new Error('Product not found');
+            const row = await tx.product.update({ where: { id: p.entityId }, data: {
+              ...(typeof d.name === 'string' ? { name: d.name } : {}),
+              ...(Number.isInteger(d.price) ? { price: d.price as number } : {}),
+              ...(Number.isInteger(d.cost) ? { cost: d.cost as number } : {}),
+              ...(typeof d.categoryId === 'number' ? { categoryId: d.categoryId } : {}),
+              ...(typeof d.barcode === 'string' || d.barcode === null ? { barcode: d.barcode as string | null } : {}),
+              ...(typeof d.archived === 'boolean' ? { archived: d.archived } : {}),
+              ...(typeof d.goodsType === 'string' ? { goodsType: d.goodsType } : {}),
+              ...(typeof d.vatType === 'string' ? { vatType: d.vatType } : {}),
+            } });
+            if (typeof d.stock === 'number' && d.stock !== row.stock) {
+              await adjustFifoStock(tx, row, d.stock, 'Correction (offline edit)');
+              return tx.product.findUnique({ where: { id: p.entityId } });
+            }
+            return row;
+          }, { maxWait: 15000, timeout: 25000 });
           broadcastRealtime('products', { action: 'updated' });
-          results.push({ clientUuid: action.clientUuid, ok: true, serverId: updated.id, conflict: true, error: 'Applied over current server state (server-wins)' });
+          results.push({ clientUuid: action.clientUuid, ok: true, serverId: updated!.id, conflict: true, error: 'Applied over current server state (server-wins)' });
         } else {
-          if (typeof d.name !== 'string' || typeof d.price !== 'number') throw new Error('name and price required');
-          const created = await prisma.product.create({ data: {
-            name: d.name, price: d.price,
-            cost: typeof d.cost === 'number' ? d.cost : 0,
-            stock: typeof d.stock === 'number' ? d.stock : 0,
-            categoryId: typeof d.categoryId === 'number' ? d.categoryId : (await prisma.category.findFirst())!.id,
-            barcode: typeof d.barcode === 'string' ? d.barcode : null,
-            archived: false,
-            goodsType: typeof d.goodsType === 'string' ? d.goodsType : 'non-perishable',
-            vatType: typeof d.vatType === 'string' ? d.vatType : 'exempt',
-          } });
+          if (typeof d.name !== 'string' || !Number.isInteger(d.price)) throw new Error('name and integer price (centavos) required');
+          const stock = typeof d.stock === 'number' ? d.stock : 0;
+          // Product + opening batch atomic: Product.stock must always equal
+          // the sum of StockBatch layers (mirrors POST /api/products).
+          const created = await prisma.$transaction(async (tx) => {
+            const row = await tx.product.create({ data: {
+              name: d.name as string, price: d.price as number,
+              cost: Number.isInteger(d.cost) ? d.cost as number : 0,
+              stock,
+              categoryId: typeof d.categoryId === 'number' ? d.categoryId : (await prisma.category.findFirst())!.id,
+              barcode: typeof d.barcode === 'string' ? d.barcode : null,
+              archived: false,
+              goodsType: typeof d.goodsType === 'string' ? d.goodsType : 'non-perishable',
+              vatType: typeof d.vatType === 'string' ? d.vatType : 'exempt',
+            } });
+            if (stock > 0) {
+              await tx.stockBatch.create({ data: {
+                productId: row.id, quantityReceived: stock, quantityRemaining: stock,
+                supplier: 'Opening stock', costPerUnit: Number.isInteger(d.cost) ? d.cost as number : 0,
+              } });
+            }
+            return row;
+          }, { maxWait: 15000, timeout: 25000 });
           broadcastRealtime('products', { action: 'created' });
           results.push({ clientUuid: action.clientUuid, ok: true, serverId: created.id });
         }
@@ -374,26 +456,33 @@ export async function POST(request: Request) {
           const updated = await prisma.category.update({ where: { id: p.entityId }, data: {
             ...(typeof d.name === 'string' ? { name: d.name } : {}),
             ...(typeof d.description === 'string' || d.description === null ? { description: d.description as string | null } : {}),
+            ...(typeof d.archived === 'boolean' ? { archived: d.archived } : {}),
           } });
           broadcastRealtime('categories', { action: 'updated' });
           results.push({ clientUuid: action.clientUuid, ok: true, serverId: updated.id, conflict: true, error: 'Applied over current server state (server-wins)' });
         } else {
           if (typeof d.name !== 'string') throw new Error('name required');
-          const created = await prisma.category.create({ data: { name: d.name, description: typeof d.description === 'string' ? d.description : null } });
+          const created = await prisma.category.create({ data: { name: d.name, description: typeof d.description === 'string' ? d.description : null, archived: typeof d.archived === 'boolean' ? d.archived : false } });
           broadcastRealtime('categories', { action: 'created' });
           results.push({ clientUuid: action.clientUuid, ok: true, serverId: created.id });
         }
       } else if (action.type === 'category_delete') {
         if (requireAdmin(action.clientUuid)) continue;
         if (!p.entityId) throw new Error('entityId required');
+        const linkedProducts = await prisma.product.count({ where: { categoryId: p.entityId } });
+        if (linkedProducts > 0) {
+          throw new Error("Can't delete — reassign or remove its products first.");
+        }
         await prisma.category.delete({ where: { id: p.entityId } });
         broadcastRealtime('categories', { action: 'deleted' });
         results.push({ clientUuid: action.clientUuid, ok: true });
       } else if (action.type === 'expense_add') {
         const d = (p.data ?? {}) as Record<string, unknown>;
-        if (typeof d.type !== 'string' || typeof d.amount !== 'number' || typeof d.period !== 'string') throw new Error('type, amount, period required');
+        if (typeof d.type !== 'string' || !Number.isInteger(d.amount) || typeof d.period !== 'string') {
+          throw new Error('type, integer amount (centavos), period required');
+        }
         const created = await prisma.expense.create({ data: {
-          type: d.type, amount: d.amount, period: d.period,
+          type: d.type, amount: d.amount as number, period: d.period,
           note: typeof d.note === 'string' ? d.note : null,
         } });
         broadcastRealtime('expenses', { action: 'created' });
@@ -451,6 +540,7 @@ export async function POST(request: Request) {
           const updated = await prisma.$transaction(async (tx) => {
             for (const item of txn.items) {
               await tx.product.update({ where: { id: item.productId }, data: { stock: { increment: item.quantity } } });
+              await restoreFifoStock(tx, item.productId, item.quantity);
               await tx.itemLog.create({ data: { productId: item.productId, action: 'voided', quantity: item.quantity, performedBy: voidedBy } });
             }
             return tx.transaction.update({ where: { id: txn.id }, data: { status: 'voided', voidReason: auditReason, voidedBy, voidedAt: new Date() } });
@@ -554,6 +644,9 @@ export async function POST(request: Request) {
       } else if (action.type === 'restock') {
         if (requireAdmin(action.clientUuid)) continue;
         if (!p.productId || !p.quantity || p.quantity <= 0) throw new Error('productId and positive quantity required');
+        if (p.costPerUnit != null && !Number.isInteger(p.costPerUnit)) {
+          throw new Error('costPerUnit must be an integer amount in centavos');
+        }
         await prisma.$transaction(async (tx) => {
           await tx.stockBatch.create({ data: {
             productId: p.productId!, quantityReceived: p.quantity!, quantityRemaining: p.quantity!,
@@ -561,7 +654,7 @@ export async function POST(request: Request) {
           } });
           await tx.product.update({ where: { id: p.productId! }, data: { stock: { increment: p.quantity! } } });
           await tx.itemLog.create({ data: { productId: p.productId!, action: 'restocked', quantity: p.quantity!, performedBy: cashierId } });
-        });
+        }, { maxWait: 15000, timeout: 25000 });
         broadcastRealtime('restock', { action: 'created' });
         broadcastRealtime('products', { action: 'updated' });
         results.push({ clientUuid: action.clientUuid, ok: true });

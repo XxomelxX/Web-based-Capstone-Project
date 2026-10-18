@@ -1,6 +1,7 @@
 ﻿import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/server/prisma';
 import { requireSession } from '@/lib/server/require-session';
+import { isDbUnreachable, DB_UNAVAILABLE_MESSAGE } from '@/lib/server/db-unreachable';
 
 // GET /api/reports?range=week|month|all
 export async function GET(request: Request) {
@@ -28,57 +29,67 @@ export async function GET(request: Request) {
   };
 
   try {
-    const transactions = await prisma.transaction.findMany({
-      where: whereClause,
-      include: { items: { include: { product: true } } },
-    });
+    const [transactionTotals, itemTotals, productSales, expenseTotals, products, settings, outstanding] =
+      await Promise.all([
+        prisma.transaction.aggregate({
+          where: whereClause,
+          _count: { _all: true },
+          _sum: { total: true },
+        }),
+        prisma.transactionItem.aggregate({
+          where: { transaction: { is: whereClause } },
+          _sum: { quantity: true },
+        }),
+        prisma.transactionItem.groupBy({
+          by: ['productId'],
+          where: { transaction: { is: whereClause } },
+          _sum: { quantity: true, lineTotal: true },
+        }),
+        prisma.expense.aggregate({
+          where: since ? { createdAt: { gte: since } } : {},
+          _sum: { amount: true },
+        }),
+        prisma.product.findMany({
+          select: { id: true, name: true, stock: true, archived: true },
+        }),
+        prisma.settings.findFirst(),
+        prisma.utangEntry.aggregate({
+          where: { status: { not: 'paid' } },
+          _sum: { remainingBalance: true },
+        }),
+      ]);
 
-    const totalRevenue = transactions.reduce((sum, t) => sum + t.total, 0);
-    const totalTransactions = transactions.length;
-    const totalItemsSold = transactions.reduce(
-      (sum, t) => sum + t.items.reduce((s, i) => s + i.quantity, 0),
-      0
-    );
+    const totalRevenue = transactionTotals._sum.total ?? 0;
+    const totalTransactions = transactionTotals._count._all;
+    const totalItemsSold = itemTotals._sum.quantity ?? 0;
+    const totalExpenses = expenseTotals._sum.amount ?? 0;
+    const totalOutstandingCredit = outstanding._sum.remainingBalance ?? 0;
+    const threshold = settings?.lowStockThreshold ?? 20;
+    const productNames = new Map(products.map((product) => [product.id, product.name]));
 
-    // Top selling products
-    const productSales: Record<number, { name: string; unitsSold: number; revenue: number }> = {};
-    for (const t of transactions) {
-      for (const item of t.items) {
-        if (!productSales[item.productId]) {
-          productSales[item.productId] = { name: item.product.name, unitsSold: 0, revenue: 0 };
+    const topSelling = productSales
+      .map((sale) => {
+        const name = productNames.get(sale.productId);
+        if (name === undefined) {
+          throw new Error(`Product ${sale.productId} was not found for a report item.`);
         }
-        productSales[item.productId].unitsSold += item.quantity;
-        productSales[item.productId].revenue += item.lineTotal;
-      }
-    }
-    const topSelling = Object.values(productSales)
+        return {
+          name,
+          unitsSold: sale._sum.quantity ?? 0,
+          revenue: sale._sum.lineTotal ?? 0,
+        };
+      })
       .sort((a, b) => b.unitsSold - a.unitsSold)
       .slice(0, 5);
 
-    // Expenses in range
-    const expenses = await prisma.expense.findMany({
-      where: since ? { createdAt: { gte: since } } : {},
-    });
-    const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
-
-    const products = await prisma.product.findMany({ where: { archived: false } });
-    const settings = await prisma.settings.findFirst();
-    const threshold = settings?.lowStockThreshold ?? 20;
-
-    // Total outstanding credit (current balance — not range-bound: this is
-    // what customers still owe right now, matching the Credit page's total).
-    const outstanding = await prisma.utangEntry.aggregate({
-      where: { status: { not: 'paid' } },
-      _sum: { remainingBalance: true },
-    });
-    const totalOutstandingCredit = outstanding._sum.remainingBalance ?? 0;
-
-    const stockLevels = products.map((p) => ({
-      id: p.id,
-      name: p.name,
-      stock: p.stock,
-      status: p.stock < threshold ? 'Critical' : 'OK',
-    }));
+    const stockLevels = products
+      .filter((product) => !product.archived)
+      .map((product) => ({
+        id: product.id,
+        name: product.name,
+        stock: product.stock,
+        status: product.stock < threshold ? 'Critical' : 'OK',
+      }));
 
     return NextResponse.json({
       range,
@@ -92,8 +103,14 @@ export async function GET(request: Request) {
       stockLevels,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unable to load reports.';
     console.error('[REPORTS] GET error:', error);
+    if (isDbUnreachable(error)) {
+      return NextResponse.json(
+        { error: DB_UNAVAILABLE_MESSAGE },
+        { status: 503, headers: { 'Retry-After': '5' } }
+      );
+    }
+    const message = error instanceof Error ? error.message : 'Unable to load reports.';
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

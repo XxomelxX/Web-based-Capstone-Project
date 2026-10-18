@@ -1,6 +1,7 @@
 'use client';
 
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { peso } from '@/lib/money';
 
 interface DataPoint {
   date: string;
@@ -21,7 +22,7 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
   return (
     <div className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 shadow-xl">
       <p className="text-xs text-slate-400">{label}</p>
-      <p className="mt-1 text-sm font-semibold text-emerald-300">₱{payload[0].value.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</p>
+      <p className="mt-1 text-sm font-semibold text-emerald-300">{peso(payload[0].value)}</p>
     </div>
   );
 }
@@ -56,7 +57,7 @@ export default function RevenueChart({ data, range }: { data: DataPoint[]; range
           stroke="#475569"
           fontSize={12}
           tickLine={false}
-          tickFormatter={(v) => `₱${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
+          tickFormatter={(v) => v >= 100000 ? `₱${(v / 100000).toFixed(0)}k` : peso(v)}
         />
         <Tooltip content={<CustomTooltip />} />
         <Area

@@ -503,6 +503,71 @@ export async function updateUtangDeadline(utangEntryId: number, dueDate: string 
     throw error;
   }
 }
+// ---- Inventory dashboard: FIFO batches + stock recount ----
+
+export interface FifoBatch {
+  id: number;
+  productId: number;
+  quantityReceived: number;
+  quantityRemaining: number;
+  dateReceived: string;
+  supplier: string | null;
+  costPerUnit: number | null;
+}
+
+export interface FifoBatchesResponse {
+  product: { id: number; name: string; stock: number; cost: number };
+  batches: FifoBatch[];
+  totals: { layerCount: number; remainingTotal: number; remainingValue: number; unlayered: number };
+}
+
+export async function getFifoBatches(productId: number): Promise<FifoBatchesResponse> {
+  const res = await fetch(`/api/inventory/batches?productId=${productId}`, { cache: 'no-store' });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({} as { error?: string }))).error || 'Failed to load stock layers');
+  return res.json();
+}
+
+export interface AdjustStockInput {
+  productId: number;
+  mode?: 'increase' | 'decrease' | 'recount';
+  quantity?: number;
+  newStock?: number;
+  type: string;
+  reason?: string;
+}
+
+export async function adjustInventoryStock(
+  data: AdjustStockInput
+): Promise<{ product: { stock: number }; delta: number; mode?: string; type?: string }> {
+  const res = await fetch('/api/inventory/adjust', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  const body = await res.json().catch(() => ({} as { error?: string }));
+  if (!res.ok) throw new Error(body.error || 'Failed to adjust stock');
+  return body as { product: { stock: number }; delta: number; mode?: string; type?: string };
+}
+
+export interface AdjustmentHistoryItem {
+  id: number;
+  action: string;
+  quantity: number;
+  adjustType: string | null;
+  note: string | null;
+  createdAt: string;
+  product?: { name?: string };
+  user?: { fullName?: string };
+}
+
+// Stock-adjustment-only history (ItemLog rows where action='adjusted').
+export async function getAdjustmentHistory(): Promise<AdjustmentHistoryItem[]> {
+  const res = await fetch('/api/itemlog?action=adjusted', { cache: 'no-store' });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({} as { error?: string }))).error || 'Failed to load adjustment history');
+  return res.json() as Promise<AdjustmentHistoryItem[]>;
+}
+
+
 
 export async function recordUtangPayment(data: { customerName: string; amount: number; note?: string; expectedBalance?: number }) {
   if (typeof window !== 'undefined' && !navigator.onLine) {
@@ -700,6 +765,9 @@ export async function getItemLog<T = Record<string, unknown>>(): Promise<T[]> {
 }
 
 // Reports
-export async function getReports<T = Record<string, unknown>>(range: 'today' | 'week' | 'month' | 'year' | 'all' = 'all'): Promise<T> {
-  return getReportsOffline<T>(range);
+export async function getReports<T = Record<string, unknown>>(
+  range: 'today' | 'week' | 'month' | 'year' | 'all' = 'all',
+  options?: { onStale?: () => void }
+): Promise<T> {
+  return getReportsOffline<T>(range, options);
 }
