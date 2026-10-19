@@ -26,6 +26,7 @@ const actionTitles: Record<QueuedCategory1Action['type'], string> = {
   void_review: 'Void Request — Review',
   utang_update_deadline: 'Utang — Update Due Date',
   restock: 'Inventory — Restock',
+  stock_adjust: 'Inventory — Stock Adjustment',
 };
 
 export function OfflineSyncModal({ onClose }: { onClose: () => void }) {

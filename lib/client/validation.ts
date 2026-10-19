@@ -16,7 +16,7 @@ export const queuedActionSchema = z.object({
     'cash_movement',
     'product_upsert', 'product_delete', 'category_upsert', 'category_delete',
     'expense_add', 'settings_update', 'customer_add', 'void_sale', 'void_request',
-    'void_request_cancel', 'void_review', 'utang_update_deadline', 'restock']),
+    'void_request_cancel', 'void_review', 'utang_update_deadline', 'restock', 'stock_adjust']),
   payload: z.object({
     items: z.array(saleItemSchema).optional(),
     paymentMethod: z.string().optional(),
@@ -45,6 +45,12 @@ export const queuedActionSchema = z.object({
     supplier: z.string().max(200).nullish(),
     costPerUnit: z.number().int().nonnegative().nullish(), // centavos
     reason: z.string().max(500).optional(),
+    // Stock adjustment (stock_adjust): direction, absolute target stock, and
+    // the client-cached stock seen at queue time (conflict detection).
+    type: z.string().max(100).optional(),
+    mode: z.enum(['increase', 'decrease', 'recount']).optional(),
+    target: z.number().int().nonnegative().optional(),
+    expectedStock: z.number().int().nonnegative().optional(),
     supervisorUsername: z.string().max(100).optional(),
     supervisorVerifiedAt: z.string().optional(),
     cashierUsername: z.string().max(100).optional(),

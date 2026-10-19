@@ -8,6 +8,7 @@ import { getDrawerFloat } from '@/lib/server/shiftDrawer';
 import { sumShiftCash, computeExpectedCash } from '@/lib/server/shiftCash';
 import { consumeFifoStock, adjustFifoStock } from '@/lib/server/fifo';
 import { executeVoidTransaction } from '@/lib/server/void-transaction';
+import { isAdjustmentType, ADJUSTMENT_TYPE_LABELS, type AdjustmentMode } from '@/lib/adjustment';
 
 // Accepts at most 100 actions per push (matches the client-side queue cap).
 const MAX_ACTIONS = 100;
@@ -701,6 +702,59 @@ export async function POST(request: Request) {
         broadcastRealtime('restock', { action: 'created' });
         broadcastRealtime('products', { action: 'updated' });
         results.push({ clientUuid: action.clientUuid, ok: true });
+      } else if (action.type === 'stock_adjust') {
+        if (requireAdmin(action.clientUuid)) continue;
+        const mode: AdjustmentMode | undefined = p.mode;
+        if (mode !== 'increase' && mode !== 'decrease' && mode !== 'recount') {
+          throw new Error('mode must be "increase", "decrease" or "recount"');
+        }
+        const adjType = p.type;
+        if (!isAdjustmentType(adjType)) {
+          throw new Error(`type is required: one of ${Object.values(ADJUSTMENT_TYPE_LABELS).join(', ')}`);
+        }
+        const target = p.target;
+        if (typeof target !== 'number' || !Number.isInteger(target) || target < 0) {
+          throw new Error('target (absolute stock) required');
+        }
+        const productId = p.productId;
+        if (typeof productId !== 'number' || !Number.isInteger(productId) || productId <= 0) {
+          throw new Error('productId required');
+        }
+        const note = typeof p.reason === 'string' ? p.reason.slice(0, 200).trim() : null;
+        const label = `Adjustment (${ADJUSTMENT_TYPE_LABELS[adjType]})`;
+        // Absolute target keeps replays idempotent: if a lost response is
+        // replayed, product.stock === target absorbs the action as a no-op.
+        // expectedStock flags adjustments applied over a stock level the
+        // client never saw (server-wins).
+        const outcome = await prisma.$transaction(async (tx) => {
+          const product = await tx.product.findUnique({ where: { id: productId } });
+          if (!product) throw new Error('Product not found');
+          const conflict = p.expectedStock !== undefined && Number(p.expectedStock) !== product.stock;
+          if (product.stock === target) {
+            return { serverId: product.id, conflict, absorbed: true };
+          }
+          const delta = await adjustFifoStock(tx, product, target, label);
+          await tx.itemLog.create({ data: {
+            productId, action: 'adjusted', quantity: delta, adjustType: adjType,
+            note, performedBy: cashierId,
+          } });
+          return { serverId: product.id, conflict, absorbed: false };
+        }, { maxWait: 10_000, timeout: 15_000 });
+        if (!outcome.absorbed) {
+          broadcastRealtime('products', { action: 'stock-updated' });
+          broadcastRealtime('itemlog', { action: 'created' });
+        }
+        results.push({
+          clientUuid: action.clientUuid,
+          ok: true,
+          serverId: outcome.serverId,
+          conflict: outcome.conflict || undefined,
+          error: outcome.conflict
+            ? outcome.absorbed
+              ? 'Stock already matches — adjustment absorbed (server-wins)'
+              : 'Stock changed while offline — applied over current server state (server-wins)'
+            : undefined,
+        });
       }
     } catch (e) {
       // P2002 race on clientUuid: return the winner's row.

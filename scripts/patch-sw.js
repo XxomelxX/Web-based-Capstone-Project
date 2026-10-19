@@ -83,17 +83,100 @@ if (changed) {
   console.log('[patch-sw] sw.js is clean, no changes needed.');
 }
 
+// ---------------------------------------------------------------------------
+// Smarter SW fallback: patch the generated fallback asset (public/fallback-*.js).
+//
+// The generated asset only does `caches.match('/offline', {ignoreSearch:true})`
+// for document requests, which loses the original URL and serves /offline even
+// when the requested page's HTML shell IS cached. The asset is importScripts()'d
+// by sw.js at startup (before routes register), so overriding self.fallback here
+// at EOF takes effect for both per-route handlerDidError calls and the global
+// setCatchHandler captured at registration time.
+//
+// Override behavior for document destinations:
+//   1. Try the requested URL in any cache (serve the REAL cached shell, if any).
+//   2. Otherwise serve /offline, injecting window.__FALLBACK_FOR__ = pathname so
+//      the offline page can show which page failed and auto-retry it.
+// Plain ES5-ish syntax only (runs in a ServiceWorker; no optional chaining).
+// ---------------------------------------------------------------------------
+const fallbackDir = path.join(__dirname, '..', 'public');
+const fallbackMarker = '__SARI_FALLBACK_OVERRIDE__';
+const fallbackOverride = `/* ${fallbackMarker} */
+var __wbOrigFallback = self.fallback;
+self.fallback = async function (e) {
+  try {
+    var request = e instanceof Request ? e : (e && e.request) || null;
+    var url = (request && request.url) || (e && e.url) || '';
+    var destination = (e && e.destination) || (request && request.mode === 'navigate' ? 'document' : '');
+    if (destination === 'document') {
+      var hit = await caches.match(request || url, { ignoreSearch: true, ignoreVary: true });
+      if (hit) return hit;
+      var offline = await caches.match('/offline', { ignoreSearch: true, ignoreVary: true });
+      if (offline) {
+        var pathname = '';
+        try { pathname = new URL(url, self.location.origin).pathname; } catch (_) {}
+        if (!pathname || pathname === '/offline') return offline;
+        var html = await offline.text();
+        var snippet = '<script>window.__FALLBACK_FOR__=' + JSON.stringify(pathname) + ';</script></body>';
+        var patched = html.indexOf('</body>') !== -1 ? html.replace('</body>', snippet) : html + snippet;
+        return new Response(patched, { status: 200, statusText: 'OK', headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+      }
+    }
+  } catch (_) {}
+  try { return await __wbOrigFallback(e); } catch (_) { return Response.error(); }
+};
+`;
+
+let fallbackFiles = [];
+try {
+  fallbackFiles = fs
+    .readdirSync(fallbackDir)
+    .filter((name) => /^fallback-.*\.js$/.test(name))
+    .sort();
+} catch (_) {
+  fallbackFiles = [];
+}
+for (const file of fallbackFiles) {
+  const filePath = path.join(fallbackDir, file);
+  let asset = fs.readFileSync(filePath, 'utf-8');
+  if (asset.includes(fallbackMarker)) {
+    console.log(`[patch-sw] ${file} already has fallback override, skipping.`);
+    continue;
+  }
+  if (!asset.endsWith('\n')) asset += '\n';
+  // Append AFTER the asset's closing IIFE (EOF) — new line, top-level override.
+  asset += fallbackOverride;
+  fs.writeFileSync(filePath, asset, 'utf-8');
+  console.log(`[patch-sw] Appended fallback URL-context override to ${file}.`);
+}
+
 // Post-build assertions: fail the build loudly if the offline contract broke.
 const failures = [];
 if (!content.includes('setCatchHandler')) failures.push('missing setCatchHandler');
 if (!content.includes('self.fallback')) failures.push('missing self.fallback (/offline)');
-if (!content.includes('registerRoute(/\\/pos/')) failures.push('missing /pos route (offline POS shell)');
+// The POS shell rule may be the legacy /\/pos/ or the extended
+// /\/(pos|dashboard|orders|credit)/ fast-timeout rule — accept either shape.
+const posRouteOk =
+  content.includes('registerRoute(/\\/pos/') ||
+  content.includes('registerRoute(/\\/(pos|dashboard|orders|credit)/');
+if (!posRouteOk) failures.push('missing /pos route (offline POS shell)');
 if (!content.includes('_rsc=')) failures.push('missing _rsc rule (App Router RSC offline coverage)');
 const moduleShellRe = '/(dashboard|products|categories|orders|credit|expenses|reports|users|settings|lowstock|transaction-log|item-log|inventory)/';
 const authShellOk =
   content.includes(`${moduleShellRe},new e.NetworkFirst(`) ||
   content.includes(`${moduleShellRe},new e.NetworkOnly({plugins`);
 if (!authShellOk) failures.push('auth module shells not offline-capable (need NetworkFirst or patched NetworkOnly)');
+let fallbackOverrideOk = fallbackFiles.length > 0;
+for (const file of fallbackFiles) {
+  try {
+    if (!fs.readFileSync(path.join(fallbackDir, file), 'utf-8').includes(fallbackMarker)) {
+      fallbackOverrideOk = false;
+    }
+  } catch (_) {
+    fallbackOverrideOk = false;
+  }
+}
+if (!fallbackOverrideOk) failures.push('fallback override missing');
 if (failures.length) {
   console.error('[patch-sw] ASSERT FAILED: ' + failures.join(', '));
   process.exit(1);

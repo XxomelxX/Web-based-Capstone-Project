@@ -55,7 +55,12 @@ export default function RootLayout({
               function warm(){
                 tries++;
                 if(!navigator.serviceWorker.controller){if(tries<15)setTimeout(warm,2000);return;}
-                var pages=['/login','/offline','/pos'];
+                var id=null;
+                try{id=localStorage.getItem('sari-pos-identity');}catch(e){}
+                // Never warm module pages pre-login: unauthenticated fetches
+                // redirect to /login, and caching that redirect under the module
+                // key poisons the offline shell.
+                var pages=id?['/pos','/dashboard','/products','/inventory']:['/login','/offline'];
                 // Pages are read by the SW runtime rules from pages-cache-v3;
                 // the old pages-cache-v2 writer was dead storage nothing served.
                 caches.open('pages-cache-v3').then(function(cache){
@@ -63,7 +68,7 @@ export default function RootLayout({
                     cache.match(url,{ignoreVary:true}).then(function(hit){
                       if(hit)return;
                       fetch(url,{cache:'no-store',credentials:'same-origin'}).then(function(r){
-                        if(!r||!r.ok||r.type!=='basic')return;
+                        if(!r||!r.ok||r.redirected||r.type!=='basic')return;
                         var ct=r.headers.get('content-type')||'';
                         if(ct.indexOf('text/html')===-1)return;
                         return r.text().then(function(body){

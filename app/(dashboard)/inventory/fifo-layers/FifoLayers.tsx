@@ -21,19 +21,26 @@ export function FifoLayers({ product, isVisible, onClose }: FifoLayersProps) {
   const [layersTotals, setLayersTotals] = useState<{ remainingTotal: number; remainingValue: number; unlayered: number } | null>(null);
   const [layersLoading, setLayersLoading] = useState(false);
   const [layersError, setLayersError] = useState('');
+  const [layersStale, setLayersStale] = useState(false);
 
   const loadLayers = useCallback(async () => {
     if (!product) return;
     setLayers([]);
     setLayersTotals(null);
     setLayersError('');
+    setLayersStale(false);
     setLayersLoading(true);
     try {
       const data = await getFifoBatches(product.id);
       setLayers(data.batches);
       setLayersTotals(data.totals);
+      if (data.offline) setLayersStale(true);
     } catch (err) {
-      setLayersError(err instanceof Error ? err.message : 'Failed to load stock layers');
+      // Defensive: getFifoBatches already maps network failures to friendly
+      // messages — never let a raw "Failed to fetch" reach the modal.
+      const msg = err instanceof Error ? err.message : '';
+      const isNetwork = err instanceof TypeError || /failed to fetch|network/i.test(msg);
+      setLayersError(isNetwork ? 'Offline — FIFO layers become available after you reconnect once.' : msg || 'Failed to load stock layers');
     } finally {
       setLayersLoading(false);
     }
@@ -54,6 +61,11 @@ export function FifoLayers({ product, isVisible, onClose }: FifoLayersProps) {
           <button type="button" onClick={onClose} className="text-slate-400 hover:text-white cursor-pointer">×</button>
         </div>
         {layersError && <p className="text-sm text-rose-400">{layersError}</p>}
+        {layersStale && (
+          <p className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-md px-3 py-2">
+            Offline — showing layers from your last sync.
+          </p>
+        )}
         {layersLoading && <p className="text-sm text-slate-400">Loading layers…</p>}
         {!layersLoading && layersTotals && (
           <p className="text-xs text-slate-400">

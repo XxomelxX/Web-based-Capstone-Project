@@ -103,8 +103,10 @@ const withPWA = withPWAInit({
         // POS must keep selling offline: serve cached shell when offline,
         // sync queued sales on reconnect (Dexie queue + clientUuid idempotency).
         // MUST come before the NetworkOnly auth block below.
-        // Matches /pos and /pos/* — simple pattern (must survive SW serialization).
-        urlPattern: /\/pos/,
+        // Always-work-offline documents fall back to their cached shell fast
+        // (1s) instead of the 3s module-shell timeout: /pos, /dashboard,
+        // /orders, /credit. Simple pattern (must survive SW serialization).
+        urlPattern: /\/(pos|dashboard|orders|credit)/,
         handler: 'NetworkFirst',
         options: {
           cacheName: 'pages-cache-v3',

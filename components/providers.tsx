@@ -7,19 +7,28 @@ import { installOfflineNavigation } from '@/lib/client/offlineNavigation';
 import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
 import { OnlineProvider } from '@/components/providers/online-provider';
 import { initTheme } from '@/lib/client/hooks/useTheme';
+import { readIdentity } from '@/lib/client/identity';
 import { Toaster } from 'sonner';
 
+function hasIdentity(): boolean {
+  try {
+    return readIdentity() !== null;
+  } catch {
+    return false;
+  }
+}
+
 function warmOfflineCaches() {
+  // Never warm pre-auth: unauthenticated fetches of module pages redirect to
+  // /login, and caching those redirect documents under module keys poisons the
+  // offline shells. The online/RECONNECT listeners re-enter this same gate.
+  if (!hasIdentity()) return;
   warmPagesCache();
   warmBrandCache();
   warmStaticAssets();
 }
 
 let rewarmTimeout: ReturnType<typeof setTimeout> | null = null;
-const rewarm = () => {
-  if (rewarmTimeout) clearTimeout(rewarmTimeout);
-  rewarmTimeout = setTimeout(warmOfflineCaches, 5000);
-};
 
 export function Providers({ children }: { children: React.ReactNode }) {
   useEffect(() => {

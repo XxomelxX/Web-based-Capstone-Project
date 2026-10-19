@@ -10,8 +10,8 @@
   saveUsers,
   cachedGet,
 } from '@/lib/client/api/offline';
-import { saveUtangEntries, saveCachedCustomers, getCachedCustomers, saveExpenses, getCachedExpenses, saveSettings, getCachedSettings, updateCachedProductStock, db, mergeVoidRequests, getCachedVoidRequests, removeCachedVoidRequest, type VoidRequestRow } from '@/lib/client/offline';
-import { queueAddUtang, queueUtangPayment, queueExpenseAdd, queueSettingsUpdate, queueCustomerAdd, queueVoidSale, queueVoidRequest, queueVoidRequestCancel, queueVoidReview, queueRestock } from '@/lib/client/offlineQueue';
+import { saveUtangEntries, saveCachedCustomers, getCachedCustomers, saveExpenses, getCachedExpenses, saveSettings, getCachedSettings, updateCachedProductStock, setCachedProductStock, saveFifoBatchesCache, getFifoBatchesCache, db, mergeVoidRequests, getCachedVoidRequests, removeCachedVoidRequest, type VoidRequestRow } from '@/lib/client/offline';
+import { queueAddUtang, queueUtangPayment, queueExpenseAdd, queueSettingsUpdate, queueCustomerAdd, queueVoidSale, queueVoidRequest, queueVoidRequestCancel, queueVoidReview, queueRestock, queueStockAdjust } from '@/lib/client/offlineQueue';
 interface Expense {
   id: number;
   type: string;
@@ -520,12 +520,45 @@ export interface FifoBatchesResponse {
   product: { id: number; name: string; stock: number; cost: number };
   batches: FifoBatch[];
   totals: { layerCount: number; remainingTotal: number; remainingValue: number; unlayered: number };
+  offline?: boolean;
+}
+
+// Last-synced layers from the v6 Dexie cache. Never surfaces a raw network
+// error: missing cache means the product was never opened online.
+async function fifoBatchesFromCache(productId: number): Promise<FifoBatchesResponse> {
+  const cached = await getFifoBatchesCache<{ batches: FifoBatch[]; totals: FifoBatchesResponse['totals'] }>(productId);
+  if (cached && Array.isArray(cached.batches) && cached.totals) {
+    const row = await db.products.get(productId);
+    return {
+      product: {
+        id: productId,
+        name: typeof row?.name === 'string' ? row.name : '',
+        stock: typeof row?.stock === 'number' ? row.stock : 0,
+        cost: typeof row?.cost === 'number' ? row.cost : 0,
+      },
+      batches: cached.batches,
+      totals: cached.totals,
+      offline: true,
+    };
+  }
+  throw new Error('You are offline — FIFO layers become available after you reconnect once.');
 }
 
 export async function getFifoBatches(productId: number): Promise<FifoBatchesResponse> {
-  const res = await fetch(`/api/inventory/batches?productId=${productId}`, { cache: 'no-store' });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({} as { error?: string }))).error || 'Failed to load stock layers');
-  return res.json();
+  if (isOffline()) return fifoBatchesFromCache(productId);
+  try {
+    const res = await fetch(`/api/inventory/batches?productId=${productId}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({} as { error?: string }))).error || 'Failed to load stock layers');
+    const data = (await res.json()) as FifoBatchesResponse;
+    await saveFifoBatchesCache(productId, { batches: data.batches, totals: data.totals });
+    return data;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const isNetworkError = error instanceof TypeError || /failed to fetch|network|offline/i.test(message);
+    // 4xx business errors (product gone, bad id) still surface as-is.
+    if (!isNetworkError) throw error;
+    return fifoBatchesFromCache(productId);
+  }
 }
 
 export interface AdjustStockInput {
@@ -537,22 +570,85 @@ export interface AdjustStockInput {
   reason?: string;
 }
 
-export async function adjustInventoryStock(
-  data: AdjustStockInput
-): Promise<{ product: { stock: number }; delta: number; mode?: string; type?: string }> {
-  // Stock recounts are Category 3 (admin, online-only): translate the raw
-  // offline TypeError into the same friendly message callers already handle.
-  if (typeof window !== 'undefined' && !navigator.onLine) {
-    throw new Error('You are offline — stock adjustments can only be made online.');
+export interface AdjustStockResult {
+  product: { stock: number };
+  delta: number;
+  mode?: string;
+  type?: string;
+  offline?: boolean;
+}
+
+// Offline fallback: resolve the ABSOLUTE target from cached stock, queue it
+// (absolute target = replay-safe), then optimistically write Dexie so the
+// inventory live query shows the new stock immediately.
+async function queueAdjustOffline(data: AdjustStockInput, clientUuid: string): Promise<AdjustStockResult> {
+  const cached = await db.products.get(data.productId);
+  const base = typeof cached?.stock === 'number' ? cached.stock : null;
+  if (base === null) {
+    throw new Error('This product is not in your offline cache yet — reconnect once and try again.');
   }
-  const res = await fetch('/api/inventory/adjust', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
+  let mode: 'increase' | 'decrease' | 'recount';
+  let target: number;
+  if (data.mode === 'recount' || data.newStock !== undefined) {
+    mode = 'recount';
+    target = Number(data.newStock);
+    if (!Number.isInteger(target) || target < 0) {
+      throw new Error('newStock must be a non-negative integer');
+    }
+  } else {
+    mode = data.mode === 'decrease' ? 'decrease' : 'increase';
+    const qty = data.quantity ?? 0;
+    if (!Number.isInteger(qty) || qty <= 0) {
+      throw new Error('quantity must be a positive integer');
+    }
+    target = mode === 'increase' ? base + qty : base - qty;
+    // Same guard the direct route gives — but against the cached stock.
+    if (target < 0) throw new Error(`Cannot decrease by ${qty} — only ${base} in stock`);
+  }
+  await queueStockAdjust({
+    productId: data.productId,
+    mode,
+    target,
+    expectedStock: base,
+    type: data.type,
+    reason: data.reason,
+    clientUuid,
   });
-  const body = await res.json().catch(() => ({} as { error?: string }));
-  if (!res.ok) throw new Error(body.error || 'Failed to adjust stock');
-  return body as { product: { stock: number }; delta: number; mode?: string; type?: string };
+  await setCachedProductStock(data.productId, target);
+  return {
+    product: { stock: target },
+    delta: target - base,
+    mode: data.mode ?? data.type,
+    type: data.type,
+    offline: true,
+  };
+}
+
+export async function adjustInventoryStock(data: AdjustStockInput): Promise<AdjustStockResult> {
+  // Stamp the idempotency key ONCE so a failed-live-then-queued attempt reuses
+  // the same key — replays can never double-apply the adjustment.
+  const clientUuid = crypto.randomUUID();
+
+  if (isOffline()) return queueAdjustOffline(data, clientUuid);
+
+  try {
+    const res = await fetch('/api/inventory/adjust', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...data, clientUuid }),
+    });
+    const body = await res.json().catch(() => ({} as { error?: string }));
+    // Business errors (negative result, missing product) surface, never queue.
+    if (!res.ok) throw new Error(body.error || 'Failed to adjust stock');
+    return body as AdjustStockResult;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const isNetworkError = error instanceof TypeError || /failed to fetch|network|offline/i.test(message);
+    if (typeof window !== 'undefined' && isNetworkError) {
+      return queueAdjustOffline(data, clientUuid);
+    }
+    throw error;
+  }
 }
 
 export interface AdjustmentHistoryItem {

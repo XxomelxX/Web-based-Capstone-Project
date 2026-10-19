@@ -40,6 +40,7 @@ class SariSariPOSOfflineDB extends Dexie {
   queuedActions!: Dexie.Table<Record<string, unknown>, number>;
   syncMeta!: Dexie.Table<OfflineCacheEntry, string>;
   voidRequests!: Dexie.Table<Record<string, unknown>, number>;
+  fifoBatches!: Dexie.Table<Record<string, unknown>, number>;
 
   constructor() {
     super('SariSariPOSOffline');
@@ -110,6 +111,26 @@ class SariSariPOSOfflineDB extends Dexie {
         await (tx.table(table) as any).clear();
       }
     });
+    // v6: per-product FIFO layer snapshots so the Layers modal renders the
+    // last synced layers offline (new table — no upgrade fn needed).
+    this.version(6).stores({
+      products: 'id',
+      categories: 'id',
+      expenses: 'id',
+      transactions: 'id',
+      utang: 'id',
+      customers: 'id',
+      itemlog: 'id',
+      users: 'id',
+      settings: 'key',
+      reportCache: 'key',
+      queue: '++id, status, action, createdAt',
+      cachedCredentials: 'username',
+      queuedActions: '++id, type, createdAt, synced, syncFailed, clientUuid',
+      syncMeta: 'key',
+      voidRequests: 'id, transactionId, status, clientUuid',
+      fifoBatches: 'productId',
+    });
   }
 }
 
@@ -134,7 +155,7 @@ export async function wipeOfflineData(): Promise<void> {
       db.products.clear(), db.categories.clear(), db.expenses.clear(),
       db.transactions.clear(), db.utang.clear(), db.customers.clear(),
       db.itemlog.clear(), db.users.clear(), db.settings.clear(),
-      db.reportCache.clear(), db.syncMeta.clear(),
+      db.reportCache.clear(), db.syncMeta.clear(), db.fifoBatches.clear(),
     ]);
   } catch (e) { console.error('[Dexie] wipeOfflineData failed:', e); }
   try {
@@ -292,7 +313,7 @@ export function installOfflineSync() {
 
 const PAGES_TO_CACHE = [
   '/dashboard', '/pos', '/orders', '/credit',
-  '/products', '/categories', '/users', '/lowstock',
+  '/products', '/inventory', '/categories', '/users', '/lowstock',
   '/transaction-log', '/item-log', '/expenses', '/reports', '/settings',
   '/offline',
 ];
@@ -375,7 +396,9 @@ export async function warmPagesCache() {
         const existing = await cache.match(url);
         if (!existing) {
           const response = await fetch(url, { cache: 'no-store' });
-          if (response.ok) await cache.put(url, response);
+          // Skip redirected responses: caching a login redirect under the
+          // page's key would serve a login wall to a logged-in offline user.
+          if (response.ok && !response.redirected) await cache.put(url, response);
         }
       })
     );
@@ -554,6 +577,27 @@ export async function removeCachedVoidRequest(id: number) {
   try { await db.voidRequests.delete(id); } catch { /* best-effort */ }
 }
 
+/** Upsert one product's FIFO-layer snapshot (the last synced layers view). */
+export async function saveFifoBatchesCache(productId: number, row: { batches: unknown[]; totals: unknown }) {
+  try {
+    await db.fifoBatches.put({
+      productId,
+      batches: row.batches,
+      totals: row.totals,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (e) { console.error('[Dexie] saveFifoBatchesCache failed:', e); }
+}
+
+/** Read one product's FIFO-layer snapshot. Resolves null on miss/error. */
+export async function getFifoBatchesCache<F>(productId: number): Promise<F | null> {
+  try {
+    return ((await db.fifoBatches.get(productId)) as F) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function saveUtangEntries(entries: Record<string, unknown>[]) {
   try {
     await db.transaction('rw', db.utang, async () => {
@@ -636,6 +680,20 @@ export async function updateCachedProductStock(items: Array<{ productId: number;
       }
     });
   } catch (e) { console.error('[Dexie] updateCachedProductStock failed:', e); }
+}
+
+/**
+ * Optimistic single-product stock write (offline stock adjustment).
+ * Transactional so the Dexie live query fires once per change.
+ */
+export async function setCachedProductStock(productId: number, stock: number) {
+  try {
+    await db.transaction('rw', db.products, async () => {
+      const product = await db.products.get(productId);
+      if (!product) return;
+      await db.products.put({ ...product, stock });
+    });
+  } catch (e) { console.error('[Dexie] setCachedProductStock failed:', e); }
 }
 
 export async function queueOrFetch<T>(

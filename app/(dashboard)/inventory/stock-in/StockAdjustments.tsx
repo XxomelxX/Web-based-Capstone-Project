@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { adjustInventoryStock } from '@/lib/client/api/inventory';
 import {
   ADJUSTMENT_TYPES,
@@ -33,9 +34,18 @@ export function StockAdjustments({ product, isVisible, onClose, onSuccess }: Sto
   const [quantity, setQuantity] = useState('');
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
+  const [queuedNote, setQueuedNote] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   if (!isVisible || !product) return null;
+
+  // Closing clears transient state so a stale success/error note from the
+  // previous submission can never show up in a fresh look at another product.
+  const handleClose = () => {
+    setError('');
+    setQueuedNote('');
+    onClose();
+  };
 
   const qty = Number(quantity);
   const qtyValid = Number.isInteger(qty) && qty > 0;
@@ -59,9 +69,10 @@ export function StockAdjustments({ product, isVisible, onClose, onSuccess }: Sto
     }
     const trimmedNote = note.trim();
     setError('');
+    setQueuedNote('');
     setIsSaving(true);
     try {
-      await adjustInventoryStock({
+      const result = await adjustInventoryStock({
         productId: product.id,
         mode,
         type,
@@ -71,6 +82,13 @@ export function StockAdjustments({ product, isVisible, onClose, onSuccess }: Sto
       setQuantity('');
       setNote('');
       setType('');
+      if (result.offline) {
+        // Success, not an error: Dexie already holds the optimistic stock.
+        setQueuedNote(
+          `Adjustment queued — ${result.product.stock} stock will apply on this device now and sync when you're back online.`
+        );
+        toast.success('Adjustment queued — it will sync when you are back online.');
+      }
       onSuccess();
       onClose();
     } catch (err) {
@@ -85,9 +103,12 @@ export function StockAdjustments({ product, isVisible, onClose, onSuccess }: Sto
       <form onSubmit={handleSubmit} className="bg-slate-900 border border-slate-700 rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
         <div className="flex justify-between items-center border-b border-slate-800 pb-3">
           <h3 className="font-bold text-lg text-white">Adjust Stock: {product.name}</h3>
-          <button type="button" onClick={onClose} className="text-slate-400 hover:text-white cursor-pointer">×</button>
+          <button type="button" onClick={handleClose} className="text-slate-400 hover:text-white cursor-pointer">×</button>
         </div>
         {error && <p className="text-sm text-rose-400">{error}</p>}
+        {queuedNote && (
+          <p className="text-xs text-amber-300 bg-amber-950/40 p-2 rounded border border-amber-800/40">{queuedNote}</p>
+        )}
 
         <div>
           <label className="text-sm font-medium text-slate-300">Adjustment Type</label>
@@ -145,7 +166,7 @@ export function StockAdjustments({ product, isVisible, onClose, onSuccess }: Sto
         <div className="flex gap-2 justify-end pt-2">
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             className="border border-slate-700 rounded-xl px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 cursor-pointer"
           >
             Cancel

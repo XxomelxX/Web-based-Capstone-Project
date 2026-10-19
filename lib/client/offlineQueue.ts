@@ -22,7 +22,8 @@ export type Category2ActionType =
   | 'void_request_cancel'
   | 'void_review'
   | 'utang_update_deadline'
-  | 'restock';
+  | 'restock'
+  | 'stock_adjust';
 
 export type QueuedActionType = Category1ActionType | Category2ActionType;
 
@@ -68,6 +69,12 @@ export interface QueuedActionPayload {
   supplier?: string | null;
   costPerUnit?: number | null;
   reason?: string;
+  // Stock adjustment (stock_adjust): direction + ABSOLUTE target stock.
+  // expectedStock is the client-cached stock at queue time (conflict check).
+  type?: string;
+  mode?: 'increase' | 'decrease' | 'recount';
+  target?: number; // absolute stock after adjustment
+  expectedStock?: number;
   supervisorUsername?: string;
   supervisorVerifiedAt?: string;
   cashierUsername?: string;
@@ -307,6 +314,19 @@ export async function queueVoidReview(voidRequestId: number, approved: boolean, 
 }
 export async function queueRestock(productId: number, quantity: number, supplier?: string | null, costPerUnit?: number | null) {
   return queueCategory1Action('restock', { productId, quantity, supplier: supplier ?? null, costPerUnit: costPerUnit ?? null });
+}
+// Absolute target stock (not a delta) keeps replays idempotent: if the server
+// already sits at `target`, the sync handler absorbs the action as a no-op.
+export async function queueStockAdjust(input: {
+  productId: number;
+  mode: 'increase' | 'decrease' | 'recount';
+  target: number;
+  expectedStock: number;
+  type: string;
+  reason?: string;
+  clientUuid?: string;
+}) {
+  return queueCategory1Action('stock_adjust', { ...input });
 }
 
 // Queries
