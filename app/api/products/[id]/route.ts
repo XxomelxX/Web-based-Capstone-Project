@@ -21,8 +21,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (data.cost !== undefined && (!Number.isInteger(data.cost) || data.cost < 0)) {
       return NextResponse.json({ error: 'Cost must be a non-negative integer in centavos' }, { status: 400 });
     }
-    if (data.stock !== undefined && Number(data.stock) < 0) {
-      return NextResponse.json({ error: 'Stock cannot be negative' }, { status: 400 });
+    if (data.stock !== undefined && (!Number.isInteger(Number(data.stock)) || Number(data.stock) < 0)) {
+      return NextResponse.json({ error: 'Stock must be a non-negative integer' }, { status: 400 });
     }
 
     // Field update + (optional) stock edit are atomic. A stock edit goes

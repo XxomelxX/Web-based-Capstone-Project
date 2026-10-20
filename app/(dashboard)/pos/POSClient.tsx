@@ -6,7 +6,14 @@ import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
 import { formatTime, formatDateTime } from '@/lib/client/timeUtils';
 import { getActiveProducts, Product } from '@/lib/client/api/products';
 import { checkout, CheckoutResult } from '@/lib/client/api/pos';
-import { getSettings, getCustomersLight, recordUtangPayment } from '@/lib/client/api/inventory';
+import { getSettings, getCustomersLight, recordUtangPayment, getFifoBatches } from '@/lib/client/api/inventory';
+import {
+  effectivePrice,
+  lineTotalOf,
+  previewSlices,
+  type FifoBatchWithPrice,
+  type PriceableProduct,
+} from '@/lib/client/pos-pricing';
 import { addUtangOffline } from '@/lib/client/api/offline';
 import { getCachedCustomers, saveCachedCustomers, getCachedUtangEntries } from '@/lib/client/offline';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -14,6 +21,7 @@ import { db as offlineCache } from '@/lib/client/offline';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
 import { LiveClock } from '@/components/LiveClock';
+import { Pagination, pageWindow } from '@/components/Pagination';
 import { toast } from 'sonner';
 import { ShiftDetails, ZReadSummary, applyOfflineSaleToShift, cacheActiveShift, fetchActiveShift, openShift, closeShift, sameShift, formatVariance, formatVarianceDelta, parseCashCount } from '@/lib/client/api/shift';
 import { ShiftReadingModal } from './ShiftReadingModal';
@@ -22,6 +30,13 @@ import { peso, toPesos, parsePesosToCents } from '@/lib/money';
 interface CartLine {
   product: Product;
   quantity: number;
+  /**
+   * Effective unit price (integer centavos) snapshotted on the line's FIRST
+   * add. Never re-snapshotted by product refreshes — only a fresh add after
+   * the line is removed re-locks it. Used as the estimate display until fresh
+   * FIFO batch data provides the exact split.
+   */
+  lockedPrice?: number | null;
 }
 
 interface CustomerLight {
@@ -37,6 +52,31 @@ function getExpiryBadge(expiryDate?: string | Date | null) {
   if (daysLeft < 0) return { label: 'Expired', className: 'bg-rose-100 text-rose-700' };
   if (daysLeft <= 30) return { label: `${daysLeft}d left`, className: 'bg-amber-100 text-amber-700' };
   return null;
+}
+
+/**
+ * End-of-timestamp boundary for an expiry date. Date-only values (the admin
+ * form and seeds produce midnight timestamps) count their whole calendar day
+ * as sellable — same end-of-day convention as the credit-due date input.
+ */
+function expiryCutoffMs(expiryDate: string | Date): number | null {
+  const exp = new Date(expiryDate);
+  if (Number.isNaN(exp.getTime())) return null;
+  return new Date(exp.getFullYear(), exp.getMonth(), exp.getDate(), 23, 59, 59, 999).getTime();
+}
+
+/**
+ * True when a product can no longer be sold on the POS: it is perishable and
+ * its expiry date has passed — every FIFO layer it holds is expired with it
+ * (the schema tracks expiry per product, not per stock layer). Non-perishable
+ * and durable goods never age out this way. `now` defaults to live — the
+ * event-handler call sites re-evaluate at click time even if the rendered
+ * grid is momentarily stale.
+ */
+function isSellSkippedExpiredPerishable(product: Product, now: number = Date.now()): boolean {
+  if (product.goodsType !== 'perishable' || !product.expiryDate) return false;
+  const cutoff = expiryCutoffMs(product.expiryDate);
+  return cutoff !== null && cutoff < now;
 }
 
 interface StoreSettings {
@@ -57,9 +97,31 @@ export default function POSClient() {
   const cachedProducts = useLiveQuery(() => offlineCache.products.toArray(), []) as unknown as Product[] | undefined;
   const [productsLoading, setProductsLoading] = useState(true);
   const [cart, setCart] = useState<CartLine[]>([]);
+  // Minute tick so the expired-perishable grid filter stays truthful on a POS
+  // tab left open across an expiry boundary. setState lives in the timer
+  // callback (external-system subscription), not in an effect body.
+  const [expiryTick, setExpiryTick] = useState(0);
+  useEffect(() => {
+    // First fire right away, then every minute: an expiry boundary crossed
+    // while the POS sits open flips the shelf within a minute.
+    const first = window.setTimeout(() => setExpiryTick(Date.now()), 0);
+    const id = window.setInterval(() => setExpiryTick(Date.now()), 60_000);
+    return () => {
+      window.clearTimeout(first);
+      window.clearInterval(id);
+    };
+  }, []);
   // Mirror of `cart` for the stable addToCart callback — addToCart is passed to
   // the memoized ProductGrid, so it must not be re-created on every cart change.
   const cartRef = useRef<CartLine[]>([]);
+  // productId → fresh FIFO layers, used for exact per-line price previews.
+  // A missing entry means estimate mode (locked price / current layer) — never
+  // an error state.
+  const [cartBatches, setCartBatches] = useState<Map<number, FifoBatchWithPrice[]>>(() => new Map());
+  // Refs mirror the map / in-flight fetches so the stable addToCart callback
+  // (passed to the memoized ProductGrid) never needs them as dependencies.
+  const cartBatchesRef = useRef<Map<number, FifoBatchWithPrice[]>>(new Map());
+  const batchFetchInFlightRef = useRef<Set<number>>(new Set());
   const [search, setSearch] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'gcash' | 'credit'>('cash');
   // Cash tendered: raw string as typed (pesos). Derived to integer centavos for
@@ -108,6 +170,47 @@ export default function POSClient() {
   // Collapses overlapping identical shift polls into a single in-flight fetch.
   const shiftFetchRef = useRef(false);
 
+  // Fire-and-forget FIFO batch fetch for the cart preview. Failures are
+  // silent: the line keeps its estimate price (e.g. offline with no cache).
+  // The in-flight Set dedupes rapid repeated adds of the same product.
+  const loadCartBatches = useCallback((productIds: number[]) => {
+    for (const productId of new Set(productIds)) {
+      if (batchFetchInFlightRef.current.has(productId)) continue;
+      batchFetchInFlightRef.current.add(productId);
+      getFifoBatches(productId)
+        .then((result) => {
+          setCartBatches((prev) => {
+            const next = new Map(prev);
+            next.set(productId, result.batches);
+            return next;
+          });
+        })
+        .catch(() => {
+          // Silent estimate fallback — batch pricing must never break the POS.
+        })
+        .finally(() => {
+          batchFetchInFlightRef.current.delete(productId);
+        });
+    }
+  }, []);
+
+  // After a sale the cart mirrors the pre-sale layers. Drop every layer set
+  // belonging to a product that was just sold: a re-add in the same minute must
+  // not preview the consumed layers. The next refresh tick refetches fresh data.
+  function pruneSoldCartBatches(productIds: number[]) {
+    if (productIds.length === 0) return;
+    const next = new Map(cartBatchesRef.current);
+    let changed = false;
+    for (const productId of productIds) {
+      if (next.delete(productId)) changed = true;
+    }
+    if (!changed) return;
+    // Keep the ref in sync immediately — addToCart's dedupe reads it before
+    // the post-render effect would copy the state update over.
+    cartBatchesRef.current = next;
+    setCartBatches(next);
+  }
+
   function loadShiftData() {
     // No role gate here. This used to `return` while the role was unknown,
     // which — because `user` is null on an offline cold load — meant the POS
@@ -133,11 +236,15 @@ export default function POSClient() {
     setProductsLoading(true);
     // getActiveProducts() merges without clearing, so archived rows survive.
     getActiveProducts().then(setProducts).catch(() => {}).finally(() => setProductsLoading(false));
+    // Re-read layers for anything still in the cart so a layer rotation
+    // (sale / Stock In / Adjust, possibly from another device) is reflected
+    // in the displayed split as soon as products refresh.
+    loadCartBatches(cartRef.current.map((l) => l.product.id));
     getSettings<StoreSettings>().then(setSettings);
     loadShiftData();
     getCustomersLight().then(setCustomers).catch(() => {});
     getCachedUtangEntries<{ customerId: number; remainingBalance: number; status: string }>().then(setUtangEntries).catch(() => {});
-  }, []);
+  }, [loadCartBatches]);
 
   const cachedActiveProducts = useMemo(
     () => cachedProducts?.filter((p) => !p.archived),
@@ -158,6 +265,11 @@ export default function POSClient() {
   useEffect(() => {
     cartRef.current = cart;
   }, [cart]);
+
+  // Mirror batch data for event handlers that must stay stable (addToCart).
+  useEffect(() => {
+    cartBatchesRef.current = cartBatches;
+  }, [cartBatches]);
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
@@ -193,14 +305,27 @@ export default function POSClient() {
   }, [customers.length]);
 
   const filteredProducts = useMemo(() => {
-    if (!search.trim()) return products;
+    // `expiryTick` refreshes right after mount and then every minute, so a
+    // POS tab left open across an expiry boundary drops expired items by
+    // itself. Before the first tick it is still 0 — tiles may show for a
+    // second but stay unsellable (the addToCart/checkout guards re-check
+    // live at click time).
+    const now = expiryTick;
+    // Newest-added first (id = creation order) — but expired perishables are
+    // gone from the shelf entirely: they cannot be sold, only replaced.
+    if (!search.trim()) {
+      return products
+        .filter((p) => !isSellSkippedExpiredPerishable(p, now))
+        .sort((a, b) => b.id - a.id);
+    }
     const query = search.toLowerCase();
     return products.filter((p) =>
-      p.name.toLowerCase().includes(query) ||
-      p.barcode?.toLowerCase().includes(query) ||
-      p.category?.name?.toLowerCase().includes(query)
-    );
-  }, [products, search]);
+      !isSellSkippedExpiredPerishable(p, now) &&
+      (p.name.toLowerCase().includes(query) ||
+        p.barcode?.toLowerCase().includes(query) ||
+        p.category?.name?.toLowerCase().includes(query))
+    ).sort((a, b) => b.id - a.id);
+  }, [products, search, expiryTick]);
 
   const customerBalances = useMemo(() => {
     const map = new Map<number, number>();
@@ -219,6 +344,12 @@ export default function POSClient() {
   }, [products, cachedProducts]);
 
   const addToCart = useCallback((product: Product) => {
+    // Expiry guard (evaluated live, not from the possibly-stale grid): an
+    // expired perishable can't enter the cart at all.
+    if (isSellSkippedExpiredPerishable(product)) {
+      toast.error(`Expired — ${product.name} can no longer be sold.`);
+      return;
+    }
     // Cap at available stock so the grader never queues/checks out more units
     // than the shelf holds ("Only N left" rather than a checkout rejection).
     const stock = productStock(product.id) ?? (typeof product.stock === 'number' ? product.stock : null);
@@ -227,16 +358,28 @@ export default function POSClient() {
       toast.error(stock > 0 ? `Only ${stock} left` : 'Out of stock');
       return;
     }
+    // First add of this product: fetch its FIFO layers so the cart can show
+    // the exact split. Repeated adds are deduped by the in-flight guard.
+    if (!cartBatchesRef.current.has(product.id)) {
+      loadCartBatches([product.id]);
+    }
     setCart((prev) => {
       const existing = prev.find((l) => l.product.id === product.id);
       if (existing) {
+        // Keep the FIRST add's lockedPrice; only the product snapshot follows
+        // the latest server data (new layer price for subsequent adds).
         return prev.map((l) =>
-          l.product.id === product.id ? { ...l, quantity: l.quantity + 1 } : l
+          l.product.id === product.id
+            ? { ...l, product, quantity: l.quantity + 1 }
+            : l
         );
       }
-      return [...prev, { product, quantity: 1 }];
+      return [
+        ...prev,
+        { product, quantity: 1, lockedPrice: effectivePrice(product) },
+      ];
     });
-  }, [productStock]);
+  }, [productStock, loadCartBatches]);
 
   function handleSearchKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Enter' && filteredProducts.length === 1) {
@@ -246,14 +389,24 @@ export default function POSClient() {
   }
 
   function changeCartQuantity(productId: number, delta: number) {
+    const line = cart.find((l) => l.product.id === productId);
     if (delta > 0) {
-      const line = cart.find((l) => l.product.id === productId);
       const current = line?.quantity ?? 0;
       const stock = productStock(productId) ?? (line && typeof line.product.stock === 'number' ? line.product.stock : null);
       if (stock !== null && current + delta > stock) {
         toast.error(stock > 0 ? `Only ${stock} left` : 'Out of stock');
         return;
       }
+    }
+    // The line is leaving the cart — drop its batch preview too. A later add
+    // starts fresh (and re-locks the price at that moment).
+    if (line && delta < 0 && line.quantity + delta <= 0) {
+      setCartBatches((prev) => {
+        if (!prev.has(productId)) return prev;
+        const next = new Map(prev);
+        next.delete(productId);
+        return next;
+      });
     }
     setCart((prev) =>
       prev
@@ -266,8 +419,70 @@ export default function POSClient() {
     );
   }
 
+  // Typed-quantity editor for the cart rows: key = productId, value = the
+  // in-progress string while the input is focused. The input commits on
+  // blur/Enter so typing "12" doesn't fire per-keystroke stock caps/toasts.
+  const [qtyDraft, setQtyDraft] = useState<Record<number, string>>({});
+
+  function clearQtyDraft(productId: number) {
+    setQtyDraft((prev) => {
+      if (!(productId in prev)) return prev;
+      const next = { ...prev };
+      delete next[productId];
+      return next;
+    });
+  }
+
+  // Absolute quantity editor for the typed input's commit path. Same shelf
+  // cap as addToCart/changeCartQuantity — clamps to stock with the usual
+  // "Only N left" toast instead of queueing more than the shelf holds.
+  function applyCartQuantity(productId: number, target: number) {
+    if (!Number.isInteger(target) || target <= 0) return;
+    const line = cart.find((l) => l.product.id === productId);
+    // Input rows only render for cart lines; bail if it was removed between
+    // focus and commit.
+    if (!line) return;
+    const stock = productStock(productId) ?? (typeof line.product.stock === 'number' ? line.product.stock : null);
+    // A typed edit is never a delete. When the shelf is empty the clamp would
+    // be 0 — passing that to changeCartQuantity drops the line (the − button's
+    // delete-at-zero behavior). Leave the line untouched instead: removal stays
+    // the explicit − button's job.
+    if (stock !== null && stock <= 0) {
+      toast.error('Out of stock');
+      return;
+    }
+    if (stock !== null && target > stock) {
+      toast.error(stock > 0 ? `Only ${stock} left` : 'Out of stock');
+    }
+    const bounded = stock !== null ? Math.min(target, stock) : target;
+    if (bounded <= 0) return; // clamped away — cancelled edit, keep the line
+    if (bounded === line.quantity) return; // already there (clamps included)
+    // Reuse the +/- path in both directions so batching layout, price
+    // previews and offline behavior all stay in one code path.
+    changeCartQuantity(productId, bounded - line.quantity);
+  }
+
+  // Blur/Enter commit. A valid 1+ value applies; blank/zero is a CANCELLED
+  // edit that snaps back to the committed quantity — removing a line stays
+  // the − button's job so a stray keystroke can never empty the cart.
+  function commitQtyDraft(productId: number, domValue: string) {
+    clearQtyDraft(productId);
+    const parsed = Number.parseInt(domValue, 10);
+    if (Number.isInteger(parsed) && parsed >= 1) applyCartQuantity(productId, parsed);
+  }
+
   const totalItems = cart.reduce((s, l) => s + l.quantity, 0);
-  const total = cart.reduce((s, l) => s + l.quantity * l.product.price, 0);
+  // Same per-line helper as the rendered rows → displayed total === previewed
+  // (server) total in the normal, batch-data-available case.
+  const total = cart.reduce((s, l) => s + lineTotalOf(l, cartBatches), 0);
+  // Payment parity guard: tell the cashier when the exact FIFO split makes
+  // the charge differ from the naive locked-price estimate by more than a
+  // rounding cent (e.g. a 12-unit sale spanning two layers).
+  const showFifoPriceNotice = cart.some((l) => {
+    const naiveUnit = l.lockedPrice ?? effectivePrice(l.product);
+    const naiveTotal = naiveUnit * l.quantity;
+    return Math.abs(lineTotalOf(l, cartBatches) - naiveTotal) > 1;
+  });
   // Derived centavos from the raw input; blank/invalid → 0 (treated as not yet tendered).
   const tenderedCents = tenderedInput.trim() === '' ? 0 : parsePesosToCents(tenderedInput) || 0;
   const change = tenderedCents - total;
@@ -314,6 +529,15 @@ export default function POSClient() {
       setError('Please open a shift before completing transactions.');
       return;
     }
+    // Expiry watchdog: a cart line can sit in an open POS tab across its
+    // expiry date (overnight shifts / offline days). Block the sale and let
+    // the cashier remove the item — expiry must never slip between grid and
+    // receipt.
+    const expiredLine = cart.find((l) => isSellSkippedExpiredPerishable(l.product));
+    if (expiredLine) {
+      setError(`${expiredLine.product.name} expired — remove it from the cart to continue.`);
+      return;
+    }
     setError('');
     setProcessing(true);
     try {
@@ -323,7 +547,16 @@ export default function POSClient() {
           setProcessing(false);
           return;
         }
-        const items = cart.map((l) => ({ productId: l.product.id, quantity: l.quantity, unitPrice: l.product.price }));
+        // One item row per FIFO price slice: the offline fallback receipt and
+        // the queued expectedSubtotal then match the displayed split exactly.
+        // The server re-derives slices from the DB and ignores these prices.
+        const items = cart.flatMap((l) =>
+          previewSlices(l, cartBatches).map((s) => ({
+            productId: l.product.id,
+            quantity: s.quantity,
+            unitPrice: s.unitPrice,
+          }))
+        );
         // Date-only (YYYY-MM-DD) → end-of-day ISO so picking "today" stays valid.
         const dueIso = creditDue ? new Date(`${creditDue}T23:59:59`).toISOString() : undefined;
         const result = await addUtangOffline(customerName, items, creditNote || undefined, dueIso ?? undefined);
@@ -343,12 +576,17 @@ export default function POSClient() {
           offline: (result as Record<string, unknown>).offline as boolean | undefined,
         });
         setCart([]);
+        // Drop the sold products' pre-sale layer snapshots (see helper).
+        pruneSoldCartBatches(cart.map((l) => l.product.id));
         setTenderedInput('');
         setCreditNote('');
         setCreditDue('');
         setSelectedCustomerId(0);
         setNewCustomerName('');
         setShowNewCustomer(false);
+        // Layers just rotated: refresh previews for the products we sold so a
+        // rapid re-add sees the new active layer. Fire-and-forget by contract.
+        loadCartBatches(cart.map((l) => l.product.id));
         // Offline: Dexie already holds the decremented stock and the POS live
         // query re-renders the grid, so re-fetching the whole product list here
         // only bought an extra full-grid render per sale.
@@ -357,13 +595,14 @@ export default function POSClient() {
         }
         // Refresh live shift totals for the seller's own shift (admin included).
         if ((result as Record<string, unknown>).offline && activeShift) {
-          // Credit (utang) is a receivable, not drawer cash — the server counts
-          // it only in transactionCount (see /api/shift: totalSales is
-          // cashSales + gcashSales). Mirror that here; treating it as cash
-          // inflated cashSales/expectedCash and drifted from the physical drawer.
+          // Credit (utang) is a receivable, not drawer cash — the server now
+          // counts only cash/gcash sales in the shift snapshot
+          // (app/api/shift). A credit sale must not bump transactionCount.
           const updatedShift: ShiftDetails = {
             ...activeShift,
-            transactionCount: (activeShift.transactionCount ?? 0) + 1,
+            transactionCount:
+              (activeShift.transactionCount ?? 0) +
+              (['cash', 'gcash'].includes(paymentMethod) ? 1 : 0),
           };
           cacheActiveShift(updatedShift);
           setActiveShift(updatedShift);
@@ -382,7 +621,15 @@ export default function POSClient() {
           return;
         }
         const finalTendered = paymentMethod === 'gcash' ? total : tenderedCents;
-        const cartItems = cart.map((l) => ({ productId: l.product.id, quantity: l.quantity, unitPrice: l.product.price }));
+        // One item row per FIFO price slice (see the credit branch above):
+        // keeps the offline receipt/queue estimate equal to the cart display.
+        const cartItems = cart.flatMap((l) =>
+          previewSlices(l, cartBatches).map((s) => ({
+            productId: l.product.id,
+            quantity: s.quantity,
+            unitPrice: s.unitPrice,
+          }))
+        );
 
         const result = await checkout(
           cartItems,
@@ -397,8 +644,13 @@ export default function POSClient() {
             : result
         );
         setCart([]);
+        // Drop the sold products' pre-sale layer snapshots (see helper).
+        pruneSoldCartBatches(cart.map((l) => l.product.id));
         setTenderedInput('');
         setGcashRef('');
+        // Layers just rotated: refresh previews for the products we sold so a
+        // rapid re-add sees the new active layer. Fire-and-forget by contract.
+        loadCartBatches(cart.map((l) => l.product.id));
         // Online only — offline stock already lives in Dexie (see above).
         if (!result.offline) {
           void getActiveProducts().then(setProducts).catch(() => {});
@@ -436,13 +688,16 @@ export default function POSClient() {
         customerName = payNewCustomerName.trim();
         const existing = customers.find((c) => c.name.toLowerCase() === customerName.toLowerCase());
         if (!existing) {
-          if (navigator.onLine) {
-            const { addCustomer } = await import('@/lib/client/api/inventory');
-            await addCustomer({ name: customerName });
-          } else {
-            const cached = await getCachedCustomers<Record<string, unknown>>();
-            await saveCachedCustomers([...cached, { id: Date.now(), name: customerName, createdAt: new Date().toISOString() }]);
-          }
+          // Offline-safe helper: it optimistically caches the customer AND
+          // queues a customer_add, so the queued record_payment replays after
+          // the customer exists server-side (otherwise sync fails with
+          // "Customer not found" and the payment is stuck in the queue).
+          const { addCustomer } = await import('@/lib/client/api/inventory');
+          const created = await addCustomer({ name: customerName });
+          const newCustomer: CustomerLight = { id: created.id, name: created.name ?? customerName };
+          // Keep the picker in sync right away — the next payment/new-customer
+          // lookup must find this customer without a reload.
+          setCustomers((prev) => (prev.some((c) => c.id === newCustomer.id) ? prev : [...prev, newCustomer]));
         }
       } else {
         const found = customers.find((c) => c.id === paySelectedCustomerId);
@@ -544,17 +799,26 @@ export default function POSClient() {
     // Pass the physical drawer count so the server stores counted cash and the
     // over/short variance. Blank (cashier) → undefined → null variance, exactly
     // as before. Offline the queued close_shift action carries the same value.
-    const res = await closeShift(countedCash ?? undefined, shiftNotes);
-    setShiftActionLoading(false);
-    if (!res.success) {
-      setShiftError(res.error || 'Failed to close shift');
-      return;
-    }
-    setShowEndShiftModal(false);
-    setClosingCashInput('');
-    setActiveShift(null);
-    if (res.summary) {
-      setZReadReceipt(res.summary);
+    try {
+      const res = await closeShift(countedCash ?? undefined, shiftNotes);
+      if (!res.success) {
+        setShiftError(res.error || 'Failed to close shift');
+        return;
+      }
+      setShowEndShiftModal(false);
+      setClosingCashInput('');
+      setActiveShift(null);
+      if (res.summary) {
+        setZReadReceipt(res.summary);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to close shift';
+      setShiftError(message);
+      toast.error(message);
+    } finally {
+      // Always release the busy flag — an early throw must never leave the
+      // Close Shift button disabled forever.
+      setShiftActionLoading(false);
     }
   }
 
@@ -677,6 +941,7 @@ export default function POSClient() {
           </div>
 
           <ProductGrid
+            key={search}
             products={filteredProducts}
             totalProducts={products.length}
             loading={isLoadingProducts}
@@ -698,36 +963,85 @@ export default function POSClient() {
             <p className="text-sm text-gray-400 text-center py-8">Cart is empty. Input a product to start.</p>
           ) : (
             <div className="space-y-2 max-h-64 overflow-y-auto">
-              {cart.map((l) => (
-                <div key={l.product.id} className="flex justify-between items-center text-sm">
-                  <div>
-                    <div>{l.product.name}</div>
-                    <div className="text-xs text-gray-500">Qty: {l.quantity}</div>
+              {cart.map((l) => {
+                // Exact FIFO preview when layers are loaded; otherwise the
+                // locked/active-layer estimate. The same helper feeds the
+                // grand total, so the row and total can never disagree.
+                const slices = previewSlices(l, cartBatches);
+                const lineTotal = lineTotalOf(l, cartBatches);
+                const distinctPrices = new Set(slices.map((s) => s.unitPrice));
+                const isSplit = distinctPrices.size > 1;
+                const unitPrice = slices[0]?.unitPrice ?? l.lockedPrice ?? l.product.price;
+                return (
+                  <div key={l.product.id} className="flex justify-between items-center gap-2 text-sm">
+                    <div className="min-w-0">
+                      <div className="truncate">{l.product.name}</div>
+                      {!isSplit && <div className="text-xs text-gray-500">{peso(unitPrice)}/unit</div>}
+                      {isSplit && (
+                        <div className="text-[10px] text-gray-500 leading-tight">
+                          {slices.map((s, i) => (
+                            <span key={`${s.unitPrice}-${i}`}>
+                              {i > 0 && ' + '}
+                              {peso(s.unitPrice)} × {s.quantity}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => { clearQtyDraft(l.product.id); changeCartQuantity(l.product.id, -1); }}
+                        className="w-7 h-7 rounded-md border text-sm cursor-pointer"
+                      >
+                        -
+                      </button>
+                      {/* Typed quantity edit: commits on blur/Enter so multi-digit
+                          typing never trips the stock cap mid-entry. Esc reverts. */}
+                      <input
+                        value={qtyDraft[l.product.id] ?? String(l.quantity)}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(/\D/g, '');
+                          setQtyDraft((prev) => ({ ...prev, [l.product.id]: raw }));
+                        }}
+                        onBlur={(e) => commitQtyDraft(l.product.id, e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            e.currentTarget.blur();
+                          } else if (e.key === 'Escape') {
+                            // Revert to the committed quantity, then let blur
+                            // tidy the draft state up.
+                            e.currentTarget.value = String(l.quantity);
+                            e.currentTarget.blur();
+                          }
+                        }}
+                        inputMode="numeric"
+                        aria-label={`Quantity — ${l.product.name}`}
+                        className="h-7 w-9 rounded-md border text-sm text-center cursor-text"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => { clearQtyDraft(l.product.id); changeCartQuantity(l.product.id, 1); }}
+                        className="w-7 h-7 rounded-md border text-sm cursor-pointer"
+                      >
+                        +
+                      </button>
+                      <span className="min-w-[70px] text-right">{peso(lineTotal)}</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => changeCartQuantity(l.product.id, -1)}
-                      className="w-7 h-7 rounded-md border text-sm cursor-pointer"
-                    >
-                      -
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => changeCartQuantity(l.product.id, 1)}
-                      className="w-7 h-7 rounded-md border text-sm cursor-pointer"
-                    >
-                      +
-                    </button>
-                    <span className="min-w-[70px] text-right">{peso(l.quantity * l.product.price)}</span>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
           <div className="border-t pt-3 space-y-1 text-sm">
             <div className="flex justify-between font-bold text-lg text-orange-700"><span>Total</span><span>{peso(total)}</span></div>
+            {showFifoPriceNotice && (
+              <p className="text-[11px] text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                FIFO layer prices applied — updated total
+              </p>
+            )}
           </div>
 
           <div>
@@ -1187,6 +1501,8 @@ export default function POSClient() {
   );
 }
 
+const PAGE_SIZE = 24;
+
 const ProductGrid = memo(function ProductGrid({
   products,
   totalProducts,
@@ -1202,50 +1518,73 @@ const ProductGrid = memo(function ProductGrid({
   search: string;
   onAddToCart: (product: Product) => void;
 }) {
+  const [page, setPage] = useState(1);
+  const w = pageWindow(products.length, page, PAGE_SIZE);
+  // Only the populated branch is paged; loading/empty branches render whole.
+  const pageProducts = products.slice((w.page - 1) * PAGE_SIZE, w.pageEnd);
+
   return (
-    // data-pos-flat: renders every card/badge flat (no per-card backdrop-filter).
-    // See "POS PERFORMANCE (FLAT SURFACES)" in app/globals.css.
-    <div data-pos-flat className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-      {loading ? (
-        <p className="col-span-full text-center text-gray-400 py-8">
-          Loading products…
-        </p>
-      ) : products.length === 0 && totalProducts === 0 && offline ? (
-        <p className="col-span-full text-center text-gray-400 py-8">
-          No products available offline. Please go online to load products.
-        </p>
-      ) : products.length === 0 ? (
-        <p className="col-span-full text-center text-gray-400 py-8">
-          No products found matching &quot;{search}&quot;
-        </p>
-      ) : (
-        products.map((product) => {
-          const expBadge = getExpiryBadge(product.expiryDate);
-          return (
-            <button
-              key={product.id}
-              data-pos-product-card
-              onClick={() => onAddToCart(product)}
-              disabled={product.stock <= 0}
-              className={`bg-white rounded-lg shadow p-4 text-left hover:shadow-md transition cursor-pointer disabled:opacity-40 ${expBadge ? 'border-l-4 border-l-amber-400' : ''}`}
-            >
-              <div className="font-medium text-sm">{product.name}</div>
-              {expBadge && (
-                <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded-full mt-1 font-medium ${expBadge.className}`}>
-                  {expBadge.label}
-                </span>
-              )}
-              <div className="flex justify-between items-center mt-2">
-                <span className="text-green-700 font-bold">{peso(product.price)}</span>
-                <span className={`text-xs px-2 py-0.5 rounded-full ${product.stock < 20 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>
-                  {product.stock} stk
-                </span>
-              </div>
-            </button>
-          );
-        })
-      )}
-    </div>
+    <>
+      {/* data-pos-flat: renders every card/badge flat (no per-card backdrop-filter).
+          See "POS PERFORMANCE (FLAT SURFACES)" in app/globals.css. */}
+      <div data-pos-flat className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        {loading ? (
+          <p className="col-span-full text-center text-gray-400 py-8">
+            Loading products…
+          </p>
+        ) : products.length === 0 && totalProducts === 0 && offline ? (
+          <p className="col-span-full text-center text-gray-400 py-8">
+            No products available offline. Please go online to load products.
+          </p>
+        ) : products.length === 0 ? (
+          <p className="col-span-full text-center text-gray-400 py-8">
+            No products found matching &quot;{search}&quot;
+          </p>
+        ) : (
+          pageProducts.map((product) => {
+            const expBadge = getExpiryBadge(product.expiryDate);
+            // activeLayerPrice may ship in a parallel server lane; the local
+            // intersection keeps this client compiling until then.
+            const priceable = product as PriceableProduct;
+            return (
+              <button
+                key={product.id}
+                data-pos-product-card
+                onClick={() => onAddToCart(product)}
+                disabled={product.stock <= 0}
+                className={`bg-white rounded-lg shadow p-4 text-left hover:shadow-md transition cursor-pointer disabled:opacity-40 ${expBadge ? 'border-l-4 border-l-amber-400' : ''}`}
+              >
+                <div className="font-medium text-sm">{product.name}</div>
+                {expBadge && (
+                  <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded-full mt-1 font-medium ${expBadge.className}`}>
+                    {expBadge.label}
+                  </span>
+                )}
+                <div className="flex justify-between items-center mt-2">
+                  <span className="text-green-700 font-bold">{peso(effectivePrice(priceable))}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${product.stock < 20 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>
+                    {product.stock} stk
+                  </span>
+                </div>
+                {typeof priceable.activeLayerCost === 'number' && (
+                  <div className="text-[10px] text-gray-500 mt-0.5">cost {peso(priceable.activeLayerCost)}/unit</div>
+                )}
+              </button>
+            );
+          })
+        )}
+      </div>
+      <Pagination
+        tone="light"
+        page={w.page}
+        pageCount={w.pageCount}
+        total={products.length}
+        pageStart={w.pageStart}
+        pageEnd={w.pageEnd}
+        label="products"
+        onPage={setPage}
+      />
+    </>
   );
 });
 

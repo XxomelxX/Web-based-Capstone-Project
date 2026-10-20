@@ -3,12 +3,13 @@
 import { useState } from 'react';
 import { restockProduct } from '@/lib/client/api/inventory';
 import { useOnline } from '@/components/providers/online-provider';
-import { parsePesosToCents } from '@/lib/money';
+import { parsePesosToCents, peso } from '@/lib/money';
 
 interface LowStockProduct {
   id: number;
   name: string;
   stock: number;
+  price?: number;
 }
 
 interface StockInProps {
@@ -19,15 +20,31 @@ interface StockInProps {
 }
 
 export function StockIn({ product, isVisible, onClose, onSuccess }: StockInProps) {
+  if (!isVisible || !product) return null;
+  // Remount per target: a previous product's quantity/supplier/cost/price must
+  // never prefill the next modal. The key also covers switching targets without
+  // an intermediate close; returning null unmounts on close.
+  return <StockInForm key={product.id} product={product} onClose={onClose} onSuccess={onSuccess} />;
+}
+
+function StockInForm({
+  product,
+  onClose,
+  onSuccess,
+}: {
+  product: LowStockProduct;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
   const [quantity, setQuantity] = useState('');
   const [supplier, setSupplier] = useState('');
   const [costPerUnit, setCostPerUnit] = useState('');
+  const [pricePerUnit, setPricePerUnit] = useState('');
   const [error, setError] = useState('');
   const { isOnline } = useOnline();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!product) return;
     setError('');
     try {
       await restockProduct({
@@ -35,10 +52,12 @@ export function StockIn({ product, isVisible, onClose, onSuccess }: StockInProps
         quantity: Number(quantity),
         supplier: supplier.trim() || undefined,
         costPerUnit: costPerUnit === '' ? undefined : parsePesosToCents(costPerUnit),
+        pricePerUnit: pricePerUnit === '' ? undefined : parsePesosToCents(pricePerUnit),
       });
       setQuantity('');
       setSupplier('');
       setCostPerUnit('');
+      setPricePerUnit('');
       setError('');
       onSuccess();
       onClose();
@@ -46,8 +65,6 @@ export function StockIn({ product, isVisible, onClose, onSuccess }: StockInProps
       setError(err instanceof Error ? err.message : 'Restock failed');
     }
   };
-
-  if (!isVisible || !product) return null;
 
   return (
     <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -93,6 +110,23 @@ export function StockIn({ product, isVisible, onClose, onSuccess }: StockInProps
             placeholder="Records this layer's buying cost"
             className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-cyan-500 mt-1"
           />
+        </div>
+        <div>
+          <label className="text-sm font-medium text-slate-300">Selling Price per Unit ₱ (optional)</label>
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            value={pricePerUnit}
+            onChange={(e) => setPricePerUnit(e.target.value)}
+            placeholder="Records this layer's selling price"
+            className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-cyan-500 mt-1"
+          />
+          <p className="text-xs text-slate-500 mt-1">
+            {typeof product.price === 'number'
+              ? `Blank = sell at current price (${peso(product.price)})`
+              : 'Blank = sell at the product’s current price'}
+          </p>
         </div>
         <p className="text-xs text-slate-400">
           Current stock: {product.stock} → New stock: {product.stock + (Number(quantity) || 0)}

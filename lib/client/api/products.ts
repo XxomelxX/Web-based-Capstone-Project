@@ -18,6 +18,10 @@ export interface Product {
   vatType: string; // 'exempt' | 'regular' | 'zero-rated'
   expiryDate?: string | Date | null;
   _hasHistory?: boolean;
+  /** Cost-per-unit of the active FIFO layer (oldest batch with stock); null when none. */
+  activeLayerCost?: number | null;
+  /** Raw selling price of the active FIFO layer; null/absent = use `price`. */
+  activeLayerPrice?: number | null;
 }
 
 export async function getProducts(): Promise<Product[]> {

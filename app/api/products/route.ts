@@ -4,6 +4,7 @@ import { prisma } from '@/lib/server/prisma';
 import { requireRole } from '@/lib/server/require-role';
 import { requireSession } from '@/lib/server/require-session';
 import { broadcastRealtime } from '@/lib/server/realtime';
+import { getActiveLayerInfo } from '@/lib/server/fifo';
 
 const VALID_VAT = ['exempt', 'regular', 'zero-rated'];
 
@@ -21,11 +22,12 @@ export async function GET(request: Request) {
   });
 
   const productIds = products.map((p) => p.id);
-  const [txCounts, utangCounts, batchCounts, logCounts] = await Promise.all([
+  const [txCounts, utangCounts, batchCounts, logCounts, layerInfo] = await Promise.all([
     prisma.transactionItem.groupBy({ by: ['productId'], where: { productId: { in: productIds } }, _count: true }),
     prisma.utangEntryItem.groupBy({ by: ['productId'], where: { productId: { in: productIds } }, _count: true }),
     prisma.stockBatch.groupBy({ by: ['productId'], where: { productId: { in: productIds } }, _count: true }),
     prisma.itemLog.groupBy({ by: ['productId'], where: { productId: { in: productIds } }, _count: true }),
+    getActiveLayerInfo(prisma, productIds),
   ]);
 
   const txMap = new Map(txCounts.map((r) => [r.productId, r._count]));
@@ -35,7 +37,13 @@ export async function GET(request: Request) {
 
   const productsWithHistory = products.map((p) => {
     const count = (txMap.get(p.id) ?? 0) + (utangMap.get(p.id) ?? 0) + (batchMap.get(p.id) ?? 0) + (logMap.get(p.id) ?? 0);
-    return { ...p, _hasHistory: count > 0 };
+    return {
+      ...p,
+      _hasHistory: count > 0,
+      activeLayerCost: layerInfo.get(p.id)?.costPerUnit ?? null,
+      // Raw active-batch selling price; null/absent => client falls back to price.
+      activeLayerPrice: layerInfo.get(p.id)?.pricePerUnit ?? null,
+    };
   });
 
   return NextResponse.json(productsWithHistory);
@@ -91,6 +99,8 @@ export async function POST(request: Request) {
             quantityRemaining: stock,
             supplier: 'Opening stock',
             costPerUnit: cost,
+            // Synthetic opening layer sells at the product's current price.
+            pricePerUnit: created.price,
           },
         });
       }

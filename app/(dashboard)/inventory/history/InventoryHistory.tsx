@@ -29,7 +29,16 @@ export function InventoryHistory({ isVisible, onClose }: InventoryHistoryProps) 
     setLoading(true);
     try {
       const logs = (await getItemLog()) as HistoryItem[];
-      setHistory(logs.slice(0, 20));
+      // Online /api/itemlog is newest-first (createdAt desc), but the offline
+      // Dexie read returns primary-key ascending (oldest-first). Sort here so
+      // the 20-row slice is the latest 20 in both modes.
+      const newestFirst = [...logs].sort((a, b) => {
+        const at = new Date(a.createdAt).getTime();
+        const bt = new Date(b.createdAt).getTime();
+        if (Number.isFinite(at) && Number.isFinite(bt) && at !== bt) return bt - at;
+        return b.id - a.id;
+      });
+      setHistory(newestFirst.slice(0, 20));
     } catch {
       setHistory([]);
     } finally {

@@ -46,6 +46,7 @@ export async function restockProduct(data: {
   quantity: number;
   supplier?: string;
   costPerUnit?: number;
+  pricePerUnit?: number;
 }) {
   if (isOffline()) {
     const product = await db.products.get(data.productId);
@@ -53,13 +54,13 @@ export async function restockProduct(data: {
       const stock = typeof product.stock === 'number' ? product.stock : 0;
       await db.products.put({ ...product, stock: stock + data.quantity });
     }
-    await queueRestock(data.productId, data.quantity, data.supplier ?? null, data.costPerUnit ?? null);
+    await queueRestock(data.productId, data.quantity, data.supplier ?? null, data.costPerUnit ?? null, data.pricePerUnit ?? null);
     return { offline: true, productId: data.productId, quantity: data.quantity };
   }
   const res = await fetch('/api/restock', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
+    body: JSON.stringify({ ...data, pricePerUnit: data.pricePerUnit ?? null }),
   });
   if (!res.ok) {
     const errData = await res.json().catch(() => ({}));
@@ -253,7 +254,7 @@ export async function requestVoid(transactionId: number, reason: string): Promis
   const me = readSessionUser();
   const clientUuid = crypto.randomUUID();
   if (isOffline()) {
-    await queueVoidRequest(transactionId, reason, me?.id ?? 0, clientUuid);
+      await queueVoidRequest(transactionId, reason, me?.id || undefined, clientUuid);
     const temp: VoidRequestRow = {
       id: -Date.now(),
       clientUuid,
@@ -286,7 +287,7 @@ export async function requestVoid(transactionId: number, reason: string): Promis
     const isNetworkError =
       error instanceof TypeError || /failed to fetch|network|offline/i.test(message);
     if (isNetworkError) {
-      await queueVoidRequest(transactionId, reason, me?.id ?? 0, clientUuid);
+    await queueVoidRequest(transactionId, reason, me?.id || undefined, clientUuid);
       const temp: VoidRequestRow = {
         id: -Date.now(),
         clientUuid,
@@ -334,7 +335,7 @@ export async function getVoidRequests(): Promise<VoidRequest[]> {
 export async function cancelVoidRequest(id: number): Promise<void> {
   const me = readSessionUser();
   if (isOffline()) {
-    await queueVoidRequestCancel(id, me?.id ?? 0);
+      await queueVoidRequestCancel(id, me?.id || undefined);
     await removeCachedVoidRequest(id);
     return;
   }
@@ -348,7 +349,7 @@ export async function cancelVoidRequest(id: number): Promise<void> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (error instanceof TypeError || /failed to fetch|network|offline/i.test(message)) {
-      await queueVoidRequestCancel(id, me?.id ?? 0);
+    await queueVoidRequestCancel(id, me?.id || undefined);
       await removeCachedVoidRequest(id);
       return;
     }
@@ -514,6 +515,8 @@ export interface FifoBatch {
   dateReceived: string;
   supplier: string | null;
   costPerUnit: number | null;
+  /** Selling price of this layer in centavos; null = sell at product.price. */
+  pricePerUnit?: number | null;
 }
 
 export interface FifoBatchesResponse {

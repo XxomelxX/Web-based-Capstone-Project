@@ -10,6 +10,7 @@ import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
 import { SearchInput } from '@/components/SearchInput';
 import { PageSkeleton } from '@/components/PageSkeleton';
+import { Pagination, pageWindow } from '@/components/Pagination';
 import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
 import { StockIn } from './stock-in/StockIn';
 import { StockAdjustments } from './stock-in/StockAdjustments';
@@ -19,6 +20,14 @@ import { AdjustmentHistory } from './history/AdjustmentHistory';
 import { peso } from '@/lib/money';
 
 type StockStatus = 'critical' | 'warning' | 'ok';
+
+/**
+ * The server contract attaches `activeLayerPrice` alongside `activeLayerCost`
+ * on product payloads. It is typed locally until the shared Product type lands.
+ */
+type PriceableProduct = Product & { activeLayerPrice?: number | null };
+
+const PAGE_SIZE = 20;
 
 function StatCard({ label, value, accent }: { label: string; value: number; accent: string }) {
   return (
@@ -35,10 +44,11 @@ export default function InventoryClient() {
 
   // Dexie-backed product list: instant paint, reactive to offline restocks.
   const liveProducts = useLiveQuery(() => db.products.toArray());
-  const products: Product[] = (liveProducts ?? []) as unknown as Product[];
+  const products: PriceableProduct[] = (liveProducts ?? []) as unknown as PriceableProduct[];
 
   const [threshold, setThreshold] = useState(20);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
   const [error, setError] = useState('');
   const [isCached, setIsCached] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
@@ -103,6 +113,10 @@ export default function InventoryClient() {
       )
     : activeProducts;
 
+  // Newest first (id = creation order).
+  const sortedList = [...filtered].sort((a, b) => b.id - a.id);
+  const w = pageWindow(sortedList.length, page, PAGE_SIZE);
+
   const criticalCutoff = Math.floor(threshold / 2);
   const statusOf = (stock: number): StockStatus =>
     stock < criticalCutoff ? 'critical' : stock < threshold ? 'warning' : 'ok';
@@ -160,7 +174,7 @@ export default function InventoryClient() {
 
       <SearchInput
         value={search}
-        onChange={setSearch}
+        onChange={(v) => { setSearch(v); setPage(1); }}
         placeholder="Search product, barcode or category…"
         ariaLabel="Search inventory"
       />
@@ -178,7 +192,7 @@ export default function InventoryClient() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800 text-slate-200">
-            {filtered.map((p) => {
+            {sortedList.slice(w.pageStart - 1, w.pageEnd).map((p) => {
               const status = statusOf(p.stock);
               return (
                 <tr key={p.id} className="hover:bg-slate-900/50">
@@ -187,7 +201,14 @@ export default function InventoryClient() {
                     {p.barcode && <span className="block text-xs text-slate-500">{p.barcode}</span>}
                   </td>
                   <td className="p-3 text-slate-400">{p.category?.name || 'Uncategorized'}</td>
-                  <td className="p-3 font-semibold text-emerald-400">{peso(p.price)}</td>
+                  <td className="p-3 font-semibold text-emerald-400">
+                    {typeof p.activeLayerPrice === 'number' ? peso(p.activeLayerPrice) : peso(p.price)}
+                    {typeof p.activeLayerCost === 'number' && (
+                      <span className="block text-xs font-normal text-slate-400">
+                        layer cost {peso(p.activeLayerCost)}/unit
+                      </span>
+                    )}
+                  </td>
                   <td className="p-3">
                     <span
                       className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
@@ -256,6 +277,16 @@ export default function InventoryClient() {
           </tbody>
         </table>
       </div>
+
+      <Pagination
+        page={w.page}
+        pageCount={w.pageCount}
+        total={sortedList.length}
+        pageStart={w.pageStart}
+        pageEnd={w.pageEnd}
+        label="products"
+        onPage={setPage}
+      />
 
       <StockIn
         product={stockInTarget}

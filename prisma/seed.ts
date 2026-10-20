@@ -195,7 +195,7 @@ async function seedProductsAndCategories() {
     // One opening FIFO layer per product so StockBatch totals match Product.stock.
     const created = await prisma.product.findMany({
       where: { categoryId: category.id },
-      select: { id: true, stock: true, cost: true },
+      select: { id: true, stock: true, cost: true, price: true },
     });
     for (const p of created) {
       if (p.stock <= 0) continue;
@@ -206,6 +206,7 @@ async function seedProductsAndCategories() {
           quantityRemaining: p.stock,
           supplier: 'Opening stock',
           costPerUnit: p.cost,
+          pricePerUnit: p.price,
         },
       });
     }

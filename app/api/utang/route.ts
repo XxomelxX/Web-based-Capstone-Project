@@ -3,7 +3,7 @@ import { prisma } from '@/lib/server/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/server/auth';
 import { broadcastRealtime } from '@/lib/server/realtime';
-import { consumeFifoStock } from '@/lib/server/fifo';
+import { consumeFifoStock, type ConsumeSlice } from '@/lib/server/fifo';
 import { isDbUnreachable, DB_UNAVAILABLE_MESSAGE } from '@/lib/server/db-unreachable';
 
 export async function GET() {
@@ -86,17 +86,39 @@ export async function POST(request: Request) {
         customer = await tx.customer.create({ data: { name: customerName.trim() } });
       }
 
-      // validate stock + server-side pricing from DB
+      // Validate products + guarded decrement once per PRODUCT (slice rows must
+      // never trigger extra decrements). The guarded write is the race gate:
+      // count 0 rolls the whole utang back.
       const productIds = items.map((i) => i.productId);
       const allProducts = await tx.product.findMany({ where: { id: { in: productIds } } });
       const productMap = new Map(allProducts.map((p) => [p.id, p]));
-      const priced = items.map((item) => {
-        const product = productMap.get(item.productId);
-        if (!product) throw new Error(`Product ${item.productId} not found`);
-        return { ...item, unitPrice: product.price };
-      });
+      const quantityByProduct = new Map<number, number>();
+      for (const item of items) {
+        if (!productMap.has(item.productId)) throw new Error(`Product ${item.productId} not found`);
+        quantityByProduct.set(item.productId, (quantityByProduct.get(item.productId) ?? 0) + item.quantity);
+      }
+      for (const [productId, quantity] of quantityByProduct) {
+        const stockUpdate = await tx.product.updateMany({
+          where: { id: productId, stock: { gte: quantity } },
+          data: { stock: { decrement: quantity } },
+        });
+        if (stockUpdate.count !== 1) {
+          const product = productMap.get(productId);
+          throw new Error(`Insufficient stock for ${product?.name ?? `product #${productId}`}`);
+        }
+      }
 
-      const totalAmount = priced.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
+      // FIFO per item line: each consumed layer is its own priced slice
+      // (batch.pricePerUnit ?? product.price). Client unitPrice is ignored.
+      const soldByProduct = new Map<number, number>();
+      const plans: { productId: number; slices: ConsumeSlice[] }[] = [];
+      let totalAmount = 0;
+      for (const item of items) {
+        const slices = await consumeFifoStock(tx, item.productId, item.quantity);
+        totalAmount += slices.reduce((sum, s) => sum + s.quantity * s.unitPrice, 0);
+        soldByProduct.set(item.productId, (soldByProduct.get(item.productId) ?? 0) + item.quantity);
+        plans.push({ productId: item.productId, slices });
+      }
 
       const utangEntry = await tx.utangEntry.create({
         include: { customer: true, items: true },
@@ -112,36 +134,28 @@ export async function POST(request: Request) {
         },
       });
 
-      for (const item of priced) {
-        await tx.utangEntryItem.create({
-          data: {
-            utangEntryId: utangEntry.id,
-            productId: item.productId,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            lineTotal: item.quantity * item.unitPrice,
-          },
-        });
-
-        // Conditional decrement: read-then-write races concurrent sales of the
-        // last unit — the guarded write rolls the whole utang back on count 0.
-        const stockUpdate = await tx.product.updateMany({
-          where: { id: item.productId, stock: { gte: item.quantity } },
-          data: { stock: { decrement: item.quantity } },
-        });
-        if (stockUpdate.count !== 1) {
-          const product = productMap.get(item.productId);
-          throw new Error(`Insufficient stock for ${product?.name ?? `product #${item.productId}`}`);
+      // One utang row per consumed FIFO slice (each at its own layer price).
+      for (const plan of plans) {
+        for (const slice of plan.slices) {
+          await tx.utangEntryItem.create({
+            data: {
+              utangEntryId: utangEntry.id,
+              productId: plan.productId,
+              quantity: slice.quantity,
+              unitPrice: slice.unitPrice,
+              lineTotal: slice.quantity * slice.unitPrice,
+            },
+          });
         }
+      }
 
-        // FIFO: utang sales consume the oldest stock layers first.
-        await consumeFifoStock(tx, item.productId, item.quantity);
-
+      // Item log stays ONE row per product per transaction.
+      for (const [productId, quantity] of soldByProduct) {
         await tx.itemLog.create({
           data: {
-            productId: item.productId,
+            productId,
             action: 'sold',
-            quantity: item.quantity,
+            quantity,
             performedBy: Number(session.user.id),
           },
         });
@@ -162,16 +176,18 @@ export async function POST(request: Request) {
         },
       });
 
-      for (const item of priced) {
-        await tx.transactionItem.create({
-          data: {
-            transactionId: txn.id,
-            productId: item.productId,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            lineTotal: item.quantity * item.unitPrice,
-          },
-        });
+      for (const plan of plans) {
+        for (const slice of plan.slices) {
+          await tx.transactionItem.create({
+            data: {
+              transactionId: txn.id,
+              productId: plan.productId,
+              quantity: slice.quantity,
+              unitPrice: slice.unitPrice,
+              lineTotal: slice.quantity * slice.unitPrice,
+            },
+          });
+        }
       }
 
       return utangEntry;

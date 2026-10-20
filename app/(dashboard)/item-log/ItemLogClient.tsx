@@ -6,8 +6,11 @@ import { adjustmentTypeLabel } from '@/lib/adjustment';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { formatDateTime } from '@/lib/client/timeUtils';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
+import { Pagination, pageWindow } from '@/components/Pagination';
 import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
 import { WifiOff } from 'lucide-react';
+
+const PAGE_SIZE = 20;
 
 interface ItemLogEntry {
   id: number; createdAt: string; action: string; quantity: number;
@@ -45,6 +48,7 @@ export default function ItemLogClient() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [isOffline, setIsOffline] = useState(false);
+  const [page, setPage] = useState(1);
 
   function refresh() {
     const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
@@ -73,6 +77,7 @@ export default function ItemLogClient() {
     const range = getPresetRange(preset);
     setDateFrom(range.from);
     setDateTo(range.to);
+    setPage(1);
   }
 
   const filtered = logs.filter((l) => {
@@ -88,6 +93,7 @@ export default function ItemLogClient() {
     if (a.action !== 'voided' && b.action === 'voided') return -1;
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
+  const w = pageWindow(sorted.length, page, PAGE_SIZE);
 
   return (
     <div className="space-y-4">
@@ -106,17 +112,17 @@ export default function ItemLogClient() {
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
           <label className="text-sm text-gray-500">From</label>
-          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="border rounded-md px-2 py-1 text-sm" />
+          <input type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(1); }} className="border rounded-md px-2 py-1 text-sm" />
         </div>
         <div className="flex items-center gap-2">
           <label className="text-sm text-gray-500">To</label>
-          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="border rounded-md px-2 py-1 text-sm" />
+          <input type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(1); }} className="border rounded-md px-2 py-1 text-sm" />
         </div>
         <div className="flex gap-1">
           <button onClick={() => applyPreset('today')} className="text-xs px-3 py-1 rounded-full border hover:bg-gray-50 cursor-pointer">Today</button>
           <button onClick={() => applyPreset('week')} className="text-xs px-3 py-1 rounded-full border hover:bg-gray-50 cursor-pointer">This Week</button>
           <button onClick={() => applyPreset('month')} className="text-xs px-3 py-1 rounded-full border hover:bg-gray-50 cursor-pointer">This Month</button>
-          <button onClick={() => { setDateFrom(''); setDateTo(''); }} className="text-xs px-3 py-1 rounded-full border hover:bg-gray-50 text-gray-400 cursor-pointer">Clear</button>
+          <button onClick={() => { setDateFrom(''); setDateTo(''); setPage(1); }} className="text-xs px-3 py-1 rounded-full border hover:bg-gray-50 text-gray-400 cursor-pointer">Clear</button>
         </div>
       </div>
 
@@ -126,7 +132,7 @@ export default function ItemLogClient() {
             <tr><th className="p-3">Date</th><th className="p-3">Product</th><th className="p-3">Action</th><th className="p-3">Quantity</th><th className="p-3">Details</th><th className="p-3">Performed By</th></tr>
           </thead>
           <tbody>
-            {sorted.map((l) => (
+            {sorted.slice((w.page - 1) * PAGE_SIZE, w.pageEnd).map((l) => (
               <tr key={l.id} className="border-t">
                 <td className="p-3">{new Date(l.createdAt).toLocaleString()}</td>
                 <td className="p-3">{l.product?.name}</td>
@@ -143,6 +149,7 @@ export default function ItemLogClient() {
           </tbody>
         </table>
       </div>
+      <Pagination page={w.page} pageCount={w.pageCount} total={sorted.length} pageStart={w.pageStart} pageEnd={w.pageEnd} label="entries" onPage={setPage} />
     </div>
   );
 }

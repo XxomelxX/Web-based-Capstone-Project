@@ -53,6 +53,10 @@ model PasswordResetCode {
 
 model Category {
   id          Int       @id @default(autoincrement())
+  // Offline replay idempotency key (category_upsert create). Nullable: rows
+  // created online / before the migration have NULL, and Postgres unique
+  // indexes allow any number of NULLs.
+  clientUuid  String?   @unique
   name        String
   description String?
   archived    Boolean   @default(false)
@@ -61,6 +65,9 @@ model Category {
 
 model Product {
   id         Int      @id @default(autoincrement())
+  // Offline replay idempotency key (product_upsert create). Same nullable
+  // convention as Transaction.clientUuid.
+  clientUuid String?  @unique
   name       String
   categoryId Int
   category   Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
@@ -152,6 +159,9 @@ model TransactionItem {
 
 model StockBatch {
   id                Int      @id @default(autoincrement())
+  // Offline replay idempotency key (restock). Same nullable convention as
+  // Transaction.clientUuid.
+  clientUuid        String?  @unique
   productId         Int
   product           Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   quantityReceived  Int
@@ -159,6 +169,7 @@ model StockBatch {
   dateReceived      DateTime @default(now())
   supplier          String?
   costPerUnit       Int?     // centavos
+  pricePerUnit      Int?     // selling price per unit, centavos; null = sell at product.price
 
   @@index([productId, dateReceived])
 }
@@ -238,6 +249,9 @@ model PaymentAllocation {
 
 model Expense {
   id        Int      @id @default(autoincrement())
+  // Offline replay idempotency key (expense_add). Same nullable convention as
+  // Transaction.clientUuid.
+  clientUuid String? @unique
   type      String
   amount    Int      // centavos
   period    String
@@ -302,6 +316,12 @@ model Shift {
 
   cashMovements CashMovement[]
 
+  // NOTE: migration 20261019000000 also creates a PARTIAL unique index
+  // "Shift_cashierId_open_unique" ON "Shift"("cashierId") WHERE status='open'
+  // (the double-open-shift race gate). Prisma cannot model partial indexes, so
+  // schema drift makes `prisma migrate dev` want to DROP it — never let it
+  // regenerate that drop; use `prisma migrate deploy` for this DB or re-add
+  // the index in any later hand-written migration.
   @@index([cashierId, status])
   @@index([status])
 }

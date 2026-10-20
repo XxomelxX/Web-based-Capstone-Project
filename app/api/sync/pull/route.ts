@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/server/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/server/auth';
+import { getActiveLayerInfo } from '@/lib/server/fifo';
 
 // GET /api/sync/pull?since=ISO — delta sync (blog §9 pullChanges).
 // Returns products (delta), categories (full), customers (full), settings (single).
@@ -25,7 +26,18 @@ export async function GET(request: Request) {
 
   // Products: delta sync using updatedAt
   const productWhere = sinceDate ? { updatedAt: { gt: sinceDate } } : {};
-  const products = await prisma.product.findMany({ where: productWhere, take: 500, include: { category: true } });
+  const productRows = await prisma.product.findMany({ where: productWhere, take: 500, include: { category: true } });
+  // Attach the active FIFO layer info so offline clients can show the layer
+  // price beside the selling price (same contract as GET /api/products).
+  const layerInfo = await getActiveLayerInfo(
+    prisma,
+    productRows.map((p) => p.id)
+  );
+  const products = productRows.map((p) => ({
+    ...p,
+    activeLayerCost: layerInfo.get(p.id)?.costPerUnit ?? null,
+    activeLayerPrice: layerInfo.get(p.id)?.pricePerUnit ?? null,
+  }));
 
   // Categories, Customers, Settings: always pull all (small tables, no updatedAt)
   const [categories, customers, settings, utang, expenses, transactions, itemlog, voidRequests] = await Promise.all([

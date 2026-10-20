@@ -3,7 +3,7 @@ import { prisma } from '@/lib/server/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/server/auth';
 import { broadcastRealtime } from '@/lib/server/realtime';
-import { consumeFifoStock } from '@/lib/server/fifo';
+import { consumeFifoStock, type ConsumeSlice } from '@/lib/server/fifo';
 import { isDbUnreachable, DB_UNAVAILABLE_MESSAGE } from '@/lib/server/db-unreachable';
 import { peso } from '@/lib/money';
 
@@ -72,23 +72,44 @@ export async function POST(request: Request) {
       const settings = await tx.settings.findFirst();
       const taxRate = settings?.taxRate ?? 12;
 
-      // Server-side pricing: ignore client unitPrice, use DB price.
-      const priced = items.map((i) => {
-        const product = productMap.get(i.productId)!;
-        return { ...i, unitPrice: product.price };
-      });
+      // Guarded decrement once per PRODUCT (a cart may repeat a product; slice
+      // rows must never trigger extra decrements). The conditional write is
+      // the authoritative race gate — count 0 rolls the transaction back.
+      const quantityByProduct = new Map<number, number>();
+      for (const item of items) {
+        quantityByProduct.set(item.productId, (quantityByProduct.get(item.productId) ?? 0) + item.quantity);
+      }
+      for (const [productId, quantity] of quantityByProduct) {
+        const stockUpdate = await tx.product.updateMany({
+          where: { id: productId, stock: { gte: quantity } },
+          data: { stock: { decrement: quantity } },
+        });
+        if (stockUpdate.count !== 1) {
+          const product = productMap.get(productId);
+          throw new Error(`Insufficient stock for ${product?.name ?? `product #${productId}`}`);
+        }
+      }
 
-      const subtotal = priced.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
-
-      // VAT-inclusive pricing: extract VAT per line (integer centavos, rounded
-      // per line so the sum of lines always equals the receipt total).
+      // FIFO per item line: each consumed layer becomes a priced slice charged
+      // at its own selling price (batch.pricePerUnit ?? product.price).
+      // Server-side pricing: client unitPrice is ignored.
+      let subtotal = 0;
       let vat = 0;
-      for (const item of priced) {
-        const product = productMap.get(item.productId);
-        if (product?.vatType === 'regular') {
-          const lineTotal = item.quantity * item.unitPrice;
+      const soldByProduct = new Map<number, number>();
+      const plans: { productId: number; quantity: number; slices: ConsumeSlice[] }[] = [];
+      for (const item of items) {
+        const product = productMap.get(item.productId)!;
+        const slices = await consumeFifoStock(tx, item.productId, item.quantity);
+        const lineTotal = slices.reduce((sum, s) => sum + s.quantity * s.unitPrice, 0);
+        subtotal += lineTotal;
+        // VAT-inclusive pricing: extracted once per CART LINE (product), not
+        // per slice, so multi-layer rounding stays identical to the old
+        // one-row-per-line behavior and the sum of lines equals the total.
+        if (product.vatType === 'regular') {
           vat += Math.round((lineTotal * taxRate) / (100 + taxRate));
         }
+        soldByProduct.set(item.productId, (soldByProduct.get(item.productId) ?? 0) + item.quantity);
+        plans.push({ productId: item.productId, quantity: item.quantity, slices });
       }
 
       const total = subtotal;
@@ -126,38 +147,31 @@ export async function POST(request: Request) {
         },
       });
 
-      for (const item of priced) {
-        await tx.transactionItem.create({
-          data: {
-            transactionId: transaction.id,
-            productId: item.productId,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            lineTotal: item.quantity * item.unitPrice,
-          },
-        });
-
-        // Conditional decrement: a plain read-then-write races concurrent
-        // checkouts of the last unit (both pass the check, stock goes negative).
-        // The guarded write is the authoritative gate — count 0 means the
-        // transaction rolls back with a stock error.
-        const stockUpdate = await tx.product.updateMany({
-          where: { id: item.productId, stock: { gte: item.quantity } },
-          data: { stock: { decrement: item.quantity } },
-        });
-        if (stockUpdate.count !== 1) {
-          const product = productMap.get(item.productId);
-          throw new Error(`Insufficient stock for ${product?.name ?? `product #${item.productId}`}`);
+      // One sale row per consumed FIFO slice. A single-layer sale still yields
+      // exactly one row identical to the old behavior; a sale spanning layers
+      // is split so each unit is charged its own layer price.
+      for (const plan of plans) {
+        for (const slice of plan.slices) {
+          await tx.transactionItem.create({
+            data: {
+              transactionId: transaction.id,
+              productId: plan.productId,
+              quantity: slice.quantity,
+              unitPrice: slice.unitPrice,
+              lineTotal: slice.quantity * slice.unitPrice,
+            },
+          });
         }
+      }
 
-        // FIFO: consume the oldest stock layers first (same transaction).
-        await consumeFifoStock(tx, item.productId, item.quantity);
-
+      // Item log stays ONE row per product per transaction (the history UI
+      // renders a line per row; slices must not multiply it).
+      for (const [productId, quantity] of soldByProduct) {
         await tx.itemLog.create({
           data: {
-            productId: item.productId,
+            productId,
             action: 'sold',
-            quantity: item.quantity,
+            quantity,
             performedBy: Number(session.user.id),
           },
         });

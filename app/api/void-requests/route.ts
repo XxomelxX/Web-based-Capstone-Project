@@ -8,28 +8,32 @@ import { broadcastRealtime } from '@/lib/server/realtime';
 // Any authenticated user (cashier or admin) can request a void.
 // Idempotent by clientUuid; one pending request per transaction.
 export async function POST(request: Request) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
+  const body = await request.json().catch(() => null) as {
+    transactionId?: unknown; reason?: unknown; clientUuid?: unknown;
+  } | null;
+  const transactionId = Number(body?.transactionId);
+  const reason = typeof body?.reason === 'string' ? body.reason.trim() : '';
+  const clientUuid = typeof body?.clientUuid === 'string' ? body.clientUuid : undefined;
+
+  if (!Number.isInteger(transactionId) || transactionId <= 0) {
+    return NextResponse.json({ error: 'Valid transactionId is required' }, { status: 400 });
+  }
+  if (!reason) {
+    return NextResponse.json({ error: 'Void reason is required' }, { status: 400 });
+  }
+
+  // Every 200/201 response uses the same include shape so clients (queue
+  // replay) can treat any successful body as the created row.
+  const voidInclude = { transaction: { include: { cashier: true } } };
+
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
-
-    const body = await request.json().catch(() => null) as {
-      transactionId?: unknown; reason?: unknown; clientUuid?: unknown;
-    } | null;
-    const transactionId = Number(body?.transactionId);
-    const reason = typeof body?.reason === 'string' ? body.reason.trim() : '';
-    const clientUuid = typeof body?.clientUuid === 'string' ? body.clientUuid : undefined;
-
-    if (!Number.isInteger(transactionId) || transactionId <= 0) {
-      return NextResponse.json({ error: 'Valid transactionId is required' }, { status: 400 });
-    }
-    if (!reason) {
-      return NextResponse.json({ error: 'Void reason is required' }, { status: 400 });
-    }
-
     if (clientUuid) {
-      const existing = await prisma.voidRequest.findUnique({ where: { clientUuid } });
+      const existing = await prisma.voidRequest.findUnique({ where: { clientUuid }, include: voidInclude });
       if (existing) return NextResponse.json(existing, { status: 200 });
     }
 
@@ -41,6 +45,7 @@ export async function POST(request: Request) {
 
     const pending = await prisma.voidRequest.findFirst({
       where: { transactionId, status: 'pending' },
+      include: voidInclude,
     });
     if (pending) {
       return NextResponse.json(pending, { status: 200 });
@@ -53,17 +58,24 @@ export async function POST(request: Request) {
         reason,
         requestedBy: Number(session.user.id),
       },
-      include: {
-        transaction: { include: { cashier: true } },
-      },
+      include: voidInclude,
     });
 
     broadcastRealtime('transactions', { action: 'void-requested', request: created });
     return NextResponse.json(created, { status: 201 });
   } catch (err) {
-    // Idempotent replay race: unique clientUuid already won.
+    // Idempotent replay race: unique clientUuid already won. Return the winning
+    // row in the normal POST shape (clients treat 200 as the created row).
     if (typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === 'P2002') {
-      return NextResponse.json({ error: 'Request already submitted' }, { status: 200 });
+      const existing = clientUuid
+        ? await prisma.voidRequest.findUnique({ where: { clientUuid }, include: voidInclude })
+        : await prisma.voidRequest.findFirst({
+            where: { transactionId, status: 'pending' },
+            include: voidInclude,
+          });
+      if (existing) return NextResponse.json(existing, { status: 200 });
+      console.error('[POST /api/void-requests] duplicate race but no recoverable row', err);
+      return NextResponse.json({ error: 'Request already submitted' }, { status: 409 });
     }
     console.error('[POST /api/void-requests]', err);
     return NextResponse.json({ error: 'Failed to submit void request' }, { status: 500 });

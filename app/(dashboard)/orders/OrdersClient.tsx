@@ -11,8 +11,11 @@ import {
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
+import { Pagination, pageWindow } from '@/components/Pagination';
 import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
 import { peso } from '@/lib/money';
+
+const PAGE_SIZE = 20;
 
 interface OrderItem { productId: number; quantity: number; unitPrice: number; lineTotal: number; product: { name: string } }
 interface Order {
@@ -73,6 +76,7 @@ export default function OrdersClient() {
   );
   const [isLoading, setIsLoading] = useState(true);
   const [voidRequests, setVoidRequests] = useState<VoidRequest[]>([]);
+  const [page, setPage] = useState(1);
 
   const orders: Order[] = (liveOrders ?? []).map(normalizeOrder).filter((o) => o.id !== 0);
   // Mirror rows (offline-first) merged with the last server pull.
@@ -141,6 +145,7 @@ export default function OrdersClient() {
     if (a.status !== 'voided' && b.status === 'voided') return -1;
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
+  const w = pageWindow(sortedOrders.length, page, PAGE_SIZE);
   const completeOrders = sortedOrders.filter((o) => o.status === 'complete');
   const totalRevenue = completeOrders.reduce((s, o) => s + (Number(o.total) || 0), 0);
   const totalItems = completeOrders.reduce((s, o) => s + o.items.reduce((si, i) => si + (Number(i.quantity) || 0), 0), 0);
@@ -316,9 +321,9 @@ export default function OrdersClient() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800 text-slate-200">
-            {sortedOrders.map((o, index) => (
+            {sortedOrders.slice((w.page - 1) * PAGE_SIZE, w.pageEnd).map((o, index) => (
               <tr key={o.id} className="hover:bg-slate-900/50">
-                <td className="p-3 font-medium text-slate-400">{index + 1}</td>
+                <td className="p-3 font-medium text-slate-400">{(w.page - 1) * PAGE_SIZE + index + 1}</td>
                 <td className="p-3 text-cyan-400">#{o.id}</td>
                 <td className="p-3 text-slate-400">{new Date(o.createdAt).toLocaleString()}</td>
                 <td className="p-3 text-slate-300">{o.cashier?.fullName || '—'}</td>
@@ -346,6 +351,7 @@ export default function OrdersClient() {
         </table>
       </div>
       )}
+      <Pagination page={w.page} pageCount={w.pageCount} total={sortedOrders.length} pageStart={w.pageStart} pageEnd={w.pageEnd} label="orders" onPage={setPage} />
 
       {viewing && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4">

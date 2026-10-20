@@ -56,6 +56,8 @@ export interface QueuedActionPayload {
   notes?: string;
   openedAt?: string;
   closedAt?: string;
+  /** close_shift only: clientUuid of the queued open_shift this close belongs to. */
+  pinnedOpenClientUuid?: string;
   // Cash movement against the open shift (cash_in | cash_out | expense).
   // amount is always POSITIVE centavos; the type carries the direction.
   movementType?: 'cash_in' | 'cash_out' | 'expense';
@@ -68,6 +70,8 @@ export interface QueuedActionPayload {
   quantity?: number;
   supplier?: string | null;
   costPerUnit?: number | null;
+  /** Selling price of the restocked layer (centavos); null = use product.price. */
+  pricePerUnit?: number | null;
   reason?: string;
   // Stock adjustment (stock_adjust): direction + ABSOLUTE target stock.
   // expectedStock is the client-cached stock at queue time (conflict check).
@@ -249,11 +253,20 @@ export async function queueCloseShift(shift: {
   closedAt?: string;
   clientUuid?: string;
 }): Promise<number> {
+  // Pin this close to the open_shift still sitting in the queue (offline open).
+  // If the shift was opened online there is nothing to pin — the route falls
+  // back to the current open shift.
+  const queuedOpens = await db.queuedActions
+    .filter((a) => a.type === 'open_shift' && !a.synced)
+    .toArray();
+  queuedOpens.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const pinnedOpenClientUuid = queuedOpens[queuedOpens.length - 1]?.payload.clientUuid;
   return queueCategory1Action('close_shift', {
     closingCash: shift.closingCash,
     notes: shift.notes,
     closedAt: shift.closedAt || new Date().toISOString(),
     clientUuid: shift.clientUuid,
+    ...(pinnedOpenClientUuid ? { pinnedOpenClientUuid } : {}),
   });
 }
 
@@ -303,17 +316,25 @@ export async function queueVoidSale(
 }
 // Cashier void-request flow: request (any role) → admin review (admin sync only).
 // Requests live in this preserved queue DB so they survive the user-switch wipe.
-export async function queueVoidRequest(transactionId: number, reason: string, requestedBy: number, clientUuid?: string) {
-  return queueCategory1Action('void_request', { transactionId, reason, requestedBy, clientUuid });
+// requestedBy is only a display hint — the sync route derives the authoritative
+// user from the server session. Omit it entirely when the id is unknown (0).
+export async function queueVoidRequest(transactionId: number, reason: string, requestedBy?: number, clientUuid?: string) {
+  return queueCategory1Action('void_request', {
+    transactionId, reason, clientUuid,
+    ...(requestedBy ? { requestedBy } : {}),
+  });
 }
-export async function queueVoidRequestCancel(voidRequestId: number, requestedBy: number) {
-  return queueCategory1Action('void_request_cancel', { voidRequestId, requestedBy });
+export async function queueVoidRequestCancel(voidRequestId: number, requestedBy?: number) {
+  return queueCategory1Action('void_request_cancel', {
+    voidRequestId,
+    ...(requestedBy ? { requestedBy } : {}),
+  });
 }
 export async function queueVoidReview(voidRequestId: number, approved: boolean, reviewNote?: string) {
   return queueCategory1Action('void_review', { voidRequestId, approved, reviewNote });
 }
-export async function queueRestock(productId: number, quantity: number, supplier?: string | null, costPerUnit?: number | null) {
-  return queueCategory1Action('restock', { productId, quantity, supplier: supplier ?? null, costPerUnit: costPerUnit ?? null });
+export async function queueRestock(productId: number, quantity: number, supplier?: string | null, costPerUnit?: number | null, pricePerUnit?: number | null) {
+  return queueCategory1Action('restock', { productId, quantity, supplier: supplier ?? null, costPerUnit: costPerUnit ?? null, pricePerUnit: pricePerUnit ?? null });
 }
 // Absolute target stock (not a delta) keeps replays idempotent: if the server
 // already sits at `target`, the sync handler absorbs the action as a no-op.

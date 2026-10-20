@@ -13,6 +13,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
     const { id: idParam } = await params;
     const id = Number(idParam);
+    if (!Number.isInteger(id) || id <= 0) {
+      return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
+    }
     const data = await request.json();
 
     if (data.name !== undefined && (typeof data.name !== 'string' || !data.name.trim())) {
@@ -47,6 +50,9 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
     const { id: idParam } = await params;
     const id = Number(idParam);
+    if (!Number.isInteger(id) || id <= 0) {
+      return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
+    }
     let body: { adminUsername?: string; adminPassword?: string; force?: boolean };
     try {
       body = await request.json();

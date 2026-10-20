@@ -49,20 +49,29 @@ export async function executeVoidTransaction(
       }
     }
 
+    // Batch-priced sales may carry several item rows for the SAME product (one
+    // per consumed FIFO layer). Restore per PRODUCT so the stock increment and
+    // newest-first restore match voiding the same units as a single row, and
+    // the audit log stays one line per product.
+    const quantitiesByProduct = new Map<number, number>();
     for (const item of transaction.items) {
+      quantitiesByProduct.set(item.productId, (quantitiesByProduct.get(item.productId) ?? 0) + item.quantity);
+    }
+
+    for (const [productId, quantity] of quantitiesByProduct) {
       await tx.product.update({
-        where: { id: item.productId },
-        data: { stock: { increment: item.quantity } },
+        where: { id: productId },
+        data: { stock: { increment: quantity } },
       });
 
       // Reverse of FIFO consumption: restore the newest layers first.
-      await restoreFifoStock(tx, item.productId, item.quantity);
+      await restoreFifoStock(tx, productId, quantity);
 
       await tx.itemLog.create({
         data: {
-          productId: item.productId,
+          productId,
           action: 'voided',
-          quantity: item.quantity,
+          quantity,
           performedBy: voidedByUserId,
         },
       });

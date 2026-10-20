@@ -17,7 +17,23 @@ export function getRetryCount(): number { return retryCount; }
 
 export interface SyncResult { success: boolean; synced: number; conflicts: number; syncedAt: string; error?: string }
 
-export async function performSync(): Promise<SyncResult> {
+// Single-flight guard: visibilitychange / online / interval / manual triggers
+// used to race the same queue rows. Concurrent callers now share one run.
+// The run's own 30s abort still resolves it, which clears the guard.
+let inFlightSync: Promise<SyncResult> | null = null;
+
+export function performSync(): Promise<SyncResult> {
+  if (inFlightSync) return inFlightSync;
+  const run = runSync();
+  inFlightSync = run;
+  void run.then(
+    () => { if (inFlightSync === run) inFlightSync = null; },
+    () => { if (inFlightSync === run) inFlightSync = null; },
+  );
+  return run;
+}
+
+async function runSync(): Promise<SyncResult> {
   const syncedAt = new Date().toISOString();
   try {
     const pending = await getPendingActions();

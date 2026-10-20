@@ -58,42 +58,45 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-  const userId = Number(session.user.id);
-
-  const { type, amount, note, clientUuid } = await request.json();
-
-  if (!isMovementType(type)) {
-    return NextResponse.json({ error: 'type must be "cash_in", "cash_out" or "expense"' }, { status: 400 });
-  }
-  const amountCents = Number(amount);
-  if (!Number.isInteger(amountCents) || amountCents <= 0) {
-    return NextResponse.json({ error: 'amount must be a positive integer in centavos' }, { status: 400 });
-  }
-  const noteText = note ? String(note).slice(0, 200).trim() : null;
-
-  // Idempotency: replay of a queued/failed request returns the original row.
-  if (typeof clientUuid === 'string' && clientUuid) {
-    const replayed = await prisma.cashMovement.findUnique({
-      where: { clientUuid },
-      include: { user: { select: { fullName: true } } },
-    });
-    if (replayed) return NextResponse.json({ movement: replayed, replayed: true });
-  }
-
-  const shift = await requireOpenShift(userId);
-  if (!shift) {
-    return NextResponse.json({ error: 'No open shift — open a shift before recording cash movements' }, { status: 400 });
-  }
+  let retryClientUuid: string | undefined;
 
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const userId = Number(session.user.id);
+
+    const { type, amount, note, clientUuid } = await request.json();
+
+    if (!isMovementType(type)) {
+      return NextResponse.json({ error: 'type must be "cash_in", "cash_out" or "expense"' }, { status: 400 });
+    }
+    const amountCents = Number(amount);
+    if (!Number.isInteger(amountCents) || amountCents <= 0) {
+      return NextResponse.json({ error: 'amount must be a positive integer in centavos' }, { status: 400 });
+    }
+    const noteText = note ? String(note).slice(0, 200).trim() : null;
+    retryClientUuid = typeof clientUuid === 'string' && clientUuid ? clientUuid : undefined;
+
+    // Idempotency: replay of a queued/failed request returns the original row.
+    if (retryClientUuid) {
+      const replayed = await prisma.cashMovement.findUnique({
+        where: { clientUuid: retryClientUuid },
+        include: { user: { select: { fullName: true } } },
+      });
+      if (replayed) return NextResponse.json({ movement: replayed, replayed: true });
+    }
+
+    const shift = await requireOpenShift(userId);
+    if (!shift) {
+      return NextResponse.json({ error: 'No open shift — open a shift before recording cash movements' }, { status: 400 });
+    }
+
     const movement = await prisma.$transaction(async (tx) => {
       const created = await tx.cashMovement.create({
         data: {
-          clientUuid: typeof clientUuid === 'string' && clientUuid ? clientUuid : undefined,
+          clientUuid: retryClientUuid,
           shiftId: shift.id,
           type,
           amount: amountCents,
@@ -135,9 +138,19 @@ export async function POST(request: Request) {
       totals: { ...sums, expectedCash: computeExpectedCash(drawerFloat, 0, sums) },
     });
   } catch (err) {
+    // Concurrent clientUuid replay raced the create: return the winner's row
+    // so the client can store it (same contract as void-requests).
+    if (retryClientUuid && typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === 'P2002') {
+      const existing = await prisma.cashMovement.findUnique({
+        where: { clientUuid: retryClientUuid },
+        include: { user: { select: { fullName: true } } },
+      }).catch(() => null);
+      if (existing) return NextResponse.json({ movement: existing, replayed: true });
+    }
+    console.error('[POST /api/shift/cash-movement]', err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Failed to record cash movement' },
-      { status: 400 }
+      { status: 500 }
     );
   }
 }

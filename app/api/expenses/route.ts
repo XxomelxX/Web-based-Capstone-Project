@@ -1,11 +1,11 @@
 ﻿import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/server/prisma';
 import { requireRole } from '@/lib/server/require-role';
-import { requireSession } from '@/lib/server/require-session';
+import { requireAdmin } from '@/lib/server/require-session';
 import { broadcastRealtime } from '@/lib/server/realtime';
 
 export async function GET() {
-  const guard = await requireSession();
+  const guard = await requireAdmin();
   if (guard) return guard;
 
   const expenses = await prisma.expense.findMany({ orderBy: { createdAt: 'desc' } });

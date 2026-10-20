@@ -28,6 +28,22 @@ const MODE_HINTS: Record<AdjustmentType, string> = {
 };
 
 export function StockAdjustments({ product, isVisible, onClose, onSuccess }: StockAdjustmentsProps) {
+  if (!isVisible || !product) return null;
+  // Remount per target: type/quantity/note/error from the previous product must
+  // never leak into the next modal. The key also covers switching targets
+  // without an intermediate close; returning null unmounts on close.
+  return <StockAdjustmentForm key={product.id} product={product} onClose={onClose} onSuccess={onSuccess} />;
+}
+
+function StockAdjustmentForm({
+  product,
+  onClose,
+  onSuccess,
+}: {
+  product: LowStockProduct;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
   // The adjustment type IS the direction — there is no separate direction
   // selector anymore, so `mode` mirrors the selected type.
   const [type, setType] = useState<AdjustmentType | ''>('');
@@ -36,8 +52,6 @@ export function StockAdjustments({ product, isVisible, onClose, onSuccess }: Sto
   const [error, setError] = useState('');
   const [queuedNote, setQueuedNote] = useState('');
   const [isSaving, setIsSaving] = useState(false);
-
-  if (!isVisible || !product) return null;
 
   // Closing clears transient state so a stale success/error note from the
   // previous submission can never show up in a fresh look at another product.
@@ -54,7 +68,6 @@ export function StockAdjustments({ product, isVisible, onClose, onSuccess }: Sto
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!product) return;
     if (!mode) {
       setError('Select an adjustment type');
       return;

@@ -26,7 +26,7 @@ function jsonSafe(v) { return JSON.parse(JSON.stringify(v, (_, x) => (typeof x =
 // Drift rows for a specific set of ids (fresh data, safe inside tx).
 async function driftFor(tx, ids) {
   return tx.$queryRaw`
-    SELECT p.id, p.name, p.stock, p.archived, p.cost,
+    SELECT p.id, p.name, p.stock, p.archived, p.cost, p.price,
            COALESCE(SUM(sb."quantityRemaining"), 0) AS batch_sum,
            COUNT(sb.id) AS batch_count
     FROM "Product" p
@@ -48,7 +48,7 @@ async function applyOne(tx, row, changes) {
     await tx.stockBatch.create({
       data: {
         productId: row.id, quantityReceived: row.stock, quantityRemaining: row.stock,
-        supplier: LABEL_LEGACY, costPerUnit: row.cost,
+        supplier: LABEL_LEGACY, costPerUnit: row.cost, pricePerUnit: row.price,
       },
     });
     changes.openingBatchesCreated.push({ id: row.id, name: row.name, units: row.stock });
@@ -60,7 +60,7 @@ async function applyOne(tx, row, changes) {
     await tx.stockBatch.create({
       data: {
         productId: row.id, quantityReceived: delta, quantityRemaining: delta,
-        supplier: `${LABEL_CORRECT}, +${delta})`, costPerUnit: row.cost,
+        supplier: `${LABEL_CORRECT}, +${delta})`, costPerUnit: row.cost, pricePerUnit: row.price,
       },
     });
     changes.correctionBatchesCreated.push({ id: row.id, name: row.name, units: delta });

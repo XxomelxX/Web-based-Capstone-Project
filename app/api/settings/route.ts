@@ -21,13 +21,27 @@ export async function PATCH(request: Request) {
 
   const raw = await request.json();
   const data: Record<string, unknown> = {};
-  if ('storeName' in raw) data.storeName = String(raw.storeName);
-  if ('currency' in raw) data.currency = String(raw.currency);
+  if ('storeName' in raw) {
+    if (typeof raw.storeName !== 'string') {
+      return NextResponse.json({ error: 'storeName must be a string' }, { status: 400 });
+    }
+    const storeName = raw.storeName.trim();
+    if (storeName.length < 1 || storeName.length > 80) {
+      return NextResponse.json({ error: 'storeName must be between 1 and 80 characters' }, { status: 400 });
+    }
+    data.storeName = storeName;
+  }
+  if ('currency' in raw) {
+    if (raw.currency !== 'PHP') {
+      return NextResponse.json({ error: 'currency must be PHP' }, { status: 400 });
+    }
+    data.currency = 'PHP';
+  }
   if ('address' in raw) data.address = String(raw.address);
   if ('taxRate' in raw) {
-    const v = Number(raw.taxRate);
-    if (!Number.isFinite(v) || v < 0 || v > 100) {
-      return NextResponse.json({ error: 'taxRate must be between 0 and 100' }, { status: 400 });
+    const v = raw.taxRate;
+    if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > 100) {
+      return NextResponse.json({ error: 'taxRate must be a number between 0 and 100' }, { status: 400 });
     }
     data.taxRate = v;
   }

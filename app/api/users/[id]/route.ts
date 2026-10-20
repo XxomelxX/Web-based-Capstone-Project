@@ -16,6 +16,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
     const { id: idParam } = await params;
     const id = Number(idParam);
+    if (!Number.isInteger(id) || id <= 0) {
+      return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
+    }
     const data = await request.json();
 
     if (data.role !== undefined && !VALID_ROLES.includes(data.role)) {
@@ -73,6 +76,9 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
     const { id: idParam } = await params;
     const id = Number(idParam);
+    if (!Number.isInteger(id) || id <= 0) {
+      return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
+    }
 
     // Check for linked records
     const [transactions, itemLogs] = await Promise.all([

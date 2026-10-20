@@ -68,7 +68,7 @@ function getFriendlyAuthError(rawError?: string | null): string {
     normalized.includes('prisma.') ||
     normalized.includes('connection') ||
     normalized.includes('timeout') ||
-    normalized.includes('ecconnrefused') ||
+    normalized.includes('econnrefused') ||
     normalized.includes('econnreset') ||
     normalized.includes('eai_again')
   ) {
@@ -76,6 +76,33 @@ function getFriendlyAuthError(rawError?: string | null): string {
   }
 
   return 'Invalid username or password.';
+}
+
+/**
+ * Shared-device gate: the wipe decision must read the DURABLE identity record
+ * (localStorage), not just the per-tab `offlineSession` mirror. A tab close /
+ * browser restart empties sessionStorage while the identity survives — exactly
+ * the case where the next user must wipe yesterday's device data.
+ *
+ * Fail-safe: if the persisted identity is missing/unreadable, we cannot prove
+ * the cache belongs to this user, so wipe.
+ */
+async function wipeIfIdentityDiffers(nextUsername: string): Promise<void> {
+  let sameUser = false;
+  try {
+    const { readIdentity } = await import('@/lib/client/identity');
+    const stored = readIdentity();
+    sameUser =
+      !!stored?.username &&
+      stored.username.toLowerCase() === nextUsername.toLowerCase();
+  } catch {
+    sameUser = false;
+  }
+  if (sameUser) return;
+  try {
+    const { wipeOfflineData } = await import('@/lib/client/offline');
+    await wipeOfflineData();
+  } catch { /* wipe best-effort */ }
 }
 
 export default function LoginFormClient({ callbackUrl }: { callbackUrl?: string }) {
@@ -137,19 +164,10 @@ export default function LoginFormClient({ callbackUrl }: { callbackUrl?: string 
           return;
         }
 
-        // Shared-device safety: only wipe cached business data when the user
-        // differs from the previous session owner. Same user keeps cache.
-        let prevUsername: string | null = null;
-        try {
-          const prevRaw = sessionStorage.getItem('offlineSession');
-          prevUsername = prevRaw ? ((JSON.parse(prevRaw) as { username?: string }).username ?? null) : null;
-        } catch { prevUsername = null; }
-        if (prevUsername && prevUsername !== cached.username) {
-          try {
-            const { wipeOfflineData } = await import('@/lib/client/offline');
-            await wipeOfflineData();
-          } catch { /* wipe best-effort */ }
-        }
+        // Shared-device safety: compare against the durable identity record
+        // (see helper). A different user — or an unreadable identity — wipes
+        // the previous owner's cached business data; the same user keeps it.
+        await wipeIfIdentityDiffers(cached.username);
         sessionStorage.setItem(
           'offlineSession',
           JSON.stringify({
@@ -202,15 +220,9 @@ export default function LoginFormClient({ callbackUrl }: { callbackUrl?: string 
         if (session?.user) {
           // Different user on a shared device: wipe the previous user's cached
           // business data BEFORE writing the new session, so cached offline
-          // shells can never leak data across users.
-          try {
-            const prevRaw = sessionStorage.getItem('offlineSession');
-            const prevUser = prevRaw ? (JSON.parse(prevRaw) as { username?: string }) : null;
-            if (!prevUser || prevUser.username !== cleanIdentifier) {
-              const { wipeOfflineData } = await import('@/lib/client/offline');
-              await wipeOfflineData();
-            }
-          } catch { /* wipe best-effort */ }
+          // shells can never leak data across users. Uses the durable identity
+          // record, not the per-tab mirror (see helper for fail-safe rule).
+          await wipeIfIdentityDiffers(cleanIdentifier);
           // Durable identity (localStorage) so an offline reload / new tab /
           // restart still knows who this is and keeps admin-vs-cashier nav.
           const { saveIdentity } = await import('@/lib/client/identity');

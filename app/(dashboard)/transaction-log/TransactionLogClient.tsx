@@ -4,8 +4,11 @@ import { useEffect, useState } from 'react';
 import { getTransactions } from '@/lib/client/api/inventory';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
+import { Pagination, pageWindow } from '@/components/Pagination';
 import { WifiOff } from 'lucide-react';
 import { peso } from '@/lib/money';
+
+const PAGE_SIZE = 20;
 
 interface Transaction {
   id: number; createdAt: string; cashier: { fullName: string };
@@ -35,6 +38,7 @@ export default function TransactionLogClient() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [isOffline, setIsOffline] = useState(false);
+  const [page, setPage] = useState(1);
 
   function refresh() {
     const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
@@ -63,6 +67,7 @@ export default function TransactionLogClient() {
     const range = getPresetRange(preset);
     setDateFrom(range.from);
     setDateTo(range.to);
+    setPage(1);
   }
 
   const filtered = transactions.filter((t) => {
@@ -78,6 +83,7 @@ export default function TransactionLogClient() {
     if (a.status !== 'voided' && b.status === 'voided') return -1;
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
+  const w = pageWindow(sorted.length, page, PAGE_SIZE);
 
   return (
     <div className="space-y-4">
@@ -96,17 +102,17 @@ export default function TransactionLogClient() {
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
           <label className="text-sm text-gray-500">From</label>
-          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="border rounded-md px-2 py-1 text-sm" />
+          <input type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(1); }} className="border rounded-md px-2 py-1 text-sm" />
         </div>
         <div className="flex items-center gap-2">
           <label className="text-sm text-gray-500">To</label>
-          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="border rounded-md px-2 py-1 text-sm" />
+          <input type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(1); }} className="border rounded-md px-2 py-1 text-sm" />
         </div>
         <div className="flex gap-1">
           <button onClick={() => applyPreset('today')} className="text-xs px-3 py-1 rounded-full border hover:bg-gray-50 cursor-pointer">Today</button>
           <button onClick={() => applyPreset('week')} className="text-xs px-3 py-1 rounded-full border hover:bg-gray-50 cursor-pointer">This Week</button>
           <button onClick={() => applyPreset('month')} className="text-xs px-3 py-1 rounded-full border hover:bg-gray-50 cursor-pointer">This Month</button>
-          <button onClick={() => { setDateFrom(''); setDateTo(''); }} className="text-xs px-3 py-1 rounded-full border hover:bg-gray-50 text-gray-400 cursor-pointer">Clear</button>
+          <button onClick={() => { setDateFrom(''); setDateTo(''); setPage(1); }} className="text-xs px-3 py-1 rounded-full border hover:bg-gray-50 text-gray-400 cursor-pointer">Clear</button>
         </div>
       </div>
 
@@ -116,7 +122,7 @@ export default function TransactionLogClient() {
             <tr><th className="p-3">Order#</th><th className="p-3">Date/Time</th><th className="p-3">Cashier</th><th className="p-3">Payment</th><th className="p-3">Total</th><th className="p-3">Status</th></tr>
           </thead>
           <tbody>
-            {sorted.map((t) => (
+            {sorted.slice((w.page - 1) * PAGE_SIZE, w.pageEnd).map((t) => (
               <tr key={t.id} className="border-t">
                 <td className="p-3">#{t.id}</td>
                 <td className="p-3">{new Date(t.createdAt).toLocaleString()}</td>
@@ -131,6 +137,7 @@ export default function TransactionLogClient() {
           </tbody>
         </table>
       </div>
+      <Pagination page={w.page} pageCount={w.pageCount} total={sorted.length} pageStart={w.pageStart} pageEnd={w.pageEnd} label="transactions" onPage={setPage} />
     </div>
   );
 }

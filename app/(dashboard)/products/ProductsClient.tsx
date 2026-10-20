@@ -17,6 +17,7 @@ import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
 import { ArchivedSection } from '@/components/ArchivedSection';
+import { Pagination, pageWindow } from '@/components/Pagination';
 import { SearchInput } from '@/components/SearchInput';
 import { formatDate } from '@/lib/client/timeUtils';
 import { peso, parsePesosToCents } from '@/lib/money';
@@ -48,6 +49,8 @@ const VAT_LABEL: Record<string, string> = {
   'zero-rated': 'Zero-Rated',
 };
 
+const PAGE_SIZE = 20;
+
 function getExpiryBadge(expiryDate?: string | Date | null) {
   if (!expiryDate) return null;
   const now = new Date();
@@ -64,6 +67,8 @@ export default function ProductsClient() {
   const [showModal, setShowModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [search, setSearch] = useState('');
+  const [activePage, setActivePage] = useState(1);
+  const [archivedPage, setArchivedPage] = useState(1);
   const [form, setForm] = useState({
     name: '',
     categoryId: '',
@@ -100,8 +105,18 @@ export default function ProductsClient() {
     );
   }
 
-  const activeProducts = allProducts.filter((p) => !p.archived && productMatches(p));
-  const archivedProducts = allProducts.filter((p) => p.archived && productMatches(p));
+  // Newest first (id = creation order).
+  const activeProducts = [...allProducts]
+    .filter((p) => !p.archived && productMatches(p))
+    .sort((a, b) => b.id - a.id);
+  const archivedProducts = [...allProducts]
+    .filter((p) => p.archived && productMatches(p))
+    .sort((a, b) => b.id - a.id);
+
+  const activeWindow = pageWindow(activeProducts.length, activePage, PAGE_SIZE);
+  const archivedWindow = pageWindow(archivedProducts.length, archivedPage, PAGE_SIZE);
+  const pagedActiveProducts = activeProducts.slice(activeWindow.pageStart - 1, activeWindow.pageEnd);
+  const pagedArchivedProducts = archivedProducts.slice(archivedWindow.pageStart - 1, archivedWindow.pageEnd);
 
   // In-flight guard: archive triggers both an explicit refresh() and an
   // SSE-triggered refresh(); coalesce overlaps so concurrent runs can't
@@ -201,6 +216,13 @@ export default function ProductsClient() {
       }
       setShowModal(false);
       await refresh();
+      if (editingProduct) {
+        // Status changes can move a product between the active and archived lists.
+        setActivePage(1);
+        setArchivedPage(1);
+      } else {
+        setActivePage(1);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save product');
     }
@@ -222,9 +244,12 @@ export default function ProductsClient() {
     setDeleting(true);
     setDeleteError('');
     try {
+      const wasArchived = pendingDelete.archived;
       await deleteProduct(pendingDelete.id);
       setPendingDelete(null);
       await refresh();
+      if (wasArchived) setArchivedPage(1);
+      else setActivePage(1);
     } catch (err) {
       // Keep the alert open so the refusal (e.g. 409 sales history) is readable.
       setDeleteError(err instanceof Error ? err.message : 'Failed to delete product');
@@ -239,6 +264,7 @@ export default function ProductsClient() {
       await db.products.update(id, { archived: false });
       await unarchiveProduct(id);
       await refresh();
+      setActivePage(1);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to unarchive product');
       await refresh();
@@ -265,7 +291,11 @@ export default function ProductsClient() {
 
       <SearchInput
         value={search}
-        onChange={setSearch}
+        onChange={(v) => {
+          setSearch(v);
+          setActivePage(1);
+          setArchivedPage(1);
+        }}
         placeholder="Search products..."
         ariaLabel="Search products"
       />
@@ -296,7 +326,7 @@ export default function ProductsClient() {
                 </td>
               </tr>
             ) : (
-              activeProducts.map((p) => (
+              pagedActiveProducts.map((p) => (
                 <tr key={p.id} className="hover:bg-slate-900/50">
                   <td className="p-3 font-medium text-slate-100">{p.name}</td>
                   <td className="p-3 text-slate-400">{p.category?.name || 'Uncategorized'}</td>
@@ -353,8 +383,18 @@ export default function ProductsClient() {
         </table>
       </div>
 
+      <Pagination
+        page={activeWindow.page}
+        pageCount={activeWindow.pageCount}
+        total={activeProducts.length}
+        pageStart={activeWindow.pageStart}
+        pageEnd={activeWindow.pageEnd}
+        label="products"
+        onPage={setActivePage}
+      />
+
       <ArchivedSection title="Archived Products" count={archivedProducts.length}>
-        {archivedProducts.map((p) => (
+        {pagedArchivedProducts.map((p) => (
           <tr key={p.id} className="hover:bg-slate-900/50">
             <td className="p-3 font-medium text-slate-400">{p.name}</td>
             <td className="p-3 text-slate-500">
@@ -377,6 +417,16 @@ export default function ProductsClient() {
           </tr>
         ))}
       </ArchivedSection>
+
+      <Pagination
+        page={archivedWindow.page}
+        pageCount={archivedWindow.pageCount}
+        total={archivedProducts.length}
+        pageStart={archivedWindow.pageStart}
+        pageEnd={archivedWindow.pageEnd}
+        label="archived"
+        onPage={setArchivedPage}
+      />
 
       {showModal && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4">

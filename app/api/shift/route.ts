@@ -42,12 +42,15 @@ export async function GET() {
 
   let cashSales = 0;
   let gcashSales = 0;
+  let transactionCount = 0;
 
   for (const tx of shiftTransactions) {
     if (tx.paymentMethod === 'cash') {
       cashSales += tx.total;
+      transactionCount += 1;
     } else if (tx.paymentMethod === 'gcash') {
       gcashSales += tx.total;
+      transactionCount += 1;
     }
   }
 
@@ -66,7 +69,7 @@ export async function GET() {
       cashSales,
       gcashSales,
       totalSales,
-      transactionCount: shiftTransactions.length,
+      transactionCount,
       expectedCash,
       cashIn: cashSums.cashIn,
       cashOut: cashSums.cashOut,
@@ -196,23 +199,25 @@ export async function POST(request: Request) {
 
       let cashSales = 0;
       let gcashSales = 0;
+      let transactionCount = 0;
 
       for (const tx of shiftTransactions) {
         if (tx.paymentMethod === 'cash') {
           cashSales += tx.total;
+          transactionCount += 1;
         } else if (tx.paymentMethod === 'gcash') {
           gcashSales += tx.total;
+          transactionCount += 1;
         }
       }
 
       // closingCash is optional: when omitted (no physical drawer count),
       // store null so the shift closes without an over/short variance.
-      const hasCountedCash = closingCash !== undefined && closingCash !== null
-        && Number.isInteger(Number(closingCash));
+      const hasCountedCash = closingCash !== undefined && closingCash !== null;
       let countCash: number | null = null;
       if (hasCountedCash) {
         countCash = Number(closingCash);
-        if (countCash < 0) {
+        if (!Number.isInteger(countCash) || countCash < 0) {
           return NextResponse.json({ error: 'closingCash must be a non-negative integer in centavos' }, { status: 400 });
         }
       }
@@ -306,7 +311,7 @@ export async function POST(request: Request) {
           cashSales,
           gcashSales,
           totalSales: cashSales + gcashSales,
-          transactionCount: shiftTransactions.length,
+          transactionCount,
           expectedCash,
           closingCash: countCash,
           overageShortage,
@@ -323,12 +328,17 @@ export async function POST(request: Request) {
       }
 
       const { shiftId, verificationStatus, verificationNotes } = body;
-      if (!shiftId || !['verified', 'flagged'].includes(verificationStatus)) {
+      const shiftIdNum = Number(shiftId);
+      if (
+        !Number.isInteger(shiftIdNum) ||
+        shiftIdNum <= 0 ||
+        (verificationStatus !== 'verified' && verificationStatus !== 'flagged')
+      ) {
         return NextResponse.json({ error: 'Invalid verification parameters' }, { status: 400 });
       }
 
       const updatedShift = await prisma.shift.update({
-        where: { id: Number(shiftId) },
+        where: { id: shiftIdNum },
         data: {
           verifiedBy: userId,
           verifiedAt: new Date(),

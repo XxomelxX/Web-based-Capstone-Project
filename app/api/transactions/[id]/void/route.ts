@@ -14,6 +14,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const { id: idParam } = await params;
   const transactionId = Number(idParam);
+  if (!Number.isInteger(transactionId) || transactionId <= 0) {
+    return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
+  }
   const { reason, adminUsername, adminPassword } = await request.json();
 
   if (!reason) {

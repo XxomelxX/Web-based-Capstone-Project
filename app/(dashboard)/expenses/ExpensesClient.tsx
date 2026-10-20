@@ -7,7 +7,8 @@ import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
 import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
 import { WifiOff } from 'lucide-react';
-import { peso, parsePesosToCents } from '@/lib/money';
+import { toast } from 'sonner';
+import { peso, parsePesosToCents, isCents } from '@/lib/money';
 
 
 interface Expense { id: number; type: string; amount: number; period: string; note?: string; createdAt: string }
@@ -73,8 +74,18 @@ export default function ExpensesClient() {
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    // Validate BEFORE queueing: an invalid amount (NaN / negative / sub-cent)
+    // used to be enqueued offline and then 400 forever at replay, blocking the
+    // whole offline queue. Invalid input keeps the modal and form intact.
+    const amount = parsePesosToCents(form.amount);
+    if (!isCents(amount) || amount <= 0) {
+      const message = 'Enter a valid amount greater than ₱0.00';
+      setError(message);
+      toast.error(message);
+      return;
+    }
     try {
-      const saved = await addExpense({ type: form.type, amount: parsePesosToCents(form.amount), period: form.period, note: form.note });
+      const saved = await addExpense({ type: form.type, amount, period: form.period, note: form.note });
       setShowModal(false);
       setForm({ type: '', amount: '', period: '', note: '' });
       refresh();

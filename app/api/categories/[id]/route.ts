@@ -11,6 +11,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
     const { id: idParam } = await params;
     const id = Number(idParam);
+    if (!Number.isInteger(id) || id <= 0) {
+      return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
+    }
     const data = await request.json();
 
     const category = await prisma.category.update({
@@ -39,6 +42,9 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
     const { id: idParam } = await params;
     const id = Number(idParam);
+    if (!Number.isInteger(id) || id <= 0) {
+      return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
+    }
 
     const productCount = await prisma.product.count({ where: { categoryId: id } });
     if (productCount > 0) {

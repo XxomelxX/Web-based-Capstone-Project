@@ -35,6 +35,9 @@ export const queuedActionSchema = z.object({
     closingCash: z.number().int().nonnegative().optional(), // centavos
     openedAt: z.string().optional(),
     closedAt: z.string().optional(),
+    // Pins a queued close_shift to the exact shift it was enqueued against so
+    // a delayed replay can never close a newer shift.
+    pinnedOpenClientUuid: z.string().uuid().optional(),
     movementType: z.enum(['cash_in', 'cash_out', 'expense']).optional(),
     // Category-2 entity mutations (server-wins, last-write-wins on fields)
     entityId: z.number().int().positive().optional(),
@@ -44,6 +47,7 @@ export const queuedActionSchema = z.object({
     quantity: z.number().int().positive().optional(),
     supplier: z.string().max(200).nullish(),
     costPerUnit: z.number().int().nonnegative().nullish(), // centavos
+    pricePerUnit: z.number().int().nonnegative().nullish(), // centavos; null = product.price
     reason: z.string().max(500).optional(),
     // Stock adjustment (stock_adjust): direction, absolute target stock, and
     // the client-cached stock seen at queue time (conflict detection).
@@ -54,7 +58,9 @@ export const queuedActionSchema = z.object({
     supervisorUsername: z.string().max(100).optional(),
     supervisorVerifiedAt: z.string().optional(),
     cashierUsername: z.string().max(100).optional(),
-    requestedBy: z.number().int().positive().optional(),
+    // Optional: the queue is written before auth resolution, so it may be
+    // absent/0. The sync route always uses the SERVER session user id.
+    requestedBy: z.number().int().nonnegative().optional(),
     voidRequestId: z.number().int().positive().optional(),
     approved: z.boolean().optional(),
     reviewNote: z.string().max(500).optional(),
