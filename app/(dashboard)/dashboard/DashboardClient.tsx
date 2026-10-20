@@ -2,15 +2,14 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useCurrentUser } from '@/lib/client/hooks/useCurrentUser';
-import { getReports, getTransactions, getLowStock } from '@/lib/client/api/inventory';
-import { getPendingCount } from '@/lib/client/offlineQueue';
+import { getReports, getTransactions, getLowStock, getUtangEntries } from '@/lib/client/api/inventory';
 import { useRealtime } from '@/lib/client/hooks/use-realtime';
 import { getCategory2Cache, saveCategory2Cache } from '@/lib/client/localStorageCache';
 import { CachedDataBanner } from '@/components/CachedDataBanner';
 import { PWAInstallBanner } from '@/components/PWAInstallBanner';
 import { PageSkeleton } from '@/components/PageSkeleton';
 import { WifiOff } from 'lucide-react';
-import { QUEUE_UPDATE_EVENT_NAME, RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
+import { RECONNECT_EVENT_NAME } from '@/lib/client/hooks/useOfflineSync';
 import dynamic from 'next/dynamic';
 import { peso } from '@/lib/money';
 
@@ -135,7 +134,7 @@ export default function DashboardClient() {
   // Cashier-only view data — never sourced from admin-gated report endpoints.
   const [cashierTransactions, setCashierTransactions] = useState<CashierTransaction[] | null>(null);
   const [cashierLowStock, setCashierLowStock] = useState<LowStockData | null>(null);
-  const [cashierPending, setCashierPending] = useState(0);
+  const [cashierOutstanding, setCashierOutstanding] = useState(0);
   const [cashierLoading, setCashierLoading] = useState(true);
   const [lowStockFailed, setLowStockFailed] = useState(false);
 
@@ -237,9 +236,9 @@ export default function DashboardClient() {
     }
   }, []);
 
-  // Cashier loader: only cashier-accessible endpoints (transactions + lowstock)
-  // plus the local offline queue. Reports/chart-data are admin-only and are
-  // never requested on this path.
+  // Cashier loader: only cashier-accessible endpoints (transactions + lowstock
+  // + utang credit). Reports/chart-data are admin-only and are never requested
+  // on this path.
   const loadCashier = useCallback(async () => {
     const offlineNow = typeof window !== 'undefined' && !navigator.onLine;
     setIsOffline(offlineNow);
@@ -247,10 +246,17 @@ export default function DashboardClient() {
     setLowStockFailed(false);
 
     try {
-      const pending = await getPendingCount();
-      setCashierPending(pending);
+      // Store-wide outstanding credit in integer centavos: sum every entry's
+      // remainingBalance unless it is fully paid. Cache-backed rows may carry
+      // stale shapes — coerce defensively, never let this throw.
+      const entries = await getUtangEntries<{ remainingBalance?: unknown; status?: unknown }>();
+      const outstanding = (Array.isArray(entries) ? entries : []).reduce((sum, entry) => {
+        const row = (entry ?? {}) as Record<string, unknown>;
+        return row.status === 'paid' ? sum : sum + (Number(row.remainingBalance) || 0);
+      }, 0);
+      setCashierOutstanding(outstanding);
     } catch {
-      // IndexedDB unavailable — keep the last known count.
+      // Stat card — fail soft and keep the last known value.
     }
 
     try {
@@ -306,8 +312,12 @@ export default function DashboardClient() {
       }
     },
     utang: () => {
-      if (!roleReady || !isAdmin) return;
-      void loadReports(range);
+      if (!roleReady) return;
+      if (isAdmin) {
+        void loadReports(range);
+      } else {
+        void loadCashier();
+      }
     },
   });
 
@@ -334,23 +344,6 @@ export default function DashboardClient() {
     window.addEventListener(RECONNECT_EVENT_NAME, handleReconnect);
     return () => window.removeEventListener(RECONNECT_EVENT_NAME, handleReconnect);
   }, [roleReady, isAdmin, range, loadReports, loadChartData, loadCashier]);
-
-  // Cashier queue counter: re-poll whenever a local action is queued/synced or
-  // connectivity returns. Admins keep their existing report-refresh wiring.
-  useEffect(() => {
-    if (!roleReady || isAdmin) return;
-
-    function refreshQueue() {
-      void getPendingCount().then(setCashierPending).catch(() => {});
-    }
-
-    window.addEventListener(QUEUE_UPDATE_EVENT_NAME, refreshQueue);
-    window.addEventListener(RECONNECT_EVENT_NAME, refreshQueue);
-    return () => {
-      window.removeEventListener(QUEUE_UPDATE_EVENT_NAME, refreshQueue);
-      window.removeEventListener(RECONNECT_EVENT_NAME, refreshQueue);
-    };
-  }, [roleReady, isAdmin]);
 
   const lowStockCount = data?.stockLevels.filter((s) => s.status === 'Critical').length ?? 0;
 
@@ -388,7 +381,7 @@ export default function DashboardClient() {
             <h1 className="text-3xl font-semibold tracking-tight text-white">Welcome back, {user?.name || 'there'}</h1>
             <p className="max-w-2xl text-sm leading-6 text-slate-400">
               {isCashier
-                ? 'Your shift at a glance — recent sales, low stock alerts, and offline queue status. Full store reports are on the admin side.'
+                ? 'Your shift at a glance — recent sales, low stock alerts, and outstanding customer credit. Full store reports are on the admin side.'
                 : 'A professional summary of store performance, stock health, and sales trends for the selected reporting period.'}
             </p>
           </div>
@@ -430,9 +423,10 @@ export default function DashboardClient() {
                 accent={cashierLowStockCount > 0 ? 'text-rose-400' : 'text-slate-300'}
               />
               <DashboardStatCard
-                label="Offline Sales Queued"
-                value={String(cashierPending)}
-                accent={cashierPending > 0 ? 'text-amber-300' : 'text-slate-300'}
+                label="Outstanding Credit"
+                value={peso(cashierOutstanding)}
+                accent={cashierOutstanding > 0 ? 'text-violet-300' : 'text-slate-300'}
+                hint="Across all customer balances"
               />
             </div>
 
