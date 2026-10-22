@@ -1,0 +1,35 @@
+{
+  "changes": {
+    "openingBatchesCreated": [],
+    "correctionBatchesCreated": [
+      {
+        "id": 195,
+        "name": "Knorr Sinigang Mix",
+        "units": 3
+      },
+      {
+        "id": 196,
+        "name": "UFC Banana Ketchup",
+        "units": 7
+      },
+      {
+        "id": 197,
+        "name": "Del Monte Tomato Sauce",
+        "units": 2
+      },
+      {
+        "id": 201,
+        "name": "Jasmine Rice (1kg)",
+        "units": 1
+      },
+      {
+        "id": 224,
+        "name": "shin",
+        "units": 2
+      }
+    ],
+    "batchesReduced": [],
+    "negativeStockFixed": []
+  },
+  "remaining": []
+}

@@ -171,13 +171,17 @@ export async function consumeFifoStock(
       take = Math.min(fresh.quantityRemaining, remaining);
     }
     // After 3 lost races treat the layer as unavailable; leftover units flow
-    // to the next batch and, worst case, the drift clamp below keeps the
+    // to the next batch and, worst case, the drift slice below keeps the
     // books consistent (same policy as before — a sale is never blocked).
     if (!applied || take <= 0) continue;
-    await tx.stockBatch.update({
-      where: { id: batch.id },
-      data: { quantityRemaining: { decrement: take } },
-    });
+    // NOTE: the guarded updateMany above ALREADY decremented this layer by
+    // `take` (that IS the write - it is evaluated under the row lock, so
+    // quantityRemaining can never go negative). Do not decrement again here:
+    // a second unguarded update took the layer negative and Postgres rejected
+    // the whole sale with
+    // "new row for relation StockBatch violates check constraint
+    //  stockbatch_remaining_non_negative" (e.g. a 34-unit layer selling 32
+    // ended at 34 - 32 - 32 = -30).
     slices.push({
       batchId: batch.id,
       quantity: take,
@@ -186,17 +190,16 @@ export async function consumeFifoStock(
     });
     remaining -= take;
   }
-    // Drift clamp: if batch totals fall short of the sale (legacy data), zero
-    // every OBSERVED layer out instead of rolling back a completed sale.
-    // Scoped to the batch rows read above — a layer another transaction
-    // restocked between the read and this clamp stays intact. The leftover
-    // units are still charged (at the product's current price) and reported as
-    // a slice without a source batch row.
+    // Drift slice: the layers could not cover the sale (legacy data, layers
+    // missing, or a layer lost to a concurrent sale). The leftover units are
+    // still charged - at the product's current price - and reported as a slice
+    // without a source batch row.
+    //
+    // The layers are deliberately NOT zeroed here: whatever is left in them is
+    // real stock, and zeroing it would destroy units (including a layer a
+    // concurrent restock just topped up). Product.stock stays the source of
+    // truth; scripts/db-reconcile-stock.mjs re-aligns the layers with it.
     if (remaining > 0) {
-      await tx.stockBatch.updateMany({
-        where: { id: { in: batches.map((b) => b.id) }, quantityRemaining: { gt: 0 } },
-        data: { quantityRemaining: 0 },
-      });
     slices.push({
       batchId: null,
       quantity: remaining,

@@ -1,0 +1,199 @@
+{
+  "ranAt": "2026-10-22T07:49:18.094Z",
+  "plan": [
+    {
+      "id": 195,
+      "name": "Knorr Sinigang Mix",
+      "stock": 77,
+      "archived": false,
+      "cost": 1000,
+      "price": 1500,
+      "batch_sum": 74,
+      "batch_count": 1
+    },
+    {
+      "id": 196,
+      "name": "UFC Banana Ketchup",
+      "stock": 58,
+      "archived": false,
+      "cost": 1800,
+      "price": 2500,
+      "batch_sum": 51,
+      "batch_count": 1
+    },
+    {
+      "id": 197,
+      "name": "Del Monte Tomato Sauce",
+      "stock": 68,
+      "archived": false,
+      "cost": 1400,
+      "price": 2000,
+      "batch_sum": 66,
+      "batch_count": 1
+    },
+    {
+      "id": 201,
+      "name": "Jasmine Rice (1kg)",
+      "stock": 59,
+      "archived": false,
+      "cost": 5800,
+      "price": 7000,
+      "batch_sum": 58,
+      "batch_count": 1
+    },
+    {
+      "id": 224,
+      "name": "shin",
+      "stock": 32,
+      "archived": false,
+      "cost": 0,
+      "price": 2100,
+      "batch_sum": 30,
+      "batch_count": 1
+    }
+  ],
+  "beforeProducts": [
+    {
+      "id": 197,
+      "clientUuid": null,
+      "name": "Del Monte Tomato Sauce",
+      "categoryId": 28,
+      "price": 2000,
+      "cost": 1400,
+      "stock": 68,
+      "packSize": null,
+      "unit": null,
+      "barcode": null,
+      "archived": false,
+      "updatedAt": "2026-10-22T07:01:17.487Z",
+      "goodsType": "non-perishable",
+      "vatType": "regular",
+      "expiryDate": "2028-03-10T00:55:14.898Z"
+    },
+    {
+      "id": 195,
+      "clientUuid": null,
+      "name": "Knorr Sinigang Mix",
+      "categoryId": 28,
+      "price": 1500,
+      "cost": 1000,
+      "stock": 77,
+      "packSize": null,
+      "unit": null,
+      "barcode": null,
+      "archived": false,
+      "updatedAt": "2026-10-22T07:24:33.449Z",
+      "goodsType": "non-perishable",
+      "vatType": "regular",
+      "expiryDate": "2028-03-10T00:55:14.898Z"
+    },
+    {
+      "id": 196,
+      "clientUuid": null,
+      "name": "UFC Banana Ketchup",
+      "categoryId": 28,
+      "price": 2500,
+      "cost": 1800,
+      "stock": 58,
+      "packSize": null,
+      "unit": null,
+      "barcode": null,
+      "archived": false,
+      "updatedAt": "2026-10-22T07:24:33.520Z",
+      "goodsType": "non-perishable",
+      "vatType": "regular",
+      "expiryDate": "2028-03-10T00:55:14.898Z"
+    },
+    {
+      "id": 201,
+      "clientUuid": null,
+      "name": "Jasmine Rice (1kg)",
+      "categoryId": 29,
+      "price": 7000,
+      "cost": 5800,
+      "stock": 59,
+      "packSize": null,
+      "unit": null,
+      "barcode": null,
+      "archived": false,
+      "updatedAt": "2026-10-22T07:24:33.574Z",
+      "goodsType": "non-perishable",
+      "vatType": "exempt",
+      "expiryDate": "2027-09-12T00:55:15.939Z"
+    },
+    {
+      "id": 224,
+      "clientUuid": null,
+      "name": "shin",
+      "categoryId": 25,
+      "price": 2100,
+      "cost": 0,
+      "stock": 32,
+      "packSize": null,
+      "unit": null,
+      "barcode": null,
+      "archived": false,
+      "updatedAt": "2026-10-22T07:39:03.853Z",
+      "goodsType": "non-perishable",
+      "vatType": "exempt",
+      "expiryDate": null
+    }
+  ],
+  "beforeBatches": [
+    {
+      "id": 198,
+      "clientUuid": null,
+      "productId": 224,
+      "quantityReceived": 34,
+      "quantityRemaining": 30,
+      "dateReceived": "2026-10-18T12:53:00.178Z",
+      "supplier": "Opening stock (backfill 2026-10-18)",
+      "costPerUnit": 0,
+      "pricePerUnit": null
+    },
+    {
+      "id": 182,
+      "clientUuid": null,
+      "productId": 201,
+      "quantityReceived": 60,
+      "quantityRemaining": 58,
+      "dateReceived": "2026-10-18T12:52:49.425Z",
+      "supplier": "Opening stock (backfill 2026-10-18)",
+      "costPerUnit": 5800,
+      "pricePerUnit": null
+    },
+    {
+      "id": 178,
+      "clientUuid": null,
+      "productId": 197,
+      "quantityReceived": 70,
+      "quantityRemaining": 66,
+      "dateReceived": "2026-10-18T12:52:48.355Z",
+      "supplier": "Opening stock (backfill 2026-10-18)",
+      "costPerUnit": 1400,
+      "pricePerUnit": null
+    },
+    {
+      "id": 177,
+      "clientUuid": null,
+      "productId": 196,
+      "quantityReceived": 65,
+      "quantityRemaining": 51,
+      "dateReceived": "2026-10-18T12:52:48.092Z",
+      "supplier": "Opening stock (backfill 2026-10-18)",
+      "costPerUnit": 1800,
+      "pricePerUnit": null
+    },
+    {
+      "id": 176,
+      "clientUuid": null,
+      "productId": 195,
+      "quantityReceived": 80,
+      "quantityRemaining": 74,
+      "dateReceived": "2026-10-18T12:52:46.481Z",
+      "supplier": "Opening stock (backfill 2026-10-18)",
+      "costPerUnit": 1000,
+      "pricePerUnit": null
+    }
+  ]
+}
