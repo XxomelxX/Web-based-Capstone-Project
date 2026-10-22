@@ -195,6 +195,16 @@ export async function unregisterServiceWorker() {
     const registrations = await navigator.serviceWorker.getRegistrations();
     await Promise.all(registrations.map((registration) => registration.unregister()));
     if (registrations.length > 0) {
+      // Unregistering alone is not enough: the runtime caches survive it, and
+      // they hold the dev server's UNhashed chunk URLs - same URL, previous
+      // compile's content. A later worker (or the browser's HTTP cache) would
+      // then serve a stale bundle and React would fail with
+      // "Rendered more hooks than during the previous render".
+      // Only ever called on the development path (see components/providers.tsx).
+      if (process.env.NODE_ENV !== 'production' && typeof caches !== 'undefined') {
+        const names = await caches.keys();
+        await Promise.all(names.map((name) => caches.delete(name)));
+      }
       console.log('Service Worker unregistered in development.');
       return true;
     }

@@ -25,7 +25,14 @@ const withPWA = withPWAInit({
         handler: 'NetworkOnly',
       },
       {
-        urlPattern: /\/_next\/static\/.*\.(css|js)$/,
+        // Only CONTENT-HASHED assets are cacheable. Production emits hashed
+        // names (main-app-ab1cd3b55524241f.js, css/c119a024c06f750b.css);
+        // the dev server emits UNhashed ones (main-app.js) whose content
+        // changes on every recompile while the URL stays the same. Caching
+        // those lets a leftover worker serve a previous compile's bundle, and
+        // React then fails with "Rendered more hooks than during the previous
+        // render".
+        urlPattern: /\/_next\/static\/.*[\/\.-][0-9a-f]{8,}\.(css|js)$/,
         handler: 'CacheFirst',
         options: {
           cacheName: 'static-assets-v1',

@@ -2,6 +2,54 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 
+/**
+ * Development-only service worker cleanup. Runs in <head>, BEFORE any app
+ * bundle is fetched, so a stale production worker cannot serve a cached
+ * (previous-compile) dev chunk to this page.
+ *
+ * Why this is needed: a browser that once ran the production build on this
+ * origin keeps the generated /sw.js registered. next-pwa is disabled in dev,
+ * so nothing replaces it, and the old worker caches the dev server's
+ * unhashed chunk URLs - their content changes on every recompile while the
+ * URL stays the same. The page then runs a mix of old and new React code and
+ * React throws "Rendered more hooks than during the previous render".
+ */
+const DEV_SW_GUARD = `(function(){
+if (!('serviceWorker' in navigator)) return;
+var KEY = 'sari-dev-sw-cleanup';
+function reload() { try { location.reload(); } catch (e) {} }
+function purgeCaches() {
+  try {
+    return caches.keys().then(function (keys) {
+      return Promise.all(keys.map(function (key) { return caches.delete(key); }));
+    });
+  } catch (e) { return Promise.resolve(); }
+}
+function unregisterAll() {
+  try {
+    return navigator.serviceWorker.getRegistrations().then(function (regs) {
+      return Promise.all(regs.map(function (reg) { return reg.unregister(); }));
+    });
+  } catch (e) { return Promise.resolve(); }
+}
+navigator.serviceWorker.addEventListener('message', function (event) {
+  var data = event && event.data;
+  if (data && data.type === 'SARI_SW_DISABLED') reload();
+});
+var wasControlled = !!navigator.serviceWorker.controller;
+Promise.all([unregisterAll(), purgeCaches()]).then(function () {
+  // A controlling worker means this document - and the chunks it references -
+  // may have come from the cache. Reload once so the page runs fresh bundles.
+  if (!wasControlled) return;
+  var now = Date.now();
+  var last = 0;
+  try { last = parseInt(sessionStorage.getItem(KEY) || '0', 10) || 0; } catch (e) {}
+  if (now - last < 10000) return;
+  try { sessionStorage.setItem(KEY, String(now)); } catch (e) {}
+  reload();
+});
+})();`;
+
 export const metadata: Metadata = {
   title: "J & J Merchandise Store",
   description: "Simple. Efficient. Reliable. Manage your store better every day.",
@@ -41,6 +89,9 @@ export default function RootLayout({
             __html: `(function(){try{var t=localStorage.getItem('sari-sari-theme');var d=t==='light'||t==='dark'?t:'dark';document.documentElement.setAttribute('data-theme',d);}catch(e){}})();`,
           }}
         />
+        {process.env.NODE_ENV !== 'production' && (
+          <script dangerouslySetInnerHTML={{ __html: DEV_SW_GUARD }} />
+        )}
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){
