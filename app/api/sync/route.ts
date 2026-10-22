@@ -5,7 +5,7 @@ import { authOptions } from '@/lib/server/auth';
 import { queuedActionSchema } from '@/lib/client/validation';
 import { broadcastRealtime } from '@/lib/server/realtime';
 import { getDrawerFloat } from '@/lib/server/shiftDrawer';
-import { sumShiftCash, computeExpectedCash } from '@/lib/server/shiftCash';
+import { sumShiftCash, computeExpectedCash, sumDebtPayments } from '@/lib/server/shiftCash';
 import { consumeFifoStock, adjustFifoStock, type ConsumeSlice } from '@/lib/server/fifo';
 import { executeVoidTransaction } from '@/lib/server/void-transaction';
 import { isAdjustmentType, ADJUSTMENT_TYPE_LABELS, type AdjustmentMode } from '@/lib/adjustment';
@@ -451,7 +451,10 @@ export async function POST(request: Request) {
         // are already on the server by the time close replays.
         const drawerFloat = await getDrawerFloat(role, activeShift.openingFloat);
         const cashSums = await sumShiftCash(prisma, activeShift.id);
-        const expectedCash = computeExpectedCash(drawerFloat, cashSales, cashSums);
+        // Debt collected in cash during the shift is drawer money (the queued
+        // record_payment actions replay before the close in FIFO order).
+        const debtPayments = await sumDebtPayments(prisma, cashierId, activeShift.openedAt);
+        const expectedCash = computeExpectedCash(drawerFloat, cashSales, cashSums, debtPayments);
         const closed = await prisma.shift.update({
           where: { id: activeShift.id },
           data: {

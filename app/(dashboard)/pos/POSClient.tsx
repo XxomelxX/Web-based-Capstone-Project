@@ -256,7 +256,13 @@ export default function POSClient() {
   useRealtime({
     products: refresh,
     settings: refresh,
-    utang: refresh,
+    // A customer settling a debt puts that cash in the drawer — reload the
+    // shift so the Reading modal and the expected cash reflect it, and refresh
+    // the cached customer/utang data.
+    utang: () => {
+      refresh();
+      loadShiftData();
+    },
     // Cash movements recorded on another device refresh the live totals.
     shift: loadShiftData,
   });
@@ -1704,6 +1710,7 @@ function ZReadModal({
         <div className="text-sm space-y-1">
           <Row label="Opening Float" value={peso(summary.openingFloat)} />
           <Row label="Cash Sales" value={peso(summary.cashSales)} />
+          <Row label="Debt Payments" value={`+${peso(summary.debtPayments)}`} />
           <Row label="Cash In" value={`+${peso(summary.cashIn)}`} />
           <Row label="Cash Out" value={`-${peso(summary.cashOut)}`} />
           <Row label="Expenses" value={`-${peso(summary.expenses)}`} />

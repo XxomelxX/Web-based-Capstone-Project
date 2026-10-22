@@ -23,6 +23,12 @@ export interface ShiftDetails {
   cashIn?: number;
   cashOut?: number;
   totalExpenses?: number;
+  // Net cash from customer-debt (utang) payments collected by this cashier:
+  // `debtPayments` covers the whole shift (and is part of the drawer math —
+  // already included in `expectedCash`); `debtPaymentsToday` is the business
+  // day so far (a memo, not part of the math).
+  debtPayments?: number;
+  debtPaymentsToday?: number;
   cashier?: {
     fullName: string;
     username: string;
@@ -43,6 +49,8 @@ export interface ZReadSummary {
   cashIn: number;
   cashOut: number;
   expenses: number;
+  /** Net cash from customer-debt payments collected during the shift. */
+  debtPayments: number;
 }
 
 const ACTIVE_SHIFT_CACHE_KEY = 'sari-sari-active-shift';
@@ -149,7 +157,9 @@ export function sameShift(a: ShiftDetails | null, b: ShiftDetails | null): boole
     (a.transactionCount ?? null) === (b.transactionCount ?? null) &&
     (a.cashIn ?? null) === (b.cashIn ?? null) &&
     (a.cashOut ?? null) === (b.cashOut ?? null) &&
-    (a.totalExpenses ?? null) === (b.totalExpenses ?? null)
+    (a.totalExpenses ?? null) === (b.totalExpenses ?? null) &&
+    (a.debtPayments ?? null) === (b.debtPayments ?? null) &&
+    (a.debtPaymentsToday ?? null) === (b.debtPaymentsToday ?? null)
   );
 }
 
@@ -217,6 +227,7 @@ export function applyOfflineSaleToShift(
   const cashIn = shift.cashIn ?? 0;
   const cashOut = shift.cashOut ?? 0;
   const expenses = shift.totalExpenses ?? 0;
+  const debtPayments = shift.debtPayments ?? 0;
   return {
     ...shift,
     totalSales: (shift.totalSales ?? 0) + saleTotal,
@@ -229,10 +240,12 @@ export function applyOfflineSaleToShift(
     cashIn,
     cashOut,
     totalExpenses: expenses,
+    debtPayments,
     // Cached openingFloat is the drawer float the server returned, so
     // expected cash stays correct for the shared drawer while offline.
-    // Formula matches lib/server/shiftCash.ts: float + cash + in − out − expenses.
-    expectedCash: (shift.openingFloat ?? 0) + nextCashSales + cashIn - cashOut - expenses,
+    // Formula matches lib/server/shiftCash.ts:
+    // float + cash + debt payments + in − out − expenses.
+    expectedCash: (shift.openingFloat ?? 0) + nextCashSales + debtPayments + cashIn - cashOut - expenses,
   };
 }
 
@@ -249,9 +262,10 @@ export function applyOfflineMovementToShift(
   const cashIn = (shift.cashIn ?? 0) + (movementType === 'cash_in' ? amount : 0);
   const cashOut = (shift.cashOut ?? 0) + (movementType === 'cash_out' ? amount : 0);
   const totalExpenses = (shift.totalExpenses ?? 0) + (movementType === 'expense' ? amount : 0);
+  const debtPayments = shift.debtPayments ?? 0;
   const expectedCash =
-    (shift.openingFloat ?? 0) + (shift.cashSales ?? 0) + cashIn - cashOut - totalExpenses;
-  return { ...shift, cashIn, cashOut, totalExpenses, expectedCash };
+    (shift.openingFloat ?? 0) + (shift.cashSales ?? 0) + debtPayments + cashIn - cashOut - totalExpenses;
+  return { ...shift, cashIn, cashOut, totalExpenses, debtPayments, expectedCash };
 }
 
 export async function fetchActiveShift(): Promise<ShiftDetails | null> {
@@ -365,9 +379,10 @@ export async function closeShift(
   const cashIn = currentShift?.cashIn || 0;
   const cashOut = currentShift?.cashOut || 0;
   const expenses = currentShift?.totalExpenses || 0;
+  const debtPayments = currentShift?.debtPayments || 0;
   // Same formula as lib/server/shiftCash.ts — the offline Z-Read must match
   // the summary the server produces when the queued close replays.
-  const expectedCash = openingFloat + cashSales + cashIn - cashOut - expenses;
+  const expectedCash = openingFloat + cashSales + debtPayments + cashIn - cashOut - expenses;
   const hasCountedCash = typeof closingCash === 'number' && Number.isFinite(closingCash);
   const countedCash = hasCountedCash ? closingCash! : null;
   const overageShortage = hasCountedCash ? closingCash! - expectedCash : null;
@@ -386,6 +401,7 @@ export async function closeShift(
     cashIn,
     cashOut,
     expenses,
+    debtPayments,
   };
 
   if (canUseStorage() && !navigator.onLine) {

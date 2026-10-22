@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/server/auth';
 import { prisma } from '@/lib/server/prisma';
 import { getDrawerFloat } from '@/lib/server/shiftDrawer';
-import { sumShiftCash, computeExpectedCash } from '@/lib/server/shiftCash';
+import { sumShiftCash, computeExpectedCash, sumDebtPayments, startOfStoreDay } from '@/lib/server/shiftCash';
 
 // GET /api/shift — Fetch active open shift for the logged-in cashier
 export async function GET() {
@@ -60,7 +60,12 @@ export async function GET() {
   // The float override is returned so the client shows the drawer float.
   const drawerFloat = await getDrawerFloat(session.user.role, activeShift.openingFloat);
   const cashSums = await sumShiftCash(prisma, activeShift.id);
-  const expectedCash = computeExpectedCash(drawerFloat, cashSales, cashSums);
+  // Customer-debt payments collected since the shift opened are cash in the
+  // drawer; the "today" figure is a memo (the business day can be shorter
+  // than an open shift).
+  const debtPayments = await sumDebtPayments(prisma, userId, activeShift.openedAt);
+  const debtPaymentsToday = await sumDebtPayments(prisma, userId, startOfStoreDay());
+  const expectedCash = computeExpectedCash(drawerFloat, cashSales, cashSums, debtPayments);
 
   return NextResponse.json({
     activeShift: {
@@ -74,6 +79,8 @@ export async function GET() {
       cashIn: cashSums.cashIn,
       cashOut: cashSums.cashOut,
       totalExpenses: cashSums.expenses,
+      debtPayments,
+      debtPaymentsToday,
     },
   });
 }
@@ -146,6 +153,14 @@ export async function POST(request: Request) {
           include: { cashier: { select: { fullName: true, username: true } } },
         });
         if (replayed) {
+          // Recompute the debt payments for the closed window: the shift row
+          // keeps the cash totals, the payments are the source of truth.
+          const debtPayments = await sumDebtPayments(
+            prisma,
+            replayed.cashierId,
+            replayed.openedAt,
+            replayed.closedAt ?? undefined
+          );
           return NextResponse.json({
             success: true,
             shift: replayed,
@@ -164,6 +179,7 @@ export async function POST(request: Request) {
               cashIn: replayed.cashIn ?? 0,
               cashOut: replayed.cashOut ?? 0,
               expenses: replayed.totalExpenses ?? 0,
+              debtPayments,
             },
           });
         }
@@ -227,7 +243,9 @@ export async function POST(request: Request) {
       // totals are snapshotted on the shift row so history stays self-contained.
       const drawerFloat = await getDrawerFloat(session.user.role, activeShift.openingFloat);
       const cashSums = await sumShiftCash(prisma, activeShift.id);
-      const expectedCash = computeExpectedCash(drawerFloat, cashSales, cashSums);
+      // Debt collected in cash during the shift belongs in the drawer.
+      const debtPayments = await sumDebtPayments(prisma, userId, activeShift.openedAt);
+      const expectedCash = computeExpectedCash(drawerFloat, cashSales, cashSums, debtPayments);
       const overageShortage = countCash !== null ? countCash - expectedCash : null;
 
       // Guard against double-close from two devices: the guarded update only
@@ -318,6 +336,7 @@ export async function POST(request: Request) {
           cashIn: cashSums.cashIn,
           cashOut: cashSums.cashOut,
           expenses: cashSums.expenses,
+          debtPayments,
         },
       });
     }

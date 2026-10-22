@@ -45,7 +45,7 @@ export async function GET() {
     const minOpened = openShifts.reduce((m, s) => (s.openedAt < m ? s.openedAt : m), openShifts[0].openedAt);
     const shiftIds = openShifts.map((s) => s.id);
 
-    const [txRows, movementRows] = await Promise.all([
+    const [txRows, movementRows, paymentRows] = await Promise.all([
       prisma.transaction.findMany({
         where: { status: 'complete', createdAt: { gte: minOpened } },
         select: { cashierId: true, paymentMethod: true, total: true, createdAt: true },
@@ -53,6 +53,15 @@ export async function GET() {
       prisma.cashMovement.findMany({
         where: { shiftId: { in: shiftIds } },
         select: { shiftId: true, type: true, amount: true },
+      }),
+      // Customer-debt payments collected in cash are drawer money too.
+      prisma.payment.findMany({
+        where: { recordedBy: { in: [...new Set(openShifts.map((s) => s.cashierId))] }, createdAt: { gte: minOpened } },
+        select: {
+          recordedBy: true,
+          createdAt: true,
+          allocations: { select: { amountApplied: true } },
+        },
       }),
     ]);
 
@@ -82,6 +91,19 @@ export async function GET() {
       else if (m.type === 'expense') sums.expenses += m.amount;
     }
 
+    // Debt payments per cashier, bucketed the same way as the sales: only the
+    // payments inside THIS shift's window count (the net cash that settled a
+    // debt — the part that stayed in the drawer).
+    const debtByCashier = new Map<number, { at: Date; amount: number }[]>();
+    for (const p of paymentRows) {
+      if (p.recordedBy === null) continue;
+      const amount = p.allocations.reduce((s, a) => s + a.amountApplied, 0);
+      if (amount <= 0) continue;
+      const list = debtByCashier.get(p.recordedBy) ?? [];
+      list.push({ at: p.createdAt, amount });
+      debtByCashier.set(p.recordedBy, list);
+    }
+
     const activeShiftsWithTotals = openShifts.map((shift) => {
       const totals = txTotalsByCashier.get(shift.cashierId) ?? { cash: 0, gcash: 0, count: 0 };
       const cashSales = totals.cash;
@@ -89,7 +111,10 @@ export async function GET() {
       const totalSales = cashSales + gcashSales;
       const sums = sumsByShift.get(shift.id) ?? { cashIn: 0, cashOut: 0, expenses: 0 };
       const drawerFloat = shift.cashier.role === 'admin' ? shift.openingFloat : (adminFloat ?? shift.openingFloat);
-      const expectedCash = computeExpectedCash(drawerFloat, cashSales, sums);
+      const debtPayments = (debtByCashier.get(shift.cashierId) ?? [])
+        .filter((p) => p.at >= shift.openedAt)
+        .reduce((s, p) => s + p.amount, 0);
+      const expectedCash = computeExpectedCash(drawerFloat, cashSales, sums, debtPayments);
       return {
         id: shift.id,
         cashierId: shift.cashierId,
@@ -105,6 +130,7 @@ export async function GET() {
         cashIn: sums.cashIn,
         cashOut: sums.cashOut,
         totalExpenses: sums.expenses,
+        debtPayments,
         transactionCount: totals.count,
       };
     });

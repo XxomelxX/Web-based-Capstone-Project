@@ -175,6 +175,10 @@ export function ShiftReadingModal({
             <span className="font-medium text-emerald-400">+{peso(shift.cashSales ?? 0)}</span>
           </div>
           <div className="flex justify-between text-slate-300">
+            <span>Debt Payments (+)</span>
+            <span className="font-medium text-emerald-400">+{peso(shift.debtPayments ?? 0)}</span>
+          </div>
+          <div className="flex justify-between text-slate-300">
             <span>Cash In (+)</span>
             <span className="font-medium text-emerald-400">+{peso(cashIn)}</span>
           </div>
@@ -194,6 +198,10 @@ export function ShiftReadingModal({
           <div className="flex justify-between text-slate-400 text-xs">
             <span>GCash Sales (memo)</span>
             <span>{peso(shift.gcashSales ?? 0)}</span>
+          </div>
+          <div className="flex justify-between text-slate-400 text-xs">
+            <span>Debt Collected Today</span>
+            <span>{peso(shift.debtPaymentsToday ?? 0)}</span>
           </div>
           <div className="flex justify-between text-slate-400 text-xs">
             <span>Transactions</span>
