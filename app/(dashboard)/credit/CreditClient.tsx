@@ -141,6 +141,8 @@ export default function CreditClient() {
   const [selectedCustomer, setSelectedCustomer] = useState<number | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | 'unpaid' | 'partial' | 'paid'>('all');
   const [customerSearch, setCustomerSearch] = useState('');
+  const [activitySearch, setActivitySearch] = useState('');
+  const [activityTypeFilter, setActivityTypeFilter] = useState<'all' | 'sale' | 'payment'>('all');
   const [isCached, setIsCached] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
   const [deadlineEntry, setDeadlineEntry] = useState<Activity | null>(null);
@@ -411,6 +413,28 @@ export default function CreditClient() {
     });
   }, [entries, selectedCustomer]);
 
+  // Recent-activity filtering: text matches customer name, credit-sale status,
+  // note, item names, type label, or amount; type filter narrows the feed.
+  const filteredActivity = useMemo(() => {
+    const q = activitySearch.trim().toLowerCase();
+    return activity.filter((a) => {
+      if (activityTypeFilter !== 'all' && a.type !== activityTypeFilter) return false;
+      if (!q) return true;
+      const amount = peso(a.amount).toLowerCase();
+      const haystack = [
+        a.customerName,
+        a.status ?? '',
+        a.note ?? '',
+        a.type === 'sale' ? 'credit sale' : 'payment',
+        `+${amount}`,
+        `-${amount}`,
+        amount,
+        ...(a.type === 'sale' ? (a.items ?? []).map((i) => i.product?.name ?? '') : []),
+      ].join(' ').toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [activity, activitySearch, activityTypeFilter]);
+
   const totalOutstanding = useMemo(
     () => entries.filter((e) => e?.status !== 'paid').reduce((s, e) => s + num(e?.remainingBalance), 0),
     [entries]
@@ -570,22 +594,65 @@ export default function CreditClient() {
 
         <div className="lg:col-span-2 space-y-4">
           <div className="bg-slate-950/80 border border-slate-800 rounded-xl overflow-hidden">
-            <div className="p-4 border-b border-slate-800">
-              <h2 className="font-bold text-white">Recent Activity</h2>
-              <p className="text-xs text-slate-400 mt-0.5">
-                {selectedCustomer
-                  ? `Showing activity for ${customerSummaries.find((c) => c.id === selectedCustomer)?.name ?? 'customer'}`
-                  : 'All credit sales and payments'}
-              </p>
+            <div className="p-4 border-b border-slate-800 space-y-3">
+              <div>
+                <h2 className="font-bold text-white">Recent Activity</h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {selectedCustomer
+                    ? `Showing activity for ${customerSummaries.find((c) => c.id === selectedCustomer)?.name ?? 'customer'}`
+                    : 'All credit sales and payments'}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <SearchInput
+                    value={activitySearch}
+                    onChange={setActivitySearch}
+                    placeholder="Search activity — customer, item, note, amount…"
+                    ariaLabel="Filter recent activity"
+                  />
+                </div>
+                <select
+                  value={activityTypeFilter}
+                  onChange={(e) => setActivityTypeFilter(e.target.value as typeof activityTypeFilter)}
+                  className="text-xs bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-slate-300 outline-none shrink-0"
+                  aria-label="Filter activity by type"
+                >
+                  <option value="all">All activity</option>
+                  <option value="sale">Credit sales</option>
+                  <option value="payment">Payments</option>
+                </select>
+              </div>
             </div>
+
+            {activityTypeFilter !== 'all' || activitySearch.trim() ? (
+              <div className="px-4 pt-3 pb-1 text-xs text-slate-500">
+                Showing {filteredActivity.length} of {activity.length}{' '}
+                {activityTypeFilter === 'sale' ? 'credit sales' : activityTypeFilter === 'payment' ? 'payments' : 'entries'}
+              </div>
+            ) : null}
 
             {activity.length === 0 ? (
               <div className="p-8 text-center text-slate-500">
                 <p className="text-sm">No activity found</p>
               </div>
+            ) : filteredActivity.length === 0 ? (
+              <div className="p-8 text-center text-slate-500">
+                <p className="text-sm">
+                  {activitySearch.trim()
+                    ? `No activity matches "${activitySearch.trim()}"`
+                    : `No ${activityTypeFilter === 'sale' ? 'credit sales' : 'payments'} found`}
+                </p>
+                <button
+                  onClick={() => { setActivitySearch(''); setActivityTypeFilter('all'); }}
+                  className="text-xs text-cyan-400 hover:underline mt-2 cursor-pointer"
+                >
+                  Clear filters
+                </button>
+              </div>
             ) : (
               <div className="divide-y divide-slate-800 max-h-[600px] overflow-y-auto">
-                {activity.map((a) => {
+                {filteredActivity.map((a) => {
                   const paidTodayRow = a.type === 'payment' && isToday(a.date);
                   const saleAge = a.type === 'sale' && a.status !== 'paid' ? daysSince(a.date) : null;
                   const saleDue = a.type === 'sale' && a.status !== 'paid' ? dueTime(a.dueDate) : null;
