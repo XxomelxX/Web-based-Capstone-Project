@@ -11,25 +11,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-
-// Stale production PWA artifacts in public/ are still served statically in
-// dev. An already-registered browser service worker keeps re-fetching them
-// (reg.update() in the root layout) and answers with old cached chunks mixed
-// with new dev code — React then throws "Rendered more hooks than during the
-// previous render". Removing them makes dev /sw.js 404 so the DEV_SW_GUARD
-// can unregister the worker cleanly. `npm run build` regenerates them, so
-// production is unaffected.
-const PWA_ARTIFACT = /^(sw\.js|swe-worker-.*\.js|workbox-.*\.js|fallback-.*\.js)$/;
-try {
-  for (const name of fs.readdirSync(path.join(ROOT, 'public'))) {
-    if (PWA_ARTIFACT.test(name)) {
-      fs.rmSync(path.join(ROOT, 'public', name), { force: true });
-      console.log(`[dev:all] removed stale PWA artifact public/${name}`);
-    }
-  }
-} catch {
-  // best-effort cleanup
-}
 const isWindows = process.platform === 'win32';
 const PG_PORT = 5433;
 const PG_READY_TIMEOUT_MS = 60000;

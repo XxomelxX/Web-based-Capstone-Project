@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/clean-dev-pwa.mjs",
     "dev": "next dev --hostname localhost --webpack",
     "dev:db": "node scripts/local-pg.mjs",
     "dev:all": "node scripts/dev-all.mjs",

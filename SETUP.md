@@ -74,6 +74,10 @@ This creates:
 npm run dev
 ```
 Visit http://localhost:3000 — it redirects to `/login`.
+The `predev` startup step automatically removes stale production service-worker
+files before Next.js starts, preventing cached old JavaScript chunks from
+causing the React “Rendered more hooks” runtime error. `npm run build`
+regenerates those files for production.
 
 ### 7. Verify your data in a GUI (optional but handy)
 ```bash
